@@ -21,6 +21,10 @@
     <None Update="Data\schema.sql">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- Ship the seed checklist next to the app so the Seeder can read it. -->
+    <None Update="Data\seed\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

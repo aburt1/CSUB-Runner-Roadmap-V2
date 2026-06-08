@@ -1,4 +1,11 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Threading.RateLimiting;
+using Api.Auth;
 using Api.Data;
+
+// Keep JWT claim names verbatim ("type", "studentId", "role", ...) instead of
+// remapping them to long SOAP URIs, so the auth filters can read them directly.
+JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,11 +27,60 @@ var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("Missing ConnectionStrings:Default in configuration.");
 builder.Services.AddSingleton(new Db(connectionString));
 
+builder.Services.AddSingleton<JwtService>();
+builder.Services.AddSingleton<AzureAdTokenValidator>();
+
+// CORS — same behavior as the old server (allow the SPA origin with credentials;
+// in production CORS is effectively closed unless Cors:Origin is set).
+var corsOrigin = builder.Configuration["Cors:Origin"]
+    ?? (builder.Environment.IsProduction() ? null : "http://localhost:3000");
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
+{
+    if (!string.IsNullOrEmpty(corsOrigin))
+        policy.WithOrigins(corsOrigin).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+}));
+
+// Rate limiting — global 200/15min per IP, plus stricter named policies the auth
+// endpoints opt into (matches the express-rate-limit limits in the old server).
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = 429;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = 200, Window = TimeSpan.FromMinutes(15) }));
+    options.AddPolicy("login", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(15) }));
+    options.AddPolicy("breakGlass", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) }));
+});
+
 var app = builder.Build();
 
-// Create/upgrade the schema on startup (idempotent), mirroring the old server.
-var schemaPath = Path.Combine(AppContext.BaseDirectory, "Data", "schema.sql");
-await SchemaInitializer.RunAsync(app.Services.GetRequiredService<Db>(), schemaPath);
+// Create/upgrade the schema and seed defaults on startup, mirroring the old server.
+var db = app.Services.GetRequiredService<Db>();
+await SchemaInitializer.RunAsync(db, Path.Combine(AppContext.BaseDirectory, "Data", "schema.sql"));
+await Seeder.RunAsync(db, app.Configuration, app.Environment);
+
+// Security headers — the Helmet-equivalent CSP and friends from the old server.
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers["Content-Security-Policy"] =
+        "default-src 'self'; script-src 'self'; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        "font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; " +
+        "connect-src 'self'; frame-src 'none'";
+    headers["X-Content-Type-Options"] = "nosniff";
+    headers["X-Frame-Options"] = "DENY";
+    headers["Referrer-Policy"] = "no-referrer";
+    await next();
+});
+
+app.UseCors();
+app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
