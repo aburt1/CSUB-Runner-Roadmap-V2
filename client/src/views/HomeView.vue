@@ -14,5 +14,5 @@ const { loading, isAuthenticated } = storeToRefs(auth)
     <div class="text-csub-blue font-display text-xl">Loading…</div>
   </div>
   <RoadmapPage v-else-if="isAuthenticated" />
-  <PublicRoadmapPreview v-else />
+  <PublicRoadmapPreview v-else :on-login="auth.devLogin" />
 </template>
