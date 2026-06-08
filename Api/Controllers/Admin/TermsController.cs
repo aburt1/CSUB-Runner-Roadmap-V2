@@ -180,18 +180,20 @@ public sealed class TermsController : ControllerBase
 
         var result = await _db.TransactionAsync(async txDb =>
         {
-            await txDb.ExecuteAsync(
-                "INSERT INTO terms (name, start_date, end_date, is_active) VALUES (@name, @start_date, @end_date, 0)",
+            // INSERT + SCOPE_IDENTITY() must be one batch: SCOPE_IDENTITY is scope/batch-scoped
+            // and returns NULL in a separate command, even on the same transaction/connection.
+            var newTermId = await txDb.QueryOneAsync<int>(
+                @"INSERT INTO terms (name, start_date, end_date, is_active) VALUES (@name, @start_date, @end_date, 0);
+                  SELECT CAST(SCOPE_IDENTITY() AS int);",
                 new { name, start_date = NullIfEmpty(startDate), end_date = NullIfEmpty(endDate) });
-
-            var newTermId = await txDb.QueryOneAsync<int>("SELECT CAST(SCOPE_IDENTITY() AS int)");
 
             var clonedSteps = new List<Step>();
             foreach (var step in sourceSteps)
             {
-                await txDb.ExecuteAsync(
+                var newStepId = await txDb.QueryOneAsync<int>(
                     @"INSERT INTO steps (title, description, icon, sort_order, deadline, deadline_date, guide_content, links, required_tags, required_tag_mode, excluded_tags, contact_info, term_id, step_key, is_active, is_public, is_optional)
-                       VALUES (@title, @description, @icon, @sort_order, @deadline, @deadline_date, @guide_content, @links, @required_tags, @required_tag_mode, @excluded_tags, @contact_info, @term_id, @step_key, @is_active, @is_public, @is_optional)",
+                       VALUES (@title, @description, @icon, @sort_order, @deadline, @deadline_date, @guide_content, @links, @required_tags, @required_tag_mode, @excluded_tags, @contact_info, @term_id, @step_key, @is_active, @is_public, @is_optional);
+                      SELECT CAST(SCOPE_IDENTITY() AS int);",
                     new
                     {
                         step.title,
@@ -213,7 +215,6 @@ public sealed class TermsController : ControllerBase
                         is_optional = step.is_optional ?? 0,
                     });
 
-                var newStepId = await txDb.QueryOneAsync<int>("SELECT CAST(SCOPE_IDENTITY() AS int)");
                 var clonedStep = await txDb.QueryOneAsync<Step>("SELECT * FROM steps WHERE id = @newStepId", new { newStepId });
                 clonedSteps.Add(clonedStep!);
             }

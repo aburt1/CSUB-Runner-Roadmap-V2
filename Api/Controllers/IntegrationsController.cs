@@ -282,6 +282,13 @@ public sealed class IntegrationsController : ControllerBase
 
     // Persist the event row for idempotency, then return the outcome. If the insert
     // races/collides on the unique key, replay the now-stored event instead.
+    // Serialize the stored body with the same UTC-'Z' timestamp format as the live
+    // responses, so an idempotent replay is byte-identical to the original response.
+    private static readonly JsonSerializerOptions StoreOptions = new()
+    {
+        Converters = { new Api.Serialization.UtcDateTimeConverter() },
+    };
+
     private async Task<Outcome> StoreIntegrationEventAsync(int integrationClientId, string sourceEventId, CompletionItem item, Outcome outcome)
     {
         try
@@ -302,9 +309,9 @@ public sealed class IntegrationsController : ControllerBase
                     sourceEventId,
                     studentIdNumber = NullIfEmpty(Progress.NormalizeStudentIdNumber(item.student_id_number)),
                     stepKey = StepKeys.Normalize(item.step_key ?? ""),
-                    requestBody = JsonSerializer.Serialize(item),
+                    requestBody = JsonSerializer.Serialize(item, StoreOptions),
                     responseStatus = outcome.HttpStatus,
-                    responseBody = JsonSerializer.Serialize(outcome.Body),
+                    responseBody = JsonSerializer.Serialize(outcome.Body, StoreOptions),
                 });
 
             return outcome;

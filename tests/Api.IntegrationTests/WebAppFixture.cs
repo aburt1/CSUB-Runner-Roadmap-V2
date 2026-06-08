@@ -33,6 +33,7 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
         builder.UseSetting("LocalLogin:Password", "Local_Admin_2026!");
         builder.UseSetting("Integration:DefaultName", "PeopleSoft Dev");
         builder.UseSetting("Integration:DefaultKey", "dev-integration-key");
+        builder.UseSetting("ApiCheck:EncryptionKey", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     }
 
     public async Task InitializeAsync()

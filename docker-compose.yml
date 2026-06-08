@@ -24,8 +24,9 @@ services:
       Admin__DefaultPassword: "${ADMIN_DEFAULT_PASSWORD:-admin123}"
       LocalLogin__Username: "${LOCAL_LOGIN_USERNAME:-localadmin}"
       LocalLogin__Password: "${LOCAL_LOGIN_PASSWORD:-Local_Admin_2026!}"
-      # Optional: AzureAd__ClientId / AzureAd__TenantId, Integration__DefaultKey,
-      # ApiCheck__EncryptionKey (64-hex), Cors__Origin.
+      # 64-hex (32-byte) key used to encrypt stored API-check credentials. OVERRIDE in real deployments.
+      ApiCheck__EncryptionKey: "${API_CHECK_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"
+      # Optional: AzureAd__ClientId / AzureAd__TenantId, Integration__DefaultKey, Cors__Origin.
     ports:
       - "8080:8080"
   sqlserver:
