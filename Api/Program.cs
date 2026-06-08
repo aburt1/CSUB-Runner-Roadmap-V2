@@ -92,7 +92,11 @@ app.Use(async (context, next) =>
 });
 
 app.UseCors();
-app.UseRateLimiter();
+
+// Rate limiting can be turned off (e.g. for the integration test suite, which
+// would otherwise trip the per-IP login limit) via RateLimiting:Disabled=true.
+if (!app.Configuration.GetValue<bool>("RateLimiting:Disabled"))
+    app.UseRateLimiter();
 
 // Serve the built Vue SPA in production (single process serves API + client,
 // same as the old Express server). In dev these no-op because wwwroot is empty
@@ -109,3 +113,6 @@ app.MapControllers();
 app.MapFallbackToFile("index.html");
 
 app.Run();
+
+// Exposed so the integration test project can host the app via WebApplicationFactory.
+public partial class Program { }
