@@ -69,8 +69,10 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
-// Create/upgrade the schema and seed defaults on startup, mirroring the old server.
+// Ensure the database exists, create/upgrade the schema, and seed defaults on
+// startup, mirroring the old server (no manual DB setup needed).
 var db = app.Services.GetRequiredService<Db>();
+await SchemaInitializer.EnsureDatabaseAsync(connectionString);
 await SchemaInitializer.RunAsync(db, Path.Combine(AppContext.BaseDirectory, "Data", "schema.sql"));
 await Seeder.RunAsync(db, app.Configuration, app.Environment);
 
@@ -92,9 +94,18 @@ app.Use(async (context, next) =>
 app.UseCors();
 app.UseRateLimiter();
 
+// Serve the built Vue SPA in production (single process serves API + client,
+// same as the old Express server). In dev these no-op because wwwroot is empty
+// and Vite serves the client on :3000.
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
 app.MapControllers();
+
+// Any non-/api route falls back to the SPA's index.html (client-side routing).
+app.MapFallbackToFile("index.html");
 
 app.Run();

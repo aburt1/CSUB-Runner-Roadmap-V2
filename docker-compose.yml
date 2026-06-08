@@ -4,10 +4,30 @@
 # linux/amd64 image under Rancher Desktop's emulation. This is for LOCAL DEV only;
 # production uses a real SQL Server / Azure SQL instance.
 #
-# Bring it up with:  docker compose up -d sqlserver
+# Local dev: just the database  ->  docker compose up -d sqlserver
+# Full stack (built app + database)  ->  docker compose up --build
 # The SA password can be overridden with the MSSQL_SA_PASSWORD env var.
 name: csub-runner-roadmap-v2
 services:
+  app:
+    build: .
+    container_name: csub-app
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # The app creates the database + schema and seeds defaults on startup.
+      ConnectionStrings__Default: "Server=sqlserver,1433;Database=csub_admissions;User Id=sa;Password=${MSSQL_SA_PASSWORD:-Csub_Local_Dev_2026!};TrustServerCertificate=True;Encrypt=False"
+      Jwt__Secret: "${JWT_SECRET:-change-me-in-production-0123456789-abcdefghijklmnopqrstuvwxyz}"
+      Admin__DefaultEmail: "${ADMIN_DEFAULT_EMAIL:-admin@csub.edu}"
+      Admin__DefaultPassword: "${ADMIN_DEFAULT_PASSWORD:-admin123}"
+      LocalLogin__Username: "${LOCAL_LOGIN_USERNAME:-localadmin}"
+      LocalLogin__Password: "${LOCAL_LOGIN_PASSWORD:-Local_Admin_2026!}"
+      # Optional: AzureAd__ClientId / AzureAd__TenantId, Integration__DefaultKey,
+      # ApiCheck__EncryptionKey (64-hex), Cors__Origin.
+    ports:
+      - "8080:8080"
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     platform: linux/amd64

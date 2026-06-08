@@ -1,0 +1,9 @@
+**/bin
+**/obj
+**/node_modules
+**/dist
+Api/wwwroot
+.git
+.vs
+.claude
+*.log
