@@ -37,6 +37,8 @@ builder.Services.AddSingleton(new Db(connectionString));
 
 builder.Services.AddSingleton<JwtService>();
 builder.Services.AddSingleton<AzureAdTokenValidator>();
+builder.Services.AddSingleton<Api.Services.Encryption>();
+builder.Services.AddSingleton<Api.Services.ApiCheckRunner>();
 
 // CORS — same behavior as the old server (allow the SPA origin with credentials;
 // in production CORS is effectively closed unless Cors:Origin is set).
