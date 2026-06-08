@@ -1,0 +1,25 @@
+# ---- .NET ----
+bin/
+obj/
+*.user
+*.suo
+.vs/
+artifacts/
+publish/
+*.binlog
+
+# ---- Node / Vue client (added in Phase 3) ----
+node_modules/
+dist/
+*.local
+
+# ---- Env / secrets ----
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+*.log

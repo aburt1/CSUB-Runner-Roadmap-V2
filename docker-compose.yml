@@ -1,0 +1,32 @@
+# Local SQL Server for development.
+#
+# Apple Silicon (M-series) has no native SQL Server build, so we run the
+# linux/amd64 image under Rancher Desktop's emulation. This is for LOCAL DEV only;
+# production uses a real SQL Server / Azure SQL instance.
+#
+# Bring it up with:  docker compose up -d sqlserver
+# The SA password can be overridden with the MSSQL_SA_PASSWORD env var.
+name: csub-runner-roadmap-v2
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    container_name: csub-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-Csub_Local_Dev_2026!}"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - csub_sqlserver_data:/var/opt/mssql
+    healthcheck:
+      # /opt/mssql-tools18/bin uses the newer tools; -C trusts the dev cert.
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD:-Csub_Local_Dev_2026!}\" -C -Q \"SELECT 1\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+volumes:
+  csub_sqlserver_data:
