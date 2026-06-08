@@ -18,6 +18,8 @@ builder.Services.AddControllers()
         // response object spells its keys verbatim and we apply NO naming policy.
         options.JsonSerializerOptions.PropertyNamingPolicy = null;
         options.JsonSerializerOptions.DictionaryKeyPolicy = null;
+        // Emit timestamps as ISO-8601 UTC with a trailing 'Z' (matches the old app).
+        options.JsonSerializerOptions.Converters.Add(new Api.Serialization.UtcDateTimeConverter());
     })
     .ConfigureApiBehaviorOptions(options =>
     {
@@ -55,10 +57,14 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = 429;
+    // 200/15min per IP — scoped to /api only (like the old app), so SPA/static
+    // asset requests don't consume the API budget.
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
-        RateLimitPartition.GetFixedWindowLimiter(
-            http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = 200, Window = TimeSpan.FromMinutes(15) }));
+        http.Request.Path.StartsWithSegments("/api")
+            ? RateLimitPartition.GetFixedWindowLimiter(
+                http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 200, Window = TimeSpan.FromMinutes(15) })
+            : RateLimitPartition.GetNoLimiter("static"));
     options.AddPolicy("login", http => RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(15) }));
@@ -76,7 +82,28 @@ await SchemaInitializer.EnsureDatabaseAsync(connectionString);
 await SchemaInitializer.RunAsync(db, Path.Combine(AppContext.BaseDirectory, "Data", "schema.sql"));
 await Seeder.RunAsync(db, app.Configuration, app.Environment);
 
-// Security headers — the Helmet-equivalent CSP and friends from the old server.
+// Outermost: turn any unhandled error into the old { error: "Internal server error" }
+// envelope (and never leak stack traces).
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Unhandled request error");
+        if (!context.Response.HasStarted)
+        {
+            context.Response.Clear();
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsync("{\"error\":\"Internal server error\"}");
+        }
+    }
+});
+
+// Security headers — the Helmet-equivalent set from the old server.
 app.Use(async (context, next) =>
 {
     var headers = context.Response.Headers;
@@ -88,6 +115,13 @@ app.Use(async (context, next) =>
     headers["X-Content-Type-Options"] = "nosniff";
     headers["X-Frame-Options"] = "DENY";
     headers["Referrer-Policy"] = "no-referrer";
+    headers["Strict-Transport-Security"] = "max-age=15552000; includeSubDomains";
+    headers["X-DNS-Prefetch-Control"] = "off";
+    headers["X-Download-Options"] = "noopen";
+    headers["X-Permitted-Cross-Domain-Policies"] = "none";
+    headers["Cross-Origin-Opener-Policy"] = "same-origin";
+    headers["Cross-Origin-Resource-Policy"] = "same-origin";
+    headers["Origin-Agent-Cluster"] = "?1";
     await next();
 });
 

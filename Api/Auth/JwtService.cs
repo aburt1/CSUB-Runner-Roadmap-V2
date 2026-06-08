@@ -45,7 +45,7 @@ public sealed class JwtService
             ValidateIssuer = false,
             ValidateAudience = false,
             ValidateLifetime = true,
-            ClockSkew = TimeSpan.FromMinutes(1),
+            ClockSkew = TimeSpan.Zero,
             ValidateIssuerSigningKey = true,
             IssuerSigningKey = _key,
             ValidAlgorithms = [SecurityAlgorithms.HmacSha256],

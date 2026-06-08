@@ -196,7 +196,9 @@ public sealed class StepsController : ControllerBase
         {
             await Audit.LogAsync(
                 _db,
-                Audit.ResolveActor(HttpContext),
+                // Match the old app: the actor for a student self-update is the
+                // student's display name (falling back to email).
+                !string.IsNullOrEmpty(student.display_name) ? student.display_name! : (student.email ?? "system"),
                 "student_progress",
                 student.id,
                 status == "completed" ? "student_optional_complete" : "student_optional_uncomplete",

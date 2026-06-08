@@ -10,9 +10,13 @@ const { loading, isAuthenticated } = storeToRefs(auth)
 </script>
 
 <template>
-  <div v-if="loading" class="min-h-screen flex items-center justify-center bg-white">
-    <div class="text-csub-blue font-display text-xl">Loading…</div>
+  <div v-if="loading" role="status" aria-label="Loading" class="min-h-screen flex items-center justify-center bg-white">
+    <div class="w-12 h-12 border-4 border-csub-blue/20 border-t-csub-blue rounded-full animate-spin" aria-hidden="true"></div>
+    <span class="sr-only">Loading...</span>
   </div>
-  <RoadmapPage v-else-if="isAuthenticated" />
+  <template v-else-if="isAuthenticated">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <RoadmapPage />
+  </template>
   <PublicRoadmapPreview v-else :on-login="auth.devLogin" />
 </template>

@@ -89,11 +89,24 @@ public sealed class ApiCheckRunner
         {
             if (current.ValueKind == JsonValueKind.Null || current.ValueKind == JsonValueKind.Undefined)
                 return null;
-            if (current.ValueKind != JsonValueKind.Object)
+
+            if (current.ValueKind == JsonValueKind.Object)
+            {
+                if (!current.TryGetProperty(part, out var next))
+                    return null;
+                current = next;
+            }
+            else if (current.ValueKind == JsonValueKind.Array
+                     && int.TryParse(part, out var index)
+                     && index >= 0 && index < current.GetArrayLength())
+            {
+                // Match the old JS extractor, which indexes into arrays via numeric path segments.
+                current = current[index];
+            }
+            else
+            {
                 return null;
-            if (!current.TryGetProperty(part, out var next))
-                return null;
-            current = next;
+            }
         }
         return current;
     }

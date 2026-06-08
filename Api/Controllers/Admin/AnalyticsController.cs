@@ -589,7 +589,7 @@ public sealed class AnalyticsController : ControllerBase
 
         var students = await _db.QueryAllAsync<VelocityRow>(
             $@"SELECT st.id,
-                DATEDIFF(day, MIN(sp.completed_at), MAX(sp.completed_at)) as days_elapsed
+                DATEDIFF(second, MIN(sp.completed_at), MAX(sp.completed_at)) / 86400 as days_elapsed
                FROM students st
                JOIN student_progress sp ON sp.student_id = st.id AND sp.status = 'completed'
                {(termId.HasValue ? "WHERE st.term_id = @termId" : "")}
@@ -824,12 +824,12 @@ public sealed class AnalyticsController : ControllerBase
                 GROUP BY st.id, st.display_name, st.email, st.emplid, st.created_at
                 HAVING (
                   COUNT(CASE WHEN sp.status = 'completed' THEN 1 END) = 0
-                  AND @minDays <= DATEDIFF(day, st.created_at, SYSUTCDATETIME())
-                  AND DATEDIFF(day, st.created_at, SYSUTCDATETIME()) <= @maxDays
+                  AND @minDays <= DATEDIFF(second, st.created_at, SYSUTCDATETIME()) / 86400
+                  AND DATEDIFF(second, st.created_at, SYSUTCDATETIME()) / 86400 <= @maxDays
                 ) OR (
                   MAX(sp.completed_at) IS NOT NULL
-                  AND @minDays <= DATEDIFF(day, MAX(sp.completed_at), SYSUTCDATETIME())
-                  AND DATEDIFF(day, MAX(sp.completed_at), SYSUTCDATETIME()) <= @maxDays
+                  AND @minDays <= DATEDIFF(second, MAX(sp.completed_at), SYSUTCDATETIME()) / 86400
+                  AND DATEDIFF(second, MAX(sp.completed_at), SYSUTCDATETIME()) / 86400 <= @maxDays
                 )
                 ORDER BY st.display_name
                 OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
@@ -842,12 +842,12 @@ public sealed class AnalyticsController : ControllerBase
                   GROUP BY st.id, st.created_at
                   HAVING (
                     COUNT(CASE WHEN sp.status = 'completed' THEN 1 END) = 0
-                    AND @minDays <= DATEDIFF(day, st.created_at, SYSUTCDATETIME())
-                    AND DATEDIFF(day, st.created_at, SYSUTCDATETIME()) <= @maxDays
+                    AND @minDays <= DATEDIFF(second, st.created_at, SYSUTCDATETIME()) / 86400
+                    AND DATEDIFF(second, st.created_at, SYSUTCDATETIME()) / 86400 <= @maxDays
                   ) OR (
                     MAX(sp.completed_at) IS NOT NULL
-                    AND @minDays <= DATEDIFF(day, MAX(sp.completed_at), SYSUTCDATETIME())
-                    AND DATEDIFF(day, MAX(sp.completed_at), SYSUTCDATETIME()) <= @maxDays
+                    AND @minDays <= DATEDIFF(second, MAX(sp.completed_at), SYSUTCDATETIME()) / 86400
+                    AND DATEDIFF(second, MAX(sp.completed_at), SYSUTCDATETIME()) / 86400 <= @maxDays
                   )
                 ) sub",
         };
@@ -899,7 +899,7 @@ public sealed class AnalyticsController : ControllerBase
                 FROM students st
                 JOIN (
                   SELECT sp.student_id,
-                    DATEDIFF(day, MIN(sp.completed_at), MAX(sp.completed_at)) as days_elapsed
+                    DATEDIFF(second, MIN(sp.completed_at), MAX(sp.completed_at)) / 86400 as days_elapsed
                   FROM student_progress sp
                   WHERE sp.status = 'completed'
                   GROUP BY sp.student_id
@@ -911,7 +911,7 @@ public sealed class AnalyticsController : ControllerBase
                 SELECT COUNT(*) as count FROM students st
                 JOIN (
                   SELECT sp.student_id,
-                    DATEDIFF(day, MIN(sp.completed_at), MAX(sp.completed_at)) as days_elapsed
+                    DATEDIFF(second, MIN(sp.completed_at), MAX(sp.completed_at)) / 86400 as days_elapsed
                   FROM student_progress sp
                   WHERE sp.status = 'completed'
                   GROUP BY sp.student_id
