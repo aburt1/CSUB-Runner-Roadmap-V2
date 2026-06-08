@@ -84,8 +84,20 @@ Client SSO config (`client/.env.example`): `VITE_AZURE_AD_CLIENT_ID`, `VITE_AZUR
 ## Layout
 
 ```
-Api/         ASP.NET Core API (Controllers, Data, Auth, Services, Models)
+Api/         ASP.NET Core API (Controllers, Data, Auth, Services, Models, Serialization)
 client/      Vue 3 client (pages, components, stores, composables)
+tests/       xUnit integration tests (Api.IntegrationTests)
+docs/        documentation + screenshots
 Dockerfile   multi-stage: build client -> publish API (SPA in wwwroot) -> runtime
 docker-compose.yml   SQL Server (+ the full app via `--build`)
+AUDIT.md     parity audit of the conversion vs. the original app
 ```
+
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — tech stack, project structure, request/data flow.
+- [docs/SETUP.md](docs/SETUP.md) — prerequisites, running locally, environment variables, default credentials.
+- [docs/AUTH-ROADMAP.md](docs/AUTH-ROADMAP.md) — student/admin/integration authentication, JWT, RBAC, Azure AD.
+- [docs/API-GUIDE.md](docs/API-GUIDE.md) — external integration API (inbound push + outbound API checks).
+- [docs/TESTING.md](docs/TESTING.md) — the xUnit integration test suite and how to run it.
+- [docs/CLAUDE-CODE.md](docs/CLAUDE-CODE.md) — developing this repo with Claude Code.
