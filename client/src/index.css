@@ -1,0 +1,116 @@
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Open+Sans:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Open Sans', sans-serif;
+  background: #ffffff;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 53, 148, 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 53, 148, 0.4);
+}
+
+/* Focus visible for keyboard navigation */
+*:focus-visible {
+  outline: 3px solid #003594;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Skip to content link */
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  background: #001A70;
+  color: #fff;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0 0 0.5rem 0.5rem;
+  font-family: 'Open Sans', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: top 0.2s;
+}
+.skip-link:focus {
+  top: 0;
+}
+
+/* High contrast mode */
+[data-high-contrast="true"] {
+  --hc-blue: #0000CC;
+  --hc-gold: #CC8800;
+  --hc-text: #000000;
+  --hc-bg: #FFFFFF;
+}
+
+[data-high-contrast="true"] .bg-csub-blue { background-color: var(--hc-blue) !important; }
+[data-high-contrast="true"] .bg-csub-blue-dark { background-color: #000066 !important; }
+[data-high-contrast="true"] .text-csub-blue { color: var(--hc-blue) !important; }
+[data-high-contrast="true"] .text-csub-blue-dark { color: #000066 !important; }
+[data-high-contrast="true"] .text-csub-gray { color: #333333 !important; }
+[data-high-contrast="true"] .border-gray-200 { border-color: #666666 !important; }
+[data-high-contrast="true"] .bg-gray-50 { background-color: #F0F0F0 !important; }
+[data-high-contrast="true"] .text-white\/50,
+[data-high-contrast="true"] .text-white\/60 { color: rgba(255,255,255,0.85) !important; }
+
+/* Reduce motion for users with vestibular disorders.
+   Uses 0.01ms (not 0s) so animationend events still fire. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Screen-reader-only content (supplements Tailwind's sr-only for non-utility usage) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Print styles */
+@media print {
+  nav, button, .no-print, header { display: none !important; }
+  body { background: white !important; }
+  .bg-csub-blue-dark { background: white !important; color: black !important; }
+  * { box-shadow: none !important; }
+}
