@@ -9,15 +9,23 @@ JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers().AddJsonOptions(options =>
-{
-    // Preserve exact JSON key names. The existing API is intentionally
-    // inconsistent (snake_case for DB-row responses like step_id/completed_at,
-    // camelCase for hand-built auth responses like displayName), so every
-    // response object spells its keys verbatim and we apply NO naming policy.
-    options.JsonSerializerOptions.PropertyNamingPolicy = null;
-    options.JsonSerializerOptions.DictionaryKeyPolicy = null;
-});
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Preserve exact JSON key names. The existing API is intentionally
+        // inconsistent (snake_case for DB-row responses like step_id/completed_at,
+        // camelCase for hand-built auth responses like displayName), so every
+        // response object spells its keys verbatim and we apply NO naming policy.
+        options.JsonSerializerOptions.PropertyNamingPolicy = null;
+        options.JsonSerializerOptions.DictionaryKeyPolicy = null;
+    })
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        // The old Express API validates inputs by hand and returns { error: "..." }.
+        // Turn off the automatic ProblemDetails 400 so controllers return those
+        // exact error bodies themselves.
+        options.SuppressModelStateInvalidFilter = true;
+    });
 
 if (builder.Environment.IsDevelopment())
     builder.Services.AddOpenApi();
