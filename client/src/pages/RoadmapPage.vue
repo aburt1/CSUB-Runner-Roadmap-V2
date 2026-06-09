@@ -127,7 +127,9 @@ const selectedStepList = computed<StepWithStatus[]>(() => {
 })
 
 const selectedStepIndex = computed(() =>
-  selectedStep.value ? selectedStepList.value.findIndex((s) => s.id === selectedStep.value!.id) : -1,
+  selectedStep.value
+    ? selectedStepList.value.findIndex((s) => s.id === selectedStep.value!.id)
+    : -1,
 )
 
 const currentStepNumber = computed(() =>
@@ -172,7 +174,8 @@ async function handleOptionalStepStatusChange(step: StepWithStatus, status: stri
 function handleNavigate(direction: 'prev' | 'next') {
   if (!selectedStep.value) return
   const idx = selectedStepList.value.findIndex((s) => s.id === selectedStep.value!.id)
-  const next = direction === 'next' ? selectedStepList.value[idx + 1] : selectedStepList.value[idx - 1]
+  const next =
+    direction === 'next' ? selectedStepList.value[idx + 1] : selectedStepList.value[idx - 1]
   if (next) selectedStep.value = next
 }
 </script>
@@ -186,7 +189,10 @@ function handleNavigate(direction: 'prev' | 'next') {
     aria-label="Loading your roadmap"
   >
     <div class="text-center">
-      <div class="w-10 h-10 border-4 border-csub-blue border-t-transparent rounded-full animate-spin mx-auto mb-4" aria-hidden="true" />
+      <div
+        class="w-10 h-10 border-4 border-csub-blue border-t-transparent rounded-full animate-spin mx-auto mb-4"
+        aria-hidden="true"
+      />
       <p class="text-csub-blue font-display text-lg font-semibold uppercase tracking-wider">
         Loading your roadmap...
       </p>
@@ -194,11 +200,19 @@ function handleNavigate(direction: 'prev' | 'next') {
   </div>
 
   <!-- Error state -->
-  <div v-else-if="error && steps.length === 0" class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+  <div
+    v-else-if="error && steps.length === 0"
+    class="min-h-screen flex items-center justify-center bg-gray-50 px-4"
+  >
     <div class="text-center max-w-md">
       <div class="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
         <svg class="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M12 3a9 9 0 100 18 9 9 0 000-18z" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 9v2m0 4h.01M12 3a9 9 0 100 18 9 9 0 000-18z"
+          />
         </svg>
       </div>
       <h2 class="font-display text-xl font-bold text-csub-blue-dark uppercase tracking-wide mb-2">
@@ -213,24 +227,32 @@ function handleNavigate(direction: 'prev' | 'next') {
       </button>
       <p class="font-body text-sm text-csub-gray mt-4">
         If this keeps happening, contact
-        <a href="mailto:admissions@csub.edu" class="text-csub-blue underline">admissions@csub.edu</a>
+        <a href="mailto:admissions@csub.edu" class="text-csub-blue underline"
+          >admissions@csub.edu</a
+        >
       </p>
     </div>
   </div>
 
   <!-- Empty state -->
-  <div v-else-if="steps.length === 0" class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+  <div
+    v-else-if="steps.length === 0"
+    class="min-h-screen flex items-center justify-center bg-gray-50 px-4"
+  >
     <div class="text-center max-w-md">
       <div class="text-5xl mb-4">📋</div>
       <h2 class="font-display text-xl font-bold text-csub-blue-dark uppercase tracking-wide mb-2">
         No Checklist Available
       </h2>
       <p class="font-body text-csub-gray mb-6">
-        Your admissions checklist hasn't been set up yet. This usually means your application is still being processed.
+        Your admissions checklist hasn't been set up yet. This usually means your application is
+        still being processed.
       </p>
       <p class="font-body text-sm text-csub-gray">
         Questions? Contact
-        <a href="mailto:admissions@csub.edu" class="text-csub-blue underline">admissions@csub.edu</a>
+        <a href="mailto:admissions@csub.edu" class="text-csub-blue underline"
+          >admissions@csub.edu</a
+        >
         or call <a href="tel:6616542160" class="text-csub-blue underline">(661) 654-2160</a>
       </p>
     </div>
@@ -245,7 +267,9 @@ function handleNavigate(direction: 'prev' | 'next') {
             <p class="font-body text-csub-gold text-sm font-semibold tracking-wide mb-1">
               {{ term?.name || 'Admissions' }}
             </p>
-            <h1 class="font-display text-2xl sm:text-3xl md:text-4xl font-bold uppercase tracking-wide">
+            <h1
+              class="font-display text-2xl sm:text-3xl md:text-4xl font-bold uppercase tracking-wide"
+            >
               Welcome, {{ firstName }}
             </h1>
             <p class="font-body text-white/70 text-sm mt-1">
@@ -313,12 +337,20 @@ function handleNavigate(direction: 'prev' | 'next') {
             <button
               @click="viewMode = 'timeline'"
               :class="`p-2.5 rounded-md transition-colors ${
-                viewMode === 'timeline' ? 'bg-white shadow-sm text-csub-blue' : 'text-gray-400 hover:text-gray-600'
+                viewMode === 'timeline'
+                  ? 'bg-white shadow-sm text-csub-blue'
+                  : 'text-gray-400 hover:text-gray-600'
               }`"
               aria-label="Timeline view"
               title="Timeline view"
             >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
                 <circle cx="4" cy="6" r="1" fill="currentColor" />
                 <circle cx="4" cy="12" r="1" fill="currentColor" />
@@ -328,12 +360,20 @@ function handleNavigate(direction: 'prev' | 'next') {
             <button
               @click="viewMode = 'list'"
               :class="`p-2.5 rounded-md transition-colors ${
-                viewMode === 'list' ? 'bg-white shadow-sm text-csub-blue' : 'text-gray-400 hover:text-gray-600'
+                viewMode === 'list'
+                  ? 'bg-white shadow-sm text-csub-blue'
+                  : 'text-gray-400 hover:text-gray-600'
               }`"
               aria-label="List view"
               title="List view"
             >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
@@ -361,9 +401,7 @@ function handleNavigate(direction: 'prev' | 'next') {
         <p class="font-display text-lg font-bold text-csub-blue-dark uppercase tracking-wide">
           All caught up!
         </p>
-        <p class="font-body text-sm text-csub-gray mt-1">
-          No incomplete steps remaining.
-        </p>
+        <p class="font-body text-sm text-csub-gray mt-1">No incomplete steps remaining.</p>
       </div>
 
       <!-- ===== E. Help Section ===== -->

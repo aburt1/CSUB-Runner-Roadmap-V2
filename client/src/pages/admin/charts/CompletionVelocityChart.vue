@@ -1,47 +1,49 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { Bar } from 'vue-chartjs';
-import type { ChartData, ChartOptions } from 'chart.js';
-import './registerCharts';
-import type { AdminApi } from '../../../composables/useAdminApi';
-import { AXIS_COLOR, AXIS_FONT_SIZE, GRID_COLOR, BAR_RADIUS, VELOCITY_COLORS } from './chartTheme';
+import { ref, computed, watch } from 'vue'
+import { Bar } from 'vue-chartjs'
+import type { ChartData, ChartOptions } from 'chart.js'
+import './registerCharts'
+import type { AdminApi } from '../../../composables/useAdminApi'
+import { AXIS_COLOR, AXIS_FONT_SIZE, GRID_COLOR, BAR_RADIUS, VELOCITY_COLORS } from './chartTheme'
 
 interface VelocityItem {
-  bucket: string;
-  student_count: number;
+  bucket: string
+  student_count: number
 }
 
 interface DrillDownPayload {
-  filterType: string;
-  filterValue: any;
+  filterType: string
+  filterValue: any
 }
 
 const props = defineProps<{
-  termId: number | null;
-  api: AdminApi;
-  onDrillDown?: (payload: DrillDownPayload) => void;
-}>();
+  termId: number | null
+  api: AdminApi
+  onDrillDown?: (payload: DrillDownPayload) => void
+}>()
 
-const data = ref<VelocityItem[]>([]);
-const loading = ref(true);
+const data = ref<VelocityItem[]>([])
+const loading = ref(true)
 
 watch(
   () => [props.termId, props.api] as const,
   () => {
     const fetchData = async () => {
       try {
-        const result = await props.api.get<VelocityItem[]>('/analytics/completion-velocity', { term_id: props.termId });
-        data.value = result;
+        const result = await props.api.get<VelocityItem[]>('/analytics/completion-velocity', {
+          term_id: props.termId,
+        })
+        data.value = result
       } catch (err) {
-        console.error('[completion-velocity]', err);
+        console.error('[completion-velocity]', err)
       } finally {
-        loading.value = false;
+        loading.value = false
       }
-    };
-    if (props.termId) fetchData();
+    }
+    if (props.termId) fetchData()
   },
   { immediate: true },
-);
+)
 
 const barData = computed<ChartData<'bar'>>(() => ({
   labels: data.value.map((d) => d.bucket),
@@ -49,12 +51,19 @@ const barData = computed<ChartData<'bar'>>(() => ({
     {
       label: 'student_count',
       data: data.value.map((d) => d.student_count),
-      backgroundColor: data.value.map((_entry, index) => VELOCITY_COLORS[index % VELOCITY_COLORS.length]),
-      borderRadius: { topLeft: BAR_RADIUS[0], topRight: BAR_RADIUS[1], bottomRight: BAR_RADIUS[2], bottomLeft: BAR_RADIUS[3] },
+      backgroundColor: data.value.map(
+        (_entry, index) => VELOCITY_COLORS[index % VELOCITY_COLORS.length],
+      ),
+      borderRadius: {
+        topLeft: BAR_RADIUS[0],
+        topRight: BAR_RADIUS[1],
+        bottomRight: BAR_RADIUS[2],
+        bottomLeft: BAR_RADIUS[3],
+      },
       borderSkipped: false,
     },
   ],
-}));
+}))
 
 const options = computed<ChartOptions<'bar'>>(() => ({
   responsive: true,
@@ -62,13 +71,13 @@ const options = computed<ChartOptions<'bar'>>(() => ({
   layout: { padding: { top: 20, right: 30, left: 0, bottom: 50 } },
   onClick: (_evt, elements) => {
     if (elements.length > 0) {
-      const row = data.value[elements[0].index];
-      if (row) props.onDrillDown?.({ filterType: 'velocity_bucket', filterValue: row.bucket });
+      const row = data.value[elements[0].index]
+      if (row) props.onDrillDown?.({ filterType: 'velocity_bucket', filterValue: row.bucket })
     }
   },
   onHover: (evt, elements) => {
-    const target = evt.native?.target as HTMLElement | undefined;
-    if (target) target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+    const target = evt.native?.target as HTMLElement | undefined
+    if (target) target.style.cursor = elements.length > 0 ? 'pointer' : 'default'
   },
   scales: {
     x: {
@@ -101,7 +110,7 @@ const options = computed<ChartOptions<'bar'>>(() => ({
       },
     },
   },
-}));
+}))
 </script>
 
 <template>
@@ -112,7 +121,8 @@ const options = computed<ChartOptions<'bar'>>(() => ({
         Completion Velocity
       </h3>
       <p class="font-body text-xs text-csub-gray mt-1">
-        How quickly students progress from first to most recent completion. Longer times may indicate friction in the process.
+        How quickly students progress from first to most recent completion. Longer times may
+        indicate friction in the process.
       </p>
     </div>
 

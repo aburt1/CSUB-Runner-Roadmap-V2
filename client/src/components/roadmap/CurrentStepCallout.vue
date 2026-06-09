@@ -12,9 +12,15 @@ const emit = defineEmits<{
 }>()
 
 const links = computed<LinkItem[]>(() =>
-  props.step.links ? (typeof props.step.links === 'string' ? JSON.parse(props.step.links) : props.step.links) : [],
+  props.step.links
+    ? typeof props.step.links === 'string'
+      ? JSON.parse(props.step.links)
+      : props.step.links
+    : [],
 )
-const primaryAction = computed<LinkItem | null>(() => (links.value.length > 0 ? links.value[0]! : null))
+const primaryAction = computed<LinkItem | null>(() =>
+  links.value.length > 0 ? links.value[0]! : null,
+)
 
 // framer-motion: initial opacity 0 / y 12 -> animate opacity 1 / y 0 (0.4s)
 const shown = ref(false)
@@ -42,14 +48,21 @@ onMounted(() => {
       <div class="p-5 sm:p-6">
         <div class="flex items-start gap-4">
           <!-- Step icon -->
-          <div class="flex-shrink-0 w-12 h-12 rounded-full bg-csub-blue/10 flex items-center justify-center">
+          <div
+            class="flex-shrink-0 w-12 h-12 rounded-full bg-csub-blue/10 flex items-center justify-center"
+          >
             <span class="text-2xl" aria-hidden="true">{{ step.icon }}</span>
           </div>
 
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2 mb-1">
-              <span class="inline-flex items-center gap-1 text-xs font-body font-bold text-csub-blue bg-csub-blue/10 rounded-full px-2.5 py-0.5">
-                <span class="w-1.5 h-1.5 bg-csub-blue rounded-full animate-pulse" aria-hidden="true" />
+              <span
+                class="inline-flex items-center gap-1 text-xs font-body font-bold text-csub-blue bg-csub-blue/10 rounded-full px-2.5 py-0.5"
+              >
+                <span
+                  class="w-1.5 h-1.5 bg-csub-blue rounded-full animate-pulse"
+                  aria-hidden="true"
+                />
                 Step {{ stepNumber }} — Next Up
               </span>
               <span
@@ -60,7 +73,9 @@ onMounted(() => {
               </span>
             </div>
 
-            <h2 class="font-display text-lg sm:text-xl font-bold text-csub-blue-dark uppercase tracking-wide">
+            <h2
+              class="font-display text-lg sm:text-xl font-bold text-csub-blue-dark uppercase tracking-wide"
+            >
               {{ step.title }}
             </h2>
             <p class="font-body text-sm text-csub-gray mt-1 leading-relaxed">
@@ -77,8 +92,19 @@ onMounted(() => {
                 class="inline-flex items-center gap-2 bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider text-sm px-5 py-2.5 rounded-lg shadow transition-colors"
               >
                 {{ step.actionLabel || primaryAction.label || 'Get Started' }}
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M14 5l7 7m0 0l-7 7m7-7H3"
+                  />
                 </svg>
               </a>
               <button
@@ -87,8 +113,19 @@ onMounted(() => {
                 class="inline-flex items-center gap-1.5 font-body text-sm font-semibold text-csub-blue hover:text-csub-blue-dark transition-colors"
               >
                 View details
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 5l7 7-7 7" />
+                <svg
+                  class="w-3.5 h-3.5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2.5"
+                    d="M9 5l7 7-7 7"
+                  />
                 </svg>
               </button>
             </div>

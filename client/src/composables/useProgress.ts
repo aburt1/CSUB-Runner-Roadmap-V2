@@ -7,13 +7,14 @@ import type { Step, StepWithStatus, StepStatus, ProgressResponse, Term } from '.
 const API_BASE = '/api'
 const POLL_INTERVAL = 30000 // 30 seconds
 
-interface ProgressMapEntry {
+export interface ProgressMapEntry {
   status: StepStatus
   completed_at: string | null
 }
 
 // Does a step apply to a student given their tags? (ported from useProgress.ts)
-function stepApplies(step: Step, studentTags: string[]): boolean {
+// Exported so the tag-matching rules can be unit-tested directly.
+export function stepApplies(step: Step, studentTags: string[]): boolean {
   const requiredTags: string[] | null = step.required_tags
     ? typeof step.required_tags === 'string'
       ? JSON.parse(step.required_tags)
@@ -34,7 +35,11 @@ function stepApplies(step: Step, studentTags: string[]): boolean {
 }
 
 // Required steps follow a progression (first incomplete = in_progress); optional steps don't.
-function deriveAllStepStatuses(steps: Step[], progressMap: Map<number, ProgressMapEntry>): StepWithStatus[] {
+// Exported for unit testing of the status-derivation logic.
+export function deriveAllStepStatuses(
+  steps: Step[],
+  progressMap: Map<number, ProgressMapEntry>,
+): StepWithStatus[] {
   let foundCurrent = false
   return steps.map((step) => {
     const progress = progressMap.get(step.id)
@@ -88,10 +93,15 @@ export function useProgress() {
         const data: ProgressResponse = await res.json()
         const map = new Map<number, ProgressMapEntry>()
         for (const p of data.progress) {
-          map.set(p.step_id, { status: (p.status || 'completed') as StepStatus, completed_at: p.completed_at })
+          map.set(p.step_id, {
+            status: (p.status || 'completed') as StepStatus,
+            completed_at: p.completed_at,
+          })
         }
         progressMap.value = map
-        completedDates.value = Object.fromEntries(data.progress.map((p) => [p.step_id, p.completed_at]))
+        completedDates.value = Object.fromEntries(
+          data.progress.map((p) => [p.step_id, p.completed_at]),
+        )
         studentTags.value = data.tags || []
         if (data.term) term.value = data.term
         error.value = null
@@ -111,17 +121,29 @@ export function useProgress() {
   })
   const requiredOnly = computed(() => steps.value.filter((s) => s.is_optional !== 1))
   const totalSteps = computed(() => requiredOnly.value.length)
-  const completedCount = computed(() => requiredOnly.value.filter((s) => s.status === 'completed' || s.status === 'waived').length)
-  const percentage = computed(() => (totalSteps.value > 0 ? Math.round((completedCount.value / totalSteps.value) * 100) : 0))
-  const currentStep = computed<StepWithStatus | null>(() => requiredOnly.value.find((s) => s.status === 'in_progress') || null)
-  const allComplete = computed(() => totalSteps.value > 0 && completedCount.value === totalSteps.value)
+  const completedCount = computed(
+    () =>
+      requiredOnly.value.filter((s) => s.status === 'completed' || s.status === 'waived').length,
+  )
+  const percentage = computed(() =>
+    totalSteps.value > 0 ? Math.round((completedCount.value / totalSteps.value) * 100) : 0,
+  )
+  const currentStep = computed<StepWithStatus | null>(
+    () => requiredOnly.value.find((s) => s.status === 'in_progress') || null,
+  )
+  const allComplete = computed(
+    () => totalSteps.value > 0 && completedCount.value === totalSteps.value,
+  )
 
   // Load on mount + whenever the token changes; poll while authenticated.
   watch(
     token,
     () => {
       fetchSteps()
-      if (interval) { clearInterval(interval); interval = null }
+      if (interval) {
+        clearInterval(interval)
+        interval = null
+      }
       if (isAuthenticated.value) {
         fetchProgress().then(() => (loading.value = false))
         interval = setInterval(fetchProgress, POLL_INTERVAL)

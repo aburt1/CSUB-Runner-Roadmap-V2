@@ -8,21 +8,24 @@ const toast = useToastStore()
 
 type ModalAction = 'complete' | 'waive' | 'uncomplete'
 
-const props = withDefaults(defineProps<{
-  studentId: number
-  stepId: number
-  stepTitle: string
-  stepIcon: string
-  status: string | null
-  completedAt: string | null
-  note: string | null
-  api: AdminApi
-  readOnly?: boolean
-  isOptional?: boolean
-}>(), {
-  readOnly: false,
-  isOptional: false,
-})
+const props = withDefaults(
+  defineProps<{
+    studentId: number
+    stepId: number
+    stepTitle: string
+    stepIcon: string
+    status: string | null
+    completedAt: string | null
+    note: string | null
+    api: AdminApi
+    readOnly?: boolean
+    isOptional?: boolean
+  }>(),
+  {
+    readOnly: false,
+    isOptional: false,
+  },
+)
 
 const emit = defineEmits<{
   (e: 'toggle', stepId: number, newStatus: string | null): void
@@ -43,7 +46,10 @@ const handleConfirm = async (note: string | null) => {
       emit('toggle', props.stepId, null)
     } else {
       const progressStatus = action === 'waive' ? 'waived' : 'completed'
-      await props.api.post(`/students/${props.studentId}/steps/${props.stepId}/complete`, { note, status: progressStatus })
+      await props.api.post(`/students/${props.studentId}/steps/${props.stepId}/complete`, {
+        note,
+        status: progressStatus,
+      })
       emit('toggle', props.stepId, progressStatus)
     }
   } catch {
@@ -62,8 +68,8 @@ const handleConfirm = async (note: string | null) => {
       status === 'completed'
         ? 'border-csub-gold bg-csub-gold-light/30'
         : status === 'waived'
-        ? 'border-slate-300 bg-slate-50'
-        : 'border-gray-200 bg-white'
+          ? 'border-slate-300 bg-slate-50'
+          : 'border-gray-200 bg-white'
     }`"
   >
     <div class="flex items-center gap-3 px-4 py-3">
@@ -73,8 +79,8 @@ const handleConfirm = async (note: string | null) => {
           status === 'completed'
             ? 'bg-csub-gold border-csub-gold text-csub-blue-dark'
             : status === 'waived'
-            ? 'bg-slate-200 border-slate-300 text-slate-500'
-            : 'border-gray-300 text-transparent'
+              ? 'bg-slate-200 border-slate-300 text-slate-500'
+              : 'border-gray-300 text-transparent'
         }`"
       >
         {{ status === 'completed' ? '✓' : status === 'waived' ? '—' : '' }}
@@ -83,21 +89,38 @@ const handleConfirm = async (note: string | null) => {
       <span class="text-base flex-shrink-0" aria-hidden="true">{{ stepIcon }}</span>
 
       <div class="flex-1 min-w-0">
-        <span :class="`font-body text-sm ${isDone ? 'text-csub-blue-dark font-semibold' : 'text-csub-gray'}`">
+        <span
+          :class="`font-body text-sm ${isDone ? 'text-csub-blue-dark font-semibold' : 'text-csub-gray'}`"
+        >
           {{ stepTitle }}
         </span>
         <div class="flex items-center gap-2 mt-0.5">
-          <span v-if="isOptional" class="inline-flex items-center text-[10px] font-body font-semibold text-csub-blue bg-csub-blue/10 rounded px-1.5 py-0.5">
+          <span
+            v-if="isOptional"
+            class="inline-flex items-center text-[10px] font-body font-semibold text-csub-blue bg-csub-blue/10 rounded px-1.5 py-0.5"
+          >
             Optional
           </span>
-          <span v-if="status === 'completed'" class="inline-flex items-center text-[10px] font-body font-semibold text-emerald-600 bg-emerald-50 rounded px-1.5 py-0.5">
+          <span
+            v-if="status === 'completed'"
+            class="inline-flex items-center text-[10px] font-body font-semibold text-emerald-600 bg-emerald-50 rounded px-1.5 py-0.5"
+          >
             Completed
           </span>
-          <span v-if="status === 'waived'" class="inline-flex items-center text-[10px] font-body font-semibold text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">
+          <span
+            v-if="status === 'waived'"
+            class="inline-flex items-center text-[10px] font-body font-semibold text-slate-500 bg-slate-100 rounded px-1.5 py-0.5"
+          >
             Waived
           </span>
           <span v-if="isDone && completedAt" class="font-body text-[10px] text-csub-gray">
-            {{ new Date(completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) }}
+            {{
+              new Date(completedAt).toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })
+            }}
           </span>
         </div>
         <p v-if="note" class="font-body text-[10px] text-csub-gray/70 mt-0.5 italic truncate">

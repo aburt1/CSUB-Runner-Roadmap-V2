@@ -16,10 +16,7 @@ const emit = defineEmits<{
   <section aria-label="Admissions roadmap steps">
     <ol class="relative" aria-label="Admissions steps in order">
       <!-- Vertical timeline spine -->
-      <div
-        class="absolute left-5 sm:left-6 top-0 bottom-0 w-0.5 bg-gray-200"
-        aria-hidden="true"
-      />
+      <div class="absolute left-5 sm:left-6 top-0 bottom-0 w-0.5 bg-gray-200" aria-hidden="true" />
 
       <TimelineStep
         v-for="(step, index) in props.steps"

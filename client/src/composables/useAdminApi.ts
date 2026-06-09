@@ -8,7 +8,10 @@ interface RequestOptions {
 }
 
 export interface AdminApi {
-  get: <T = unknown>(path: string, params?: Record<string, string | number | boolean | null | undefined>) => Promise<T>
+  get: <T = unknown>(
+    path: string,
+    params?: Record<string, string | number | boolean | null | undefined>,
+  ) => Promise<T>
   post: <T = unknown>(path: string, body?: unknown) => Promise<T>
   put: <T = unknown>(path: string, body?: unknown) => Promise<T>
   del: <T = unknown>(path: string, body?: unknown) => Promise<T>
@@ -19,7 +22,10 @@ export interface AdminApi {
 // admin token; onAuthError fires on a 401 (e.g. to send the user back to login).
 // Create a fresh instance when the token changes.
 export function useAdminApi(token: string | null, onAuthError?: () => void): AdminApi {
-  async function request<T = unknown>(path: string, options: RequestOptions = {}): Promise<T | Response> {
+  async function request<T = unknown>(
+    path: string,
+    options: RequestOptions = {},
+  ): Promise<T | Response> {
     const { method = 'GET', body, raw: returnRaw, headers: extraHeaders } = options
     const headers: Record<string, string> = { Authorization: `Bearer ${token}`, ...extraHeaders }
     if (body !== undefined) headers['Content-Type'] = 'application/json'
@@ -42,7 +48,10 @@ export function useAdminApi(token: string | null, onAuthError?: () => void): Adm
     return res.json() as Promise<T>
   }
 
-  function get<T = unknown>(path: string, params?: Record<string, string | number | boolean | null | undefined>): Promise<T> {
+  function get<T = unknown>(
+    path: string,
+    params?: Record<string, string | number | boolean | null | undefined>,
+  ): Promise<T> {
     if (params) {
       const qs = new URLSearchParams(
         Object.entries(params)
@@ -56,9 +65,13 @@ export function useAdminApi(token: string | null, onAuthError?: () => void): Adm
 
   return {
     get,
-    post: <T = unknown>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }) as Promise<T>,
-    put: <T = unknown>(path: string, body?: unknown) => request<T>(path, { method: 'PUT', body }) as Promise<T>,
-    del: <T = unknown>(path: string, body?: unknown) => request<T>(path, { method: 'DELETE', body }) as Promise<T>,
-    raw: (path: string, options: Omit<RequestOptions, 'raw'> = {}) => request(path, { ...options, raw: true }) as Promise<Response>,
+    post: <T = unknown>(path: string, body?: unknown) =>
+      request<T>(path, { method: 'POST', body }) as Promise<T>,
+    put: <T = unknown>(path: string, body?: unknown) =>
+      request<T>(path, { method: 'PUT', body }) as Promise<T>,
+    del: <T = unknown>(path: string, body?: unknown) =>
+      request<T>(path, { method: 'DELETE', body }) as Promise<T>,
+    raw: (path: string, options: Omit<RequestOptions, 'raw'> = {}) =>
+      request(path, { ...options, raw: true }) as Promise<Response>,
   }
 }

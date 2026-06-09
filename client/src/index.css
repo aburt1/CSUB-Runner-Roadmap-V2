@@ -49,7 +49,7 @@ body {
   left: 50%;
   transform: translateX(-50%);
   z-index: 9999;
-  background: #001A70;
+  background: #001a70;
   color: #fff;
   padding: 0.75rem 1.5rem;
   border-radius: 0 0 0.5rem 0.5rem;
@@ -64,22 +64,38 @@ body {
 }
 
 /* High contrast mode */
-[data-high-contrast="true"] {
-  --hc-blue: #0000CC;
-  --hc-gold: #CC8800;
+[data-high-contrast='true'] {
+  --hc-blue: #0000cc;
+  --hc-gold: #cc8800;
   --hc-text: #000000;
-  --hc-bg: #FFFFFF;
+  --hc-bg: #ffffff;
 }
 
-[data-high-contrast="true"] .bg-csub-blue { background-color: var(--hc-blue) !important; }
-[data-high-contrast="true"] .bg-csub-blue-dark { background-color: #000066 !important; }
-[data-high-contrast="true"] .text-csub-blue { color: var(--hc-blue) !important; }
-[data-high-contrast="true"] .text-csub-blue-dark { color: #000066 !important; }
-[data-high-contrast="true"] .text-csub-gray { color: #333333 !important; }
-[data-high-contrast="true"] .border-gray-200 { border-color: #666666 !important; }
-[data-high-contrast="true"] .bg-gray-50 { background-color: #F0F0F0 !important; }
-[data-high-contrast="true"] .text-white\/50,
-[data-high-contrast="true"] .text-white\/60 { color: rgba(255,255,255,0.85) !important; }
+[data-high-contrast='true'] .bg-csub-blue {
+  background-color: var(--hc-blue) !important;
+}
+[data-high-contrast='true'] .bg-csub-blue-dark {
+  background-color: #000066 !important;
+}
+[data-high-contrast='true'] .text-csub-blue {
+  color: var(--hc-blue) !important;
+}
+[data-high-contrast='true'] .text-csub-blue-dark {
+  color: #000066 !important;
+}
+[data-high-contrast='true'] .text-csub-gray {
+  color: #333333 !important;
+}
+[data-high-contrast='true'] .border-gray-200 {
+  border-color: #666666 !important;
+}
+[data-high-contrast='true'] .bg-gray-50 {
+  background-color: #f0f0f0 !important;
+}
+[data-high-contrast='true'] .text-white\/50,
+[data-high-contrast='true'] .text-white\/60 {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
 
 /* Reduce motion for users with vestibular disorders.
    Uses 0.01ms (not 0s) so animationend events still fire. */
@@ -109,8 +125,20 @@ body {
 
 /* Print styles */
 @media print {
-  nav, button, .no-print, header { display: none !important; }
-  body { background: white !important; }
-  .bg-csub-blue-dark { background: white !important; color: black !important; }
-  * { box-shadow: none !important; }
+  nav,
+  button,
+  .no-print,
+  header {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+  }
+  .bg-csub-blue-dark {
+    background: white !important;
+    color: black !important;
+  }
+  * {
+    box-shadow: none !important;
+  }
 }

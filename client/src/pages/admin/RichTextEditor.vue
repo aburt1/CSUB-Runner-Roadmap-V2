@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { useEditor, EditorContent } from '@tiptap/vue-3';
-import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
-import Underline from '@tiptap/extension-underline';
-import { ref, watch, nextTick } from 'vue';
+import { useEditor, EditorContent } from '@tiptap/vue-3'
+import StarterKit from '@tiptap/starter-kit'
+import Link from '@tiptap/extension-link'
+import Underline from '@tiptap/extension-underline'
+import { ref, watch, nextTick } from 'vue'
 
 const props = defineProps<{
-  value: string;
-}>();
+  value: string
+}>()
 
 const emit = defineEmits<{
-  (e: 'change', html: string): void;
-}>();
+  (e: 'change', html: string): void
+}>()
 
 const editor = useEditor({
   extensions: [
@@ -30,84 +30,90 @@ const editor = useEditor({
   ],
   content: props.value || '',
   onUpdate: ({ editor: ed }) => {
-    const html = ed.getHTML();
-    emit('change', html === '<p></p>' ? '' : html);
+    const html = ed.getHTML()
+    emit('change', html === '<p></p>' ? '' : html)
   },
   editorProps: {
     attributes: {
-      class: 'prose prose-sm max-w-none font-body text-sm text-csub-blue-dark px-3 py-2 min-h-[150px] focus:outline-none',
+      class:
+        'prose prose-sm max-w-none font-body text-sm text-csub-blue-dark px-3 py-2 min-h-[150px] focus:outline-none',
     },
   },
-});
+})
 
 watch(
   () => props.value,
   (value) => {
-    const ed = editor.value;
+    const ed = editor.value
     if (ed && value !== ed.getHTML() && value !== undefined) {
-      ed.commands.setContent(value || '');
+      ed.commands.setContent(value || '')
     }
-  }
-);
+  },
+)
 
 // Link input
-const showLinkInput = ref(false);
-const url = ref('');
-const linkInputRef = ref<HTMLInputElement | null>(null);
+const showLinkInput = ref(false)
+const url = ref('')
+const linkInputRef = ref<HTMLInputElement | null>(null)
 
 const openLinkInput = () => {
-  showLinkInput.value = !showLinkInput.value;
+  showLinkInput.value = !showLinkInput.value
   if (showLinkInput.value) {
-    const ed = editor.value;
-    const previousUrl = ed?.getAttributes('link').href as string | undefined;
-    url.value = previousUrl || 'https://';
+    const ed = editor.value
+    const previousUrl = ed?.getAttributes('link').href as string | undefined
+    url.value = previousUrl || 'https://'
     nextTick(() => {
-      linkInputRef.value?.focus();
-      linkInputRef.value?.select();
-    });
+      linkInputRef.value?.focus()
+      linkInputRef.value?.select()
+    })
   }
-};
+}
 
 const closeLinkInput = () => {
-  showLinkInput.value = false;
-};
+  showLinkInput.value = false
+}
 
 const applyLink = () => {
-  const ed = editor.value;
-  if (!ed) return;
+  const ed = editor.value
+  if (!ed) return
 
   if (!url.value || url.value === 'https://') {
-    ed.chain().focus().extendMarkRange('link').unsetLink().run();
-    closeLinkInput();
-    return;
+    ed.chain().focus().extendMarkRange('link').unsetLink().run()
+    closeLinkInput()
+    return
   }
 
-  const { from, to } = ed.state.selection;
+  const { from, to } = ed.state.selection
   if (from === to) {
-    ed
-      .chain()
+    ed.chain()
       .focus()
-      .insertContent(`<a href="${url.value}" target="_blank" rel="noopener noreferrer">${url.value}</a>`)
-      .run();
+      .insertContent(
+        `<a href="${url.value}" target="_blank" rel="noopener noreferrer">${url.value}</a>`,
+      )
+      .run()
   } else {
-    ed.chain().focus().extendMarkRange('link').setLink({ href: url.value }).run();
+    ed.chain().focus().extendMarkRange('link').setLink({ href: url.value }).run()
   }
-  closeLinkInput();
-};
+  closeLinkInput()
+}
 
 const handleLinkKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Enter') {
-    e.preventDefault();
-    applyLink();
+    e.preventDefault()
+    applyLink()
   }
-  if (e.key === 'Escape') closeLinkInput();
-};
+  if (e.key === 'Escape') closeLinkInput()
+}
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-300 overflow-hidden focus-within:ring-1 focus-within:ring-csub-blue focus-within:border-csub-blue transition-shadow">
+  <div
+    class="rounded-lg border border-gray-300 overflow-hidden focus-within:ring-1 focus-within:ring-csub-blue focus-within:border-csub-blue transition-shadow"
+  >
     <div v-if="editor">
-      <div class="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-gray-200 bg-gray-50/50 rounded-t-lg">
+      <div
+        class="flex flex-wrap items-center gap-0.5 px-2 py-1.5 border-b border-gray-200 bg-gray-50/50 rounded-t-lg"
+      >
         <!-- Undo / Redo -->
         <button
           type="button"
@@ -120,8 +126,18 @@ const handleLinkKeydown = (e: KeyboardEvent) => {
               : 'text-csub-gray hover:bg-gray-100 hover:text-csub-blue-dark'
           }`"
         >
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" :stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4" />
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            :stroke-width="2"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M3 10h10a5 5 0 015 5v2M3 10l4-4M3 10l4 4"
+            />
           </svg>
         </button>
         <button
@@ -135,8 +151,18 @@ const handleLinkKeydown = (e: KeyboardEvent) => {
               : 'text-csub-gray hover:bg-gray-100 hover:text-csub-blue-dark'
           }`"
         >
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" :stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M21 10H11a5 5 0 00-5 5v2M21 10l-4-4M21 10l-4 4" />
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            :stroke-width="2"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M21 10H11a5 5 0 00-5 5v2M21 10l-4-4M21 10l-4 4"
+            />
           </svg>
         </button>
 
@@ -233,7 +259,13 @@ const handleLinkKeydown = (e: KeyboardEvent) => {
               : 'text-csub-gray hover:bg-gray-100 hover:text-csub-blue-dark'
           }`"
         >
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" :stroke-width="2">
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            :stroke-width="2"
+          >
             <circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none" />
             <circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none" />
             <circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none" />
@@ -273,8 +305,18 @@ const handleLinkKeydown = (e: KeyboardEvent) => {
               : 'text-csub-gray hover:bg-gray-100 hover:text-csub-blue-dark'
           }`"
         >
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" :stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            :stroke-width="2"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+            />
           </svg>
         </button>
         <button
@@ -283,7 +325,13 @@ const handleLinkKeydown = (e: KeyboardEvent) => {
           title="Horizontal Rule"
           class="px-2 py-1 rounded text-sm font-body transition-colors text-csub-gray hover:bg-gray-100 hover:text-csub-blue-dark"
         >
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" :stroke-width="2">
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            :stroke-width="2"
+          >
             <path stroke-linecap="round" d="M3 12h18" />
           </svg>
         </button>
@@ -301,8 +349,18 @@ const handleLinkKeydown = (e: KeyboardEvent) => {
               : 'text-csub-gray hover:bg-gray-100 hover:text-csub-blue-dark'
           }`"
         >
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" :stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            :stroke-width="2"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+            />
           </svg>
         </button>
 
@@ -313,14 +371,37 @@ const handleLinkKeydown = (e: KeyboardEvent) => {
           title="Remove Link"
           class="px-2 py-1 rounded text-sm font-body transition-colors text-csub-gray hover:bg-gray-100 hover:text-csub-blue-dark"
         >
-          <svg class="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" :stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+          <svg
+            class="w-4 h-4 text-red-500"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            :stroke-width="2"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+            />
           </svg>
         </button>
       </div>
-      <div v-if="showLinkInput" class="flex items-center gap-2 px-2 py-1.5 border-b border-gray-200 bg-blue-50/80">
-        <svg class="w-4 h-4 text-csub-blue flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" :stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+      <div
+        v-if="showLinkInput"
+        class="flex items-center gap-2 px-2 py-1.5 border-b border-gray-200 bg-blue-50/80"
+      >
+        <svg
+          class="w-4 h-4 text-csub-blue flex-shrink-0"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          :stroke-width="2"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+          />
         </svg>
         <input
           ref="linkInputRef"

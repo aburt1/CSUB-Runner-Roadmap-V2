@@ -10,8 +10,7 @@ function onClose(): void {
 
 const dialogRef = useTemplateRef<HTMLDivElement>('dialogRef')
 const prefersReducedMotion =
-  typeof window !== 'undefined' &&
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 // Drives the CSS entrance transitions (matches framer-motion initial -> animate).
 const entered = ref(false)
@@ -101,7 +100,14 @@ onUnmounted(() => {
       <!-- Shield crest -->
       <div class="flex justify-center mb-6">
         <div :class="prefersReducedMotion ? '' : ['celebration-shield', { 'is-entered': entered }]">
-          <svg width="80" height="96" viewBox="0 0 80 96" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <svg
+            width="80"
+            height="96"
+            viewBox="0 0 80 96"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
             <!-- Shield body -->
             <path
               d="M40 2 L76 16 L76 52 C76 72 60 88 40 94 C20 88 4 72 4 52 L4 16 Z"
@@ -118,11 +124,7 @@ onUnmounted(() => {
               <line x1="40" y1="58" x2="60" y2="38" stroke="#FFC72C" stroke-width="1.5" />
             </g>
             <!-- Sun arc -->
-            <path
-              d="M18 62 Q40 42 62 62"
-              fill="#FFC72C"
-              opacity="0.9"
-            />
+            <path d="M18 62 Q40 42 62 62" fill="#FFC72C" opacity="0.9" />
             <!-- Horizon line -->
             <line x1="14" y1="62" x2="66" y2="62" stroke="#FFC72C" stroke-width="2" />
             <!-- Checkmark -->
@@ -157,9 +159,7 @@ onUnmounted(() => {
 
       <button
         @click="onClose"
-        class="bg-csub-blue text-white font-display font-bold uppercase tracking-wider py-3 px-10 rounded
-               hover:bg-csub-blue-dark transition-colors shadow-lg
-               hover:shadow-xl active:scale-95 transform text-sm"
+        class="bg-csub-blue text-white font-display font-bold uppercase tracking-wider py-3 px-10 rounded hover:bg-csub-blue-dark transition-colors shadow-lg hover:shadow-xl active:scale-95 transform text-sm"
       >
         Continue
       </button>

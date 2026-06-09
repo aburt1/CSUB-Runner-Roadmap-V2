@@ -18,7 +18,10 @@ const ACTION_META: Record<string, ActionMeta> = {
   waive: { label: 'Step waived', color: 'bg-amber-500' },
   uncomplete: { label: 'Step marked incomplete', color: 'bg-red-400' },
   student_optional_complete: { label: 'Optional step completed by student', color: 'bg-green-600' },
-  student_optional_uncomplete: { label: 'Optional step marked incomplete by student', color: 'bg-orange-500' },
+  student_optional_uncomplete: {
+    label: 'Optional step marked incomplete by student',
+    color: 'bg-orange-500',
+  },
   tags_update: { label: 'Tags updated', color: 'bg-indigo-500' },
   step_create: { label: 'Step created', color: 'bg-csub-blue' },
   step_update: { label: 'Step updated', color: 'bg-sky-600' },
@@ -32,7 +35,9 @@ const ACTION_META: Record<string, ActionMeta> = {
   student_profile_update: { label: 'Student profile updated', color: 'bg-cyan-600' },
 }
 
-function parseDetails(details: string | Record<string, any> | null | undefined): Record<string, any> {
+function parseDetails(
+  details: string | Record<string, any> | null | undefined,
+): Record<string, any> {
   if (!details) return {}
   try {
     return typeof details === 'string' ? JSON.parse(details) : details
@@ -121,7 +126,8 @@ function getDetailRows(_log: AuditLog, details: Record<string, any>): [string, s
   if (details.duplicatedFrom) rows.push(['Duplicated From', `Step ${details.duplicatedFrom}`])
   if (details.clonedFrom) rows.push(['Cloned From', `Term ${details.clonedFrom}`])
   if (details.stepCount !== undefined) rows.push(['Step Count', String(details.stepCount)])
-  if (details.deletedStepCount !== undefined) rows.push(['Deleted Steps', String(details.deletedStepCount)])
+  if (details.deletedStepCount !== undefined)
+    rows.push(['Deleted Steps', String(details.deletedStepCount)])
   if (details.bulk) rows.push(['Bulk Change', 'Yes'])
 
   return rows
@@ -133,34 +139,53 @@ defineProps<{
 </script>
 
 <template>
-  <p v-if="!logs || logs.length === 0" class="font-body text-sm text-csub-gray text-center py-4">No audit entries yet.</p>
+  <p v-if="!logs || logs.length === 0" class="font-body text-sm text-csub-gray text-center py-4">
+    No audit entries yet.
+  </p>
 
   <div v-else class="space-y-3">
     <template v-for="log in logs" :key="log.id">
       <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
         <div class="flex gap-3 items-start">
-          <div :class="`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 ${(ACTION_META[log.action] || { label: log.action, color: 'bg-gray-400' }).color}`" />
+          <div
+            :class="`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 ${(ACTION_META[log.action] || { label: log.action, color: 'bg-gray-400' }).color}`"
+          />
           <div class="flex-1 min-w-0">
             <div class="flex flex-wrap items-center gap-2 mb-1.5">
               <p class="font-body text-sm font-semibold text-csub-blue-dark">
                 {{ getSummary(log, parseDetails(log.details)) }}
               </p>
-              <span class="text-[10px] uppercase tracking-wider font-display font-bold text-csub-blue-dark bg-csub-blue/10 px-2 py-0.5 rounded-full">
+              <span
+                class="text-[10px] uppercase tracking-wider font-display font-bold text-csub-blue-dark bg-csub-blue/10 px-2 py-0.5 rounded-full"
+              >
                 {{ prettyEntity(log.entity_type) }}
               </span>
-              <span class="text-[10px] uppercase tracking-wider font-display font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">
+              <span
+                class="text-[10px] uppercase tracking-wider font-display font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full"
+              >
                 {{ log.action.replace(/_/g, ' ') }}
               </span>
             </div>
 
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-csub-gray mb-2">
+            <div
+              class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-csub-gray mb-2"
+            >
               <span>By {{ log.changed_by }}</span>
               <span>{{ formatTime(log.created_at) }}</span>
             </div>
 
-            <div v-if="getDetailRows(log, parseDetails(log.details)).length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-              <div v-for="[label, value] in getDetailRows(log, parseDetails(log.details))" :key="`${log.id}-${label}`" class="bg-gray-50 rounded-lg px-3 py-2">
-                <p class="font-body text-[10px] uppercase tracking-wide text-csub-gray">{{ label }}</p>
+            <div
+              v-if="getDetailRows(log, parseDetails(log.details)).length > 0"
+              class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2"
+            >
+              <div
+                v-for="[label, value] in getDetailRows(log, parseDetails(log.details))"
+                :key="`${log.id}-${label}`"
+                class="bg-gray-50 rounded-lg px-3 py-2"
+              >
+                <p class="font-body text-[10px] uppercase tracking-wide text-csub-gray">
+                  {{ label }}
+                </p>
                 <p class="font-body text-xs text-csub-blue-dark mt-0.5 break-words">{{ value }}</p>
               </div>
             </div>

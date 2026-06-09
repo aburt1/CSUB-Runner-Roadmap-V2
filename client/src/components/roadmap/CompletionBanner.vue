@@ -24,9 +24,13 @@ onMounted(() => {
       transition: 'opacity 0.5s ease, transform 0.5s ease',
     }"
   >
-    <div class="bg-gradient-to-br from-csub-blue-dark to-csub-blue rounded-xl p-6 sm:p-8 text-center text-white shadow-lg overflow-hidden relative">
+    <div
+      class="bg-gradient-to-br from-csub-blue-dark to-csub-blue rounded-xl p-6 sm:p-8 text-center text-white shadow-lg overflow-hidden relative"
+    >
       <!-- Decorative gold accent -->
-      <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-csub-gold via-amber-300 to-csub-gold" />
+      <div
+        class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-csub-gold via-amber-300 to-csub-gold"
+      />
 
       <div class="relative z-10">
         <div class="text-4xl mb-3" aria-hidden="true">🎉</div>

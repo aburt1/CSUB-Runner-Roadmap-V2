@@ -41,7 +41,8 @@ const barBackground = computed(() =>
           </span>
         </div>
         <span class="font-body text-sm text-csub-gray">
-          <span class="font-semibold text-csub-blue-dark">{{ completedCount }}</span> of {{ totalSteps }} steps
+          <span class="font-semibold text-csub-blue-dark">{{ completedCount }}</span> of
+          {{ totalSteps }} steps
         </span>
       </div>
 

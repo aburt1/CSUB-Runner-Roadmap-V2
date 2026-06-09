@@ -1,47 +1,49 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { Bar } from 'vue-chartjs';
-import type { ChartData, ChartOptions } from 'chart.js';
-import './registerCharts';
-import type { AdminApi } from '../../../composables/useAdminApi';
-import { CSUB_BLUE, AXIS_COLOR, AXIS_FONT_SIZE, GRID_COLOR, BAR_RADIUS } from './chartTheme';
+import { ref, computed, watch } from 'vue'
+import { Bar } from 'vue-chartjs'
+import type { ChartData, ChartOptions } from 'chart.js'
+import './registerCharts'
+import type { AdminApi } from '../../../composables/useAdminApi'
+import { CSUB_BLUE, AXIS_COLOR, AXIS_FONT_SIZE, GRID_COLOR, BAR_RADIUS } from './chartTheme'
 
 interface CohortItem {
-  tag: string;
-  avg_completion_pct: number;
+  tag: string
+  avg_completion_pct: number
 }
 
 interface DrillDownPayload {
-  filterType: string;
-  filterValue: any;
+  filterType: string
+  filterValue: any
 }
 
 const props = defineProps<{
-  termId: number | null;
-  api: AdminApi;
-  onDrillDown?: (payload: DrillDownPayload) => void;
-}>();
+  termId: number | null
+  api: AdminApi
+  onDrillDown?: (payload: DrillDownPayload) => void
+}>()
 
-const data = ref<CohortItem[]>([]);
-const loading = ref(true);
+const data = ref<CohortItem[]>([])
+const loading = ref(true)
 
 watch(
   () => [props.termId, props.api] as const,
   () => {
     const fetchData = async () => {
       try {
-        const result = await props.api.get<CohortItem[]>('/analytics/cohort-comparison', { term_id: props.termId });
-        data.value = result;
+        const result = await props.api.get<CohortItem[]>('/analytics/cohort-comparison', {
+          term_id: props.termId,
+        })
+        data.value = result
       } catch (err) {
-        console.error('[cohort-comparison]', err);
+        console.error('[cohort-comparison]', err)
       } finally {
-        loading.value = false;
+        loading.value = false
       }
-    };
-    if (props.termId) fetchData();
+    }
+    if (props.termId) fetchData()
   },
   { immediate: true },
-);
+)
 
 const barData = computed<ChartData<'bar'>>(() => ({
   labels: data.value.map((d) => d.tag),
@@ -50,11 +52,16 @@ const barData = computed<ChartData<'bar'>>(() => ({
       label: 'avg_completion_pct',
       data: data.value.map((d) => d.avg_completion_pct),
       backgroundColor: CSUB_BLUE,
-      borderRadius: { topLeft: BAR_RADIUS[0], topRight: BAR_RADIUS[1], bottomRight: BAR_RADIUS[2], bottomLeft: BAR_RADIUS[3] },
+      borderRadius: {
+        topLeft: BAR_RADIUS[0],
+        topRight: BAR_RADIUS[1],
+        bottomRight: BAR_RADIUS[2],
+        bottomLeft: BAR_RADIUS[3],
+      },
       borderSkipped: false,
     },
   ],
-}));
+}))
 
 const options = computed<ChartOptions<'bar'>>(() => ({
   responsive: true,
@@ -62,13 +69,13 @@ const options = computed<ChartOptions<'bar'>>(() => ({
   layout: { padding: { top: 20, right: 30, left: 0, bottom: 50 } },
   onClick: (_evt, elements) => {
     if (elements.length > 0) {
-      const row = data.value[elements[0].index];
-      if (row) props.onDrillDown?.({ filterType: 'tag', filterValue: row.tag });
+      const row = data.value[elements[0].index]
+      if (row) props.onDrillDown?.({ filterType: 'tag', filterValue: row.tag })
     }
   },
   onHover: (evt, elements) => {
-    const target = evt.native?.target as HTMLElement | undefined;
-    if (target) target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+    const target = evt.native?.target as HTMLElement | undefined
+    if (target) target.style.cursor = elements.length > 0 ? 'pointer' : 'default'
   },
   scales: {
     x: {
@@ -104,7 +111,7 @@ const options = computed<ChartOptions<'bar'>>(() => ({
       },
     },
   },
-}));
+}))
 </script>
 
 <template>
@@ -115,7 +122,8 @@ const options = computed<ChartOptions<'bar'>>(() => ({
         Cohort Comparison
       </h3>
       <p class="font-body text-xs text-csub-gray mt-1">
-        Average completion rate by student population. Identify groups that may need targeted outreach.
+        Average completion rate by student population. Identify groups that may need targeted
+        outreach.
       </p>
     </div>
 

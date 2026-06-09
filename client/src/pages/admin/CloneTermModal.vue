@@ -53,7 +53,7 @@ watch(
     startDate.value = ''
     endDate.value = ''
     error.value = ''
-  }
+  },
 )
 
 watch(
@@ -61,20 +61,28 @@ watch(
   () => {
     if (!props.open || !sourceTermId.value) return
     loadingSteps.value = true
-    props.api.get<Step[]>(`/steps?term_id=${sourceTermId.value}`).then((data) => {
-      steps.value = data
-      selectedStepIds.value = new Set(data.map((step) => step.id))
-    }).catch((err: any) => {
-      error.value = err.message || 'Failed to load steps'
-    }).finally(() => { loadingSteps.value = false })
-  }
+    props.api
+      .get<Step[]>(`/steps?term_id=${sourceTermId.value}`)
+      .then((data) => {
+        steps.value = data
+        selectedStepIds.value = new Set(data.map((step) => step.id))
+      })
+      .catch((err: any) => {
+        error.value = err.message || 'Failed to load steps'
+      })
+      .finally(() => {
+        loadingSteps.value = false
+      })
+  },
 )
 
 const selectedCount = computed(() => selectedStepIds.value.size)
-const allSelected = computed(() => steps.value.length > 0 && selectedCount.value === steps.value.length)
+const allSelected = computed(
+  () => steps.value.length > 0 && selectedCount.value === steps.value.length,
+)
 
 const sourceTerm = computed(
-  () => props.terms.find((term) => term.id === sourceTermId.value) || null
+  () => props.terms.find((term) => term.id === sourceTermId.value) || null,
 )
 
 const toggleStep = (stepId: number) => {
@@ -85,7 +93,9 @@ const toggleStep = (stepId: number) => {
 }
 
 const toggleSelectAll = () => {
-  selectedStepIds.value = allSelected.value ? new Set() : new Set(steps.value.map((step) => step.id))
+  selectedStepIds.value = allSelected.value
+    ? new Set()
+    : new Set(steps.value.map((step) => step.id))
 }
 
 const handleSubmit = async () => {
@@ -109,8 +119,13 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center bg-csub-blue-dark/40 px-4">
-    <div class="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-gray-200 p-6 max-h-[90vh] overflow-y-auto">
+  <div
+    v-if="open"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-csub-blue-dark/40 px-4"
+  >
+    <div
+      class="w-full max-w-2xl bg-white rounded-2xl shadow-xl border border-gray-200 p-6 max-h-[90vh] overflow-y-auto"
+    >
       <div class="flex items-start justify-between gap-4 mb-5">
         <div>
           <h3 class="font-display text-lg font-bold text-csub-blue-dark uppercase tracking-wide">
@@ -120,23 +135,32 @@ const handleSubmit = async () => {
             Create a new term by copying selected steps from an existing one.
           </p>
         </div>
-        <button @click="emit('close')" class="text-csub-gray hover:text-csub-blue-dark transition-colors">Close</button>
+        <button
+          @click="emit('close')"
+          class="text-csub-gray hover:text-csub-blue-dark transition-colors"
+        >
+          Close
+        </button>
       </div>
 
       <form @submit.prevent="handleSubmit" class="space-y-5">
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label class="block font-body text-xs font-semibold text-csub-blue-dark mb-1">Source Term</label>
+            <label class="block font-body text-xs font-semibold text-csub-blue-dark mb-1"
+              >Source Term</label
+            >
             <select
               :value="sourceTermId || ''"
-              @change="(e) => sourceTermId = parseInt((e.target as HTMLSelectElement).value, 10)"
+              @change="(e) => (sourceTermId = parseInt((e.target as HTMLSelectElement).value, 10))"
               class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue bg-white"
             >
               <option v-for="term in terms" :key="term.id" :value="term.id">{{ term.name }}</option>
             </select>
           </div>
           <div>
-            <label class="block font-body text-xs font-semibold text-csub-blue-dark mb-1">New Term Name</label>
+            <label class="block font-body text-xs font-semibold text-csub-blue-dark mb-1"
+              >New Term Name</label
+            >
             <input
               type="text"
               required
@@ -147,7 +171,9 @@ const handleSubmit = async () => {
           </div>
           <div class="grid grid-cols-2 gap-2 sm:grid-cols-1">
             <div>
-              <label class="block font-body text-xs font-semibold text-csub-blue-dark mb-1">Start Date</label>
+              <label class="block font-body text-xs font-semibold text-csub-blue-dark mb-1"
+                >Start Date</label
+              >
               <input
                 type="date"
                 v-model="startDate"
@@ -155,7 +181,9 @@ const handleSubmit = async () => {
               />
             </div>
             <div>
-              <label class="block font-body text-xs font-semibold text-csub-blue-dark mb-1">End Date</label>
+              <label class="block font-body text-xs font-semibold text-csub-blue-dark mb-1"
+                >End Date</label
+              >
               <input
                 type="date"
                 v-model="endDate"
@@ -186,9 +214,15 @@ const handleSubmit = async () => {
           </div>
 
           <p v-if="loadingSteps" class="font-body text-sm text-csub-gray">Loading steps...</p>
-          <p v-else-if="steps.length === 0" class="font-body text-sm text-csub-gray">No steps available in this term.</p>
+          <p v-else-if="steps.length === 0" class="font-body text-sm text-csub-gray">
+            No steps available in this term.
+          </p>
           <div v-else class="space-y-2 max-h-72 overflow-y-auto">
-            <label v-for="step in steps" :key="step.id" class="flex items-start gap-3 bg-white rounded-lg border border-gray-200 px-3 py-2 cursor-pointer">
+            <label
+              v-for="step in steps"
+              :key="step.id"
+              class="flex items-start gap-3 bg-white rounded-lg border border-gray-200 px-3 py-2 cursor-pointer"
+            >
               <input
                 type="checkbox"
                 :checked="selectedStepIds.has(step.id)"
@@ -215,7 +249,9 @@ const handleSubmit = async () => {
             :disabled="saving || selectedCount === 0"
             class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display text-sm font-bold uppercase tracking-wider px-5 py-2 rounded-lg shadow transition-colors disabled:opacity-50"
           >
-            {{ saving ? 'Cloning...' : `Clone ${selectedCount} Step${selectedCount === 1 ? '' : 's'}` }}
+            {{
+              saving ? 'Cloning...' : `Clone ${selectedCount} Step${selectedCount === 1 ? '' : 's'}`
+            }}
           </button>
           <button
             type="button"

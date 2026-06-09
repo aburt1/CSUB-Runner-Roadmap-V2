@@ -1,47 +1,47 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 
-const username = ref('');
-const password = ref('');
-const error = ref('');
-const loading = ref(false);
-const router = useRouter();
+const username = ref('')
+const password = ref('')
+const error = ref('')
+const loading = ref(false)
+const router = useRouter()
 
 const handleSubmit = async () => {
-  error.value = '';
-  loading.value = true;
+  error.value = ''
+  loading.value = true
   try {
     const res = await fetch('/api/admin/auth/local-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: username.value, password: password.value }),
-    });
-    const data = await res.json();
+    })
+    const data = await res.json()
     if (res.ok && data.token) {
-      sessionStorage.setItem('csub_admin_token', data.token);
-      sessionStorage.setItem('csub_admin_user', JSON.stringify(data.user));
-      router.push('/admin');
+      sessionStorage.setItem('csub_admin_token', data.token)
+      sessionStorage.setItem('csub_admin_user', JSON.stringify(data.user))
+      router.push('/admin')
     } else {
-      error.value = data.error || 'Invalid credentials.';
+      error.value = data.error || 'Invalid credentials.'
     }
   } catch {
-    error.value = 'Cannot connect to server.';
+    error.value = 'Cannot connect to server.'
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 </script>
 
 <template>
   <div class="min-h-screen flex items-center justify-center bg-gray-50">
     <div class="max-w-sm w-full mx-auto px-6">
-      <h1 class="font-display text-2xl font-bold text-csub-blue-dark uppercase tracking-wide mb-2 text-center">
+      <h1
+        class="font-display text-2xl font-bold text-csub-blue-dark uppercase tracking-wide mb-2 text-center"
+      >
         Local Admin Login
       </h1>
-      <p class="font-body text-csub-gray text-sm mb-6 text-center">
-        Emergency access only.
-      </p>
+      <p class="font-body text-csub-gray text-sm mb-6 text-center">Emergency access only.</p>
       <form @submit.prevent="handleSubmit" class="space-y-4">
         <input
           type="text"

@@ -10,8 +10,16 @@ const { loading, isAuthenticated } = storeToRefs(auth)
 </script>
 
 <template>
-  <div v-if="loading" role="status" aria-label="Loading" class="min-h-screen flex items-center justify-center bg-white">
-    <div class="w-12 h-12 border-4 border-csub-blue/20 border-t-csub-blue rounded-full animate-spin" aria-hidden="true"></div>
+  <div
+    v-if="loading"
+    role="status"
+    aria-label="Loading"
+    class="min-h-screen flex items-center justify-center bg-white"
+  >
+    <div
+      class="w-12 h-12 border-4 border-csub-blue/20 border-t-csub-blue rounded-full animate-spin"
+      aria-hidden="true"
+    ></div>
     <span class="sr-only">Loading...</span>
   </div>
   <template v-else-if="isAuthenticated">

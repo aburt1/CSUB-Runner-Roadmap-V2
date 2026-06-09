@@ -1,40 +1,45 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref } from 'vue'
 
 const props = defineProps<{
-  tags: string[];
-}>();
+  tags: string[]
+}>()
 
 const emit = defineEmits<{
-  (e: 'change', tags: string[]): void;
-}>();
+  (e: 'change', tags: string[]): void
+}>()
 
-const input = ref('');
+const input = ref('')
 
 const addTag = () => {
-  const tag = input.value.trim().toLowerCase();
+  const tag = input.value.trim().toLowerCase()
   if (tag && !props.tags.includes(tag)) {
-    emit('change', [...props.tags, tag]);
+    emit('change', [...props.tags, tag])
   }
-  input.value = '';
-};
+  input.value = ''
+}
 
 const removeTag = (tag: string) => {
-  emit('change', props.tags.filter((t) => t !== tag));
-};
+  emit(
+    'change',
+    props.tags.filter((t) => t !== tag),
+  )
+}
 
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Enter') {
-    e.preventDefault();
-    addTag();
+    e.preventDefault()
+    addTag()
   }
-};
+}
 </script>
 
 <template>
   <div>
     <div class="flex gap-2">
-      <div class="flex-1 min-h-[42px] px-3 py-2 rounded border border-gray-300 bg-white focus-within:ring-1 focus-within:ring-csub-blue">
+      <div
+        class="flex-1 min-h-[42px] px-3 py-2 rounded border border-gray-300 bg-white focus-within:ring-1 focus-within:ring-csub-blue"
+      >
         <div class="flex flex-wrap gap-1.5 items-center">
           <span
             v-for="tag in tags"

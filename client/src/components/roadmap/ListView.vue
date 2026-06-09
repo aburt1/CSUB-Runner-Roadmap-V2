@@ -65,7 +65,9 @@ function configFor(status: string): StatusConfigEntry {
         :aria-label="`Step ${index + 1}, ${step.title}, ${configFor(step.status).badgeLabel}`"
       >
         <!-- Status circle -->
-        <div :class="`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold flex-shrink-0 ${configFor(step.status).iconClass}`">
+        <div
+          :class="`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold flex-shrink-0 ${configFor(step.status).iconClass}`"
+        >
           <template v-if="configFor(step.status).icon">{{ configFor(step.status).icon }}</template>
           <span v-else class="text-xs">{{ index + 1 }}</span>
         </div>
@@ -75,9 +77,13 @@ function configFor(status: string): StatusConfigEntry {
 
         <!-- Title + description -->
         <div class="flex-1 min-w-0">
-          <p :class="`font-display text-sm font-bold uppercase tracking-wide leading-tight ${
-            step.status === 'completed' || step.status === 'in_progress' ? 'text-csub-blue-dark' : 'text-gray-500'
-          }`">
+          <p
+            :class="`font-display text-sm font-bold uppercase tracking-wide leading-tight ${
+              step.status === 'completed' || step.status === 'in_progress'
+                ? 'text-csub-blue-dark'
+                : 'text-gray-500'
+            }`"
+          >
             {{ step.title }}
           </p>
           <span
@@ -97,13 +103,20 @@ function configFor(status: string): StatusConfigEntry {
             {{ step.deadline }}
           </span>
           <DeadlineCountdown :deadline-date="step.deadline_date" :status="step.status" />
-          <span :class="`hidden sm:inline text-xs font-body font-semibold rounded-full px-2.5 py-0.5 ${configFor(step.status).badgeClass}`">
+          <span
+            :class="`hidden sm:inline text-xs font-body font-semibold rounded-full px-2.5 py-0.5 ${configFor(step.status).badgeClass}`"
+          >
             {{ configFor(step.status).badgeLabel }}
           </span>
         </div>
 
         <!-- Chevron -->
-        <svg class="w-4 h-4 text-gray-300 group-hover:text-csub-blue transition-colors flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          class="w-4 h-4 text-gray-300 group-hover:text-csub-blue transition-colors flex-shrink-0"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
         </svg>
       </button>

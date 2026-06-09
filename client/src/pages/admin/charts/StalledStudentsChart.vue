@@ -1,41 +1,44 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { Bar } from 'vue-chartjs';
-import type { ChartData, ChartOptions } from 'chart.js';
-import './registerCharts';
-import type { AdminApi } from '../../../composables/useAdminApi';
-import { COLOR_DANGER, AXIS_COLOR, AXIS_FONT_SIZE, GRID_COLOR, BAR_RADIUS } from './chartTheme';
+import { ref, computed, watch } from 'vue'
+import { Bar } from 'vue-chartjs'
+import type { ChartData, ChartOptions } from 'chart.js'
+import './registerCharts'
+import type { AdminApi } from '../../../composables/useAdminApi'
+import { COLOR_DANGER, AXIS_COLOR, AXIS_FONT_SIZE, GRID_COLOR, BAR_RADIUS } from './chartTheme'
 
 interface StalledStudent {
-  id: number;
-  last_completion_date: string | null;
+  id: number
+  last_completion_date: string | null
 }
 
 interface BucketItem {
-  bucket: string;
-  student_count: number;
+  bucket: string
+  student_count: number
 }
 
 interface DrillDownPayload {
-  filterType: string;
-  filterValue: any;
+  filterType: string
+  filterValue: any
 }
 
 const props = defineProps<{
-  termId: number | null;
-  api: AdminApi;
-  onDrillDown?: (payload: DrillDownPayload) => void;
-}>();
+  termId: number | null
+  api: AdminApi
+  onDrillDown?: (payload: DrillDownPayload) => void
+}>()
 
-const data = ref<BucketItem[]>([]);
-const loading = ref(true);
+const data = ref<BucketItem[]>([])
+const loading = ref(true)
 
 watch(
   () => [props.termId, props.api] as const,
   () => {
     const fetchData = async () => {
       try {
-        const students = await props.api.get<StalledStudent[]>('/analytics/stalled-students', { term_id: props.termId, days: 7 });
+        const students = await props.api.get<StalledStudent[]>('/analytics/stalled-students', {
+          term_id: props.termId,
+          days: 7,
+        })
 
         // Group into buckets
         const buckets: Record<string, number> = {
@@ -43,32 +46,37 @@ watch(
           '2-4 weeks': 0,
           '1-3 months': 0,
           '3+ months': 0,
-        };
-
-        const now = Date.now();
-        for (const student of students) {
-          if (!student.last_completion_date) {
-            buckets['3+ months']!++;
-            continue;
-          }
-          const daysInactive = Math.floor((now - new Date(student.last_completion_date).getTime()) / (1000 * 60 * 60 * 24));
-          if (daysInactive <= 14) buckets['7-14 days']!++;
-          else if (daysInactive <= 28) buckets['2-4 weeks']!++;
-          else if (daysInactive <= 90) buckets['1-3 months']!++;
-          else buckets['3+ months']!++;
         }
 
-        data.value = Object.entries(buckets).map(([bucket, count]) => ({ bucket, student_count: count }));
+        const now = Date.now()
+        for (const student of students) {
+          if (!student.last_completion_date) {
+            buckets['3+ months']!++
+            continue
+          }
+          const daysInactive = Math.floor(
+            (now - new Date(student.last_completion_date).getTime()) / (1000 * 60 * 60 * 24),
+          )
+          if (daysInactive <= 14) buckets['7-14 days']!++
+          else if (daysInactive <= 28) buckets['2-4 weeks']!++
+          else if (daysInactive <= 90) buckets['1-3 months']!++
+          else buckets['3+ months']!++
+        }
+
+        data.value = Object.entries(buckets).map(([bucket, count]) => ({
+          bucket,
+          student_count: count,
+        }))
       } catch (err) {
-        console.error('[stalled-students]', err);
+        console.error('[stalled-students]', err)
       } finally {
-        loading.value = false;
+        loading.value = false
       }
-    };
-    if (props.termId) fetchData();
+    }
+    if (props.termId) fetchData()
   },
   { immediate: true },
-);
+)
 
 const barData = computed<ChartData<'bar'>>(() => ({
   labels: data.value.map((d) => d.bucket),
@@ -77,11 +85,16 @@ const barData = computed<ChartData<'bar'>>(() => ({
       label: 'student_count',
       data: data.value.map((d) => d.student_count),
       backgroundColor: COLOR_DANGER,
-      borderRadius: { topLeft: BAR_RADIUS[0], topRight: BAR_RADIUS[1], bottomRight: BAR_RADIUS[2], bottomLeft: BAR_RADIUS[3] },
+      borderRadius: {
+        topLeft: BAR_RADIUS[0],
+        topRight: BAR_RADIUS[1],
+        bottomRight: BAR_RADIUS[2],
+        bottomLeft: BAR_RADIUS[3],
+      },
       borderSkipped: false,
     },
   ],
-}));
+}))
 
 const options = computed<ChartOptions<'bar'>>(() => ({
   responsive: true,
@@ -89,13 +102,13 @@ const options = computed<ChartOptions<'bar'>>(() => ({
   layout: { padding: { top: 20, right: 30, left: 0, bottom: 50 } },
   onClick: (_evt, elements) => {
     if (elements.length > 0) {
-      const row = data.value[elements[0].index];
-      if (row) props.onDrillDown?.({ filterType: 'stalled', filterValue: row.bucket });
+      const row = data.value[elements[0].index]
+      if (row) props.onDrillDown?.({ filterType: 'stalled', filterValue: row.bucket })
     }
   },
   onHover: (evt, elements) => {
-    const target = evt.native?.target as HTMLElement | undefined;
-    if (target) target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+    const target = evt.native?.target as HTMLElement | undefined
+    if (target) target.style.cursor = elements.length > 0 ? 'pointer' : 'default'
   },
   scales: {
     x: {
@@ -128,7 +141,7 @@ const options = computed<ChartOptions<'bar'>>(() => ({
       },
     },
   },
-}));
+}))
 </script>
 
 <template>
@@ -139,7 +152,8 @@ const options = computed<ChartOptions<'bar'>>(() => ({
         Stalled Students
       </h3>
       <p class="font-body text-xs text-csub-gray mt-1">
-        Students with no new completions in 7+ days. These students may need outreach to continue their admissions journey.
+        Students with no new completions in 7+ days. These students may need outreach to continue
+        their admissions journey.
       </p>
     </div>
 

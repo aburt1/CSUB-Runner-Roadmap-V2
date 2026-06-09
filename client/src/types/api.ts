@@ -34,7 +34,13 @@ export interface Step {
   api_check_type: string | null
 }
 
-export type StepStatus = 'completed' | 'waived' | 'in_progress' | 'not_started' | 'locked' | 'preview'
+export type StepStatus =
+  | 'completed'
+  | 'waived'
+  | 'in_progress'
+  | 'not_started'
+  | 'locked'
+  | 'preview'
 
 export interface StepWithStatus extends Step {
   status: StepStatus

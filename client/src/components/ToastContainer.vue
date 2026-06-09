@@ -13,11 +13,18 @@ const styles: Record<string, string> = {
 </script>
 
 <template>
-  <div class="fixed top-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm" role="status" aria-live="polite">
+  <div
+    class="fixed top-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm"
+    role="status"
+    aria-live="polite"
+  >
     <div
       v-for="t in toasts"
       :key="t.id"
-      :class="['flex items-start gap-3 rounded-lg shadow-lg px-4 py-3 font-body text-sm', styles[t.type]]"
+      :class="[
+        'flex items-start gap-3 rounded-lg shadow-lg px-4 py-3 font-body text-sm',
+        styles[t.type],
+      ]"
     >
       <span class="flex-1">{{ t.message }}</span>
       <button

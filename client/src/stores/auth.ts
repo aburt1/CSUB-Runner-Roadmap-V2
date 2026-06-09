@@ -71,7 +71,9 @@ export const useAuthStore = defineStore('auth', () => {
     const existing = sessionStorage.getItem('csub_token')
     if (existing) {
       try {
-        const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${existing}` } })
+        const res = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${existing}` },
+        })
         if (res.ok) {
           user.value = await res.json()
         } else {
@@ -107,7 +109,8 @@ export const useAuthStore = defineStore('auth', () => {
       if (response?.idToken) await handleSsoResponse(response.idToken)
     } catch (err: unknown) {
       const authErr = err as { errorCode?: string; message?: string }
-      ssoError.value = authErr.errorCode === 'user_cancelled' ? '' : authErr.message || 'SSO login failed'
+      ssoError.value =
+        authErr.errorCode === 'user_cancelled' ? '' : authErr.message || 'SSO login failed'
     } finally {
       if (!redirecting) ssoLoading.value = false
     }

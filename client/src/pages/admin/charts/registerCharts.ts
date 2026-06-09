@@ -16,7 +16,7 @@ import {
   Tooltip,
   Legend,
   Filler,
-} from 'chart.js';
+} from 'chart.js'
 
 ChartJS.register(
   BarController,
@@ -29,6 +29,6 @@ ChartJS.register(
   Tooltip,
   Legend,
   Filler,
-);
+)
 
-export { ChartJS };
+export { ChartJS }

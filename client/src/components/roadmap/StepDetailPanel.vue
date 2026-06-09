@@ -50,7 +50,11 @@ function onNavigate(direction: 'prev' | 'next'): void {
 const panelRef = useTemplateRef<HTMLDivElement>('panelRef')
 
 const links = computed<LinkItem[]>(() =>
-  props.step.links ? (typeof props.step.links === 'string' ? JSON.parse(props.step.links) : props.step.links) : [],
+  props.step.links
+    ? typeof props.step.links === 'string'
+      ? JSON.parse(props.step.links)
+      : props.step.links
+    : [],
 )
 const isHtmlContent = computed(
   () => !!props.step.guide_content && /<[a-z][\s\S]*>/i.test(props.step.guide_content),
@@ -120,7 +124,11 @@ watch(
 )
 
 function formatCompletedAt(value: string): string {
-  return new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(value).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
 }
 </script>
 
@@ -146,9 +154,11 @@ function formatCompletedAt(value: string): string {
       <div
         aria-hidden="true"
         :class="`h-1.5 ${
-          step.status === 'completed' ? 'bg-gradient-to-r from-csub-gold to-amber-300' :
-          step.status === 'in_progress' ? 'bg-gradient-to-r from-csub-blue to-blue-400' :
-          'bg-gray-200'
+          step.status === 'completed'
+            ? 'bg-gradient-to-r from-csub-gold to-amber-300'
+            : step.status === 'in_progress'
+              ? 'bg-gradient-to-r from-csub-blue to-blue-400'
+              : 'bg-gray-200'
         } sm:rounded-t-xl`"
       />
 
@@ -163,7 +173,13 @@ function formatCompletedAt(value: string): string {
               class="p-2.5 rounded-lg text-gray-400 hover:text-csub-blue hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               aria-label="Previous step"
             >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" :stroke-width="2.5">
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                :stroke-width="2.5"
+              >
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
@@ -176,7 +192,13 @@ function formatCompletedAt(value: string): string {
               class="p-2.5 rounded-lg text-gray-400 hover:text-csub-blue hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               aria-label="Next step"
             >
-              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" :stroke-width="2.5">
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                :stroke-width="2.5"
+              >
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
               </svg>
             </button>
@@ -186,7 +208,13 @@ function formatCompletedAt(value: string): string {
             class="p-2.5 rounded-lg text-gray-400 hover:text-csub-blue-dark hover:bg-gray-100 transition-colors"
             aria-label="Close details"
           >
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" :stroke-width="2">
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              :stroke-width="2"
+            >
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -194,11 +222,15 @@ function formatCompletedAt(value: string): string {
 
         <!-- Step header -->
         <div class="flex items-start gap-3">
-          <div class="flex-shrink-0 w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center">
+          <div
+            class="flex-shrink-0 w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center"
+          >
             <span class="text-2xl" aria-hidden="true">{{ step.icon }}</span>
           </div>
           <div class="flex-1 min-w-0">
-            <h2 class="font-display text-lg sm:text-xl font-bold text-csub-blue-dark uppercase tracking-wide">
+            <h2
+              class="font-display text-lg sm:text-xl font-bold text-csub-blue-dark uppercase tracking-wide"
+            >
               {{ step.title }}
             </h2>
             <div class="flex flex-wrap items-center gap-2 mt-1.5">
@@ -244,10 +276,25 @@ function formatCompletedAt(value: string): string {
         </p>
 
         <!-- Guide content -->
-        <div v-if="step.guide_content" class="bg-blue-50/50 rounded-xl p-4 border border-blue-100/50">
-          <h3 class="font-display text-sm font-bold text-csub-blue-dark uppercase tracking-wide mb-2 flex items-center gap-2">
-            <svg class="w-4 h-4 text-csub-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" :stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <div
+          v-if="step.guide_content"
+          class="bg-blue-50/50 rounded-xl p-4 border border-blue-100/50"
+        >
+          <h3
+            class="font-display text-sm font-bold text-csub-blue-dark uppercase tracking-wide mb-2 flex items-center gap-2"
+          >
+            <svg
+              class="w-4 h-4 text-csub-blue"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                :stroke-width="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
             How to Complete This Step
           </h3>
@@ -267,8 +314,18 @@ function formatCompletedAt(value: string): string {
           class="bg-gray-50 rounded-xl p-4 border border-gray-200"
         >
           <p class="font-body text-sm text-gray-500 flex items-start gap-2">
-            <svg class="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" :stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            <svg
+              class="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                :stroke-width="2"
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+              />
             </svg>
             {{ step.lockedReason }}
           </p>
@@ -276,7 +333,9 @@ function formatCompletedAt(value: string): string {
 
         <!-- Action links — only show for old-format steps (non-HTML guide content) -->
         <div v-if="!isHtmlContent && links.length > 0 && step.status !== 'locked'">
-          <h3 class="font-display text-sm font-bold text-csub-blue-dark uppercase tracking-wide mb-3">
+          <h3
+            class="font-display text-sm font-bold text-csub-blue-dark uppercase tracking-wide mb-3"
+          >
             Helpful Links
           </h3>
           <div class="space-y-2">
@@ -288,8 +347,18 @@ function formatCompletedAt(value: string): string {
               rel="noopener noreferrer"
               class="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 bg-white hover:bg-csub-blue/5 hover:border-csub-blue/20 transition-all font-body text-sm text-csub-blue font-semibold group"
             >
-              <svg class="w-4 h-4 text-csub-blue/50 group-hover:text-csub-blue transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" :stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              <svg
+                class="w-4 h-4 text-csub-blue/50 group-hover:text-csub-blue transition-colors"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  :stroke-width="2"
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                />
               </svg>
               {{ link.label }}
             </a>
@@ -297,7 +366,10 @@ function formatCompletedAt(value: string): string {
         </div>
 
         <!-- Waived note -->
-        <div v-if="step.status === 'waived'" class="bg-slate-50 rounded-xl p-4 border border-slate-200">
+        <div
+          v-if="step.status === 'waived'"
+          class="bg-slate-50 rounded-xl p-4 border border-slate-200"
+        >
           <p class="font-body text-sm text-slate-500">
             This step has been waived by your admissions counselor. No action is needed from you.
           </p>
@@ -305,12 +377,24 @@ function formatCompletedAt(value: string): string {
 
         <!-- Step-specific contact -->
         <div v-if="contact && contact.name">
-          <h3 class="font-display text-sm font-bold text-csub-blue-dark uppercase tracking-wide mb-2">
+          <h3
+            class="font-display text-sm font-bold text-csub-blue-dark uppercase tracking-wide mb-2"
+          >
             Need Help With This Step?
           </h3>
           <div class="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
-            <svg class="w-4 h-4 text-csub-blue flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" :stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            <svg
+              class="w-4 h-4 text-csub-blue flex-shrink-0 mt-0.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                :stroke-width="2"
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+              />
             </svg>
             <div>
               <p class="font-body text-sm font-semibold text-csub-blue-dark">{{ contact.name }}</p>
@@ -336,8 +420,16 @@ function formatCompletedAt(value: string): string {
       <!-- Footer -->
       <div class="px-5 sm:px-6 pb-6 pt-2">
         <button
-          v-if="onOptionalStepStatusChange && step.is_optional === 1 && step.status !== 'waived' && step.status !== 'locked' && step.status !== 'preview'"
-          @click="onOptionalStepStatusChange(step.status === 'completed' ? 'not_completed' : 'completed')"
+          v-if="
+            onOptionalStepStatusChange &&
+            step.is_optional === 1 &&
+            step.status !== 'waived' &&
+            step.status !== 'locked' &&
+            step.status !== 'preview'
+          "
+          @click="
+            onOptionalStepStatusChange(step.status === 'completed' ? 'not_completed' : 'completed')
+          "
           :disabled="updatingOptionalStep"
           :class="`w-full font-display font-bold uppercase tracking-wider text-sm px-6 py-3.5 rounded-xl shadow transition-colors mb-3 ${
             step.status === 'completed'
@@ -364,7 +456,12 @@ function formatCompletedAt(value: string): string {
         >
           {{ links[0]!.label || 'Get Started' }}
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" :stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              :stroke-width="2"
+              d="M14 5l7 7m0 0l-7 7m7-7H3"
+            />
           </svg>
         </a>
 

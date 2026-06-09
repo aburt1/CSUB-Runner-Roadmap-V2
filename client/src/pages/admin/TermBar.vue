@@ -1,15 +1,15 @@
 <script setup lang="ts">
 interface Props {
-  selectedTermName: string;
-  canEdit: boolean;
+  selectedTermName: string
+  canEdit: boolean
 }
 
-defineProps<Props>();
+defineProps<Props>()
 
 const emit = defineEmits<{
-  (e: 'new-term'): void;
-  (e: 'clone-term'): void;
-}>();
+  (e: 'new-term'): void
+  (e: 'clone-term'): void
+}>()
 </script>
 
 <template>
@@ -20,9 +20,11 @@ const emit = defineEmits<{
           Terms and Steps
         </p>
         <p class="font-body text-sm text-csub-gray mt-1">
-          {{ selectedTermName
-            ? `Showing configuration for ${selectedTermName}. Change the term in the header to switch context.`
-            : 'Select a term in the header to manage its steps.' }}
+          {{
+            selectedTermName
+              ? `Showing configuration for ${selectedTermName}. Change the term in the header to switch context.`
+              : 'Select a term in the header to manage its steps.'
+          }}
         </p>
       </div>
 
@@ -31,7 +33,13 @@ const emit = defineEmits<{
           @click="emit('new-term')"
           class="flex items-center gap-1.5 bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-4 py-2 rounded-lg shadow transition-colors text-sm"
         >
-          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" :stroke-width="2.5">
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            :stroke-width="2.5"
+          >
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
           </svg>
           New Term

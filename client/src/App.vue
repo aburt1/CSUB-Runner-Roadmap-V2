@@ -29,9 +29,14 @@ function reload() {
 
 <template>
   <ToastContainer />
-  <div v-if="renderError" class="min-h-screen flex flex-col items-center justify-center gap-4 bg-white text-center px-6">
+  <div
+    v-if="renderError"
+    class="min-h-screen flex flex-col items-center justify-center gap-4 bg-white text-center px-6"
+  >
     <h1 class="font-display text-2xl text-csub-blue-dark">Something went wrong</h1>
-    <p class="font-body text-csub-gray">Please reload the page. If the problem persists, contact CSUB Admissions.</p>
+    <p class="font-body text-csub-gray">
+      Please reload the page. If the problem persists, contact CSUB Admissions.
+    </p>
     <button
       type="button"
       class="bg-csub-blue text-white font-body font-semibold rounded-lg px-5 py-2"
