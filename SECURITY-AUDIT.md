@@ -32,7 +32,7 @@ non-trivial finding (2026-06-09).
 ## Lower / informational (noted, not changed)
 
 - **Containers as root:** the `api` image now runs as the built-in non-root user; nginx workers already drop privileges.
-- **npm transitive deps:** a few transitive packages are slightly behind patches — bumped where a clean update was available.
+- **npm dependencies:** `npm audit` reports **0 vulnerabilities**; some transitive packages are slightly behind latest, but no known advisory applies.
 - **JWT in `sessionStorage`:** standard SPA trade-off (XSS-readable); CSP + DOMPurify mitigate the XSS surface. HttpOnly-cookie auth would be a larger redesign.
 - **Integration client-name timing:** the `X-Client-Name` fast path is a minor bcrypt-timing enumeration vector (low; client names aren't secrets).
 - **Admin SSO email auto-link:** first Azure SSO links the `oid` to an admin matched by email — intended onboarding behavior; documented.
