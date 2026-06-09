@@ -14,11 +14,13 @@ public sealed class RoadmapApiChecksController : ControllerBase
 {
     private readonly Db _db;
     private readonly ApiCheckRunner _runner;
+    private readonly ILogger<RoadmapApiChecksController> _logger;
 
-    public RoadmapApiChecksController(Db db, ApiCheckRunner runner)
+    public RoadmapApiChecksController(Db db, ApiCheckRunner runner, ILogger<RoadmapApiChecksController> logger)
     {
         _db = db;
         _runner = runner;
+        _logger = logger;
     }
 
     // POST /api/roadmap/run-api-checks
@@ -79,7 +81,7 @@ public sealed class RoadmapApiChecksController : ControllerBase
                 }
                 catch (Exception err)
                 {
-                    Console.Error.WriteLine($"[api-check-runner] {err}");
+                    _logger.LogError(err, "Background API check run failed");
                     _runner.SetRunState(student.id, new ApiCheckRunner.RunState
                     {
                         status = "complete",
@@ -93,7 +95,7 @@ public sealed class RoadmapApiChecksController : ControllerBase
         }
         catch (Exception err)
         {
-            Console.Error.WriteLine($"[run-api-checks] {err}");
+            _logger.LogError(err, "run-api-checks failed");
             return StatusCode(500, new { error = "Internal server error" });
         }
     }
@@ -110,7 +112,7 @@ public sealed class RoadmapApiChecksController : ControllerBase
         }
         catch (Exception err)
         {
-            Console.Error.WriteLine($"[check-status] {err}");
+            _logger.LogError(err, "check-status failed");
             return StatusCode(500, new { error = "Internal server error" });
         }
     }

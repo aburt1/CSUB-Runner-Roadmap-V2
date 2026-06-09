@@ -23,15 +23,17 @@ public sealed class ApiCheckRunner
 
     private readonly Db _db;
     private readonly Encryption _encryption;
+    private readonly ILogger<ApiCheckRunner> _logger;
     private readonly bool _isDev;
 
     // In-memory run state, keyed by student id (mirrors `runStates` Map).
     private readonly ConcurrentDictionary<string, RunState> _runStates = new();
 
-    public ApiCheckRunner(Db db, Encryption encryption, IHostEnvironment env)
+    public ApiCheckRunner(Db db, Encryption encryption, IHostEnvironment env, ILogger<ApiCheckRunner> logger)
     {
         _db = db;
         _encryption = encryption;
+        _logger = logger;
         // process.env.NODE_ENV !== 'production' -> not the Production environment.
         _isDev = !env.IsProduction();
     }
@@ -400,7 +402,7 @@ public sealed class ApiCheckRunner
             // 15-second total cap.
             if (Stopwatch() - startedAt > 15_000)
             {
-                Console.Error.WriteLine("[api-check-runner] 15s total cap reached, stopping early");
+                _logger.LogWarning("API check run hit the 15s cap, stopping early");
                 break;
             }
 
@@ -412,7 +414,7 @@ public sealed class ApiCheckRunner
 
                 if (string.IsNullOrEmpty(studentIdentifier))
                 {
-                    Console.Error.WriteLine($"[api-check-runner] No {check.student_param_source} for student {student.id}, skipping step {check.step_id}");
+                    _logger.LogWarning("No {Source} for student {StudentId}; skipping API check step {StepId}", check.student_param_source, student.id, check.step_id);
                     continue;
                 }
 
@@ -421,7 +423,7 @@ public sealed class ApiCheckRunner
                 var urlCheck = await ValidateUrlAsync(url);
                 if (!urlCheck.valid)
                 {
-                    Console.Error.WriteLine($"[api-check-runner] URL rejected for step {check.step_id}: {urlCheck.reason}");
+                    _logger.LogWarning("API check URL rejected for step {StepId}: {Reason}", check.step_id, urlCheck.reason);
                     continue;
                 }
 
@@ -430,7 +432,7 @@ public sealed class ApiCheckRunner
                 {
                     if (!_encryption.IsConfigured)
                     {
-                        Console.Error.WriteLine($"[api-check-runner] Encryption not configured, skipping step {check.step_id}");
+                        _logger.LogWarning("Encryption not configured; skipping API check for step {StepId}", check.step_id);
                         continue;
                     }
                     try
@@ -439,7 +441,7 @@ public sealed class ApiCheckRunner
                     }
                     catch (Exception err)
                     {
-                        Console.Error.WriteLine($"[api-check-runner] Failed to decrypt creds for step {check.step_id}: {err.Message}");
+                        _logger.LogError(err, "Failed to decrypt credentials for API check step {StepId}", check.step_id);
                         continue;
                     }
                 }
@@ -508,7 +510,7 @@ public sealed class ApiCheckRunner
             }
             catch (Exception err)
             {
-                Console.Error.WriteLine($"[api-check-runner] Error checking step {check.step_id}: {err.Message}");
+                _logger.LogError(err, "API check failed for step {StepId}", check.step_id);
             }
         }
 

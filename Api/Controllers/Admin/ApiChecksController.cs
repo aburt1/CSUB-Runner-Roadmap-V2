@@ -21,12 +21,14 @@ public sealed class ApiChecksController : ControllerBase
     private readonly Db _db;
     private readonly Encryption _encryption;
     private readonly ApiCheckRunner _runner;
+    private readonly ILogger<ApiChecksController> _logger;
 
-    public ApiChecksController(Db db, Encryption encryption, ApiCheckRunner runner)
+    public ApiChecksController(Db db, Encryption encryption, ApiCheckRunner runner, ILogger<ApiChecksController> logger)
     {
         _db = db;
         _encryption = encryption;
         _runner = runner;
+        _logger = logger;
     }
 
     public sealed record ApiCheckRequest(
@@ -84,7 +86,7 @@ public sealed class ApiChecksController : ControllerBase
         }
         catch (Exception err)
         {
-            Console.Error.WriteLine($"[get-api-check] {err}");
+            _logger.LogError(err, "get-api-check failed");
             return StatusCode(500, new { error = "Internal server error" });
         }
     }
@@ -190,7 +192,7 @@ public sealed class ApiChecksController : ControllerBase
         }
         catch (Exception err)
         {
-            Console.Error.WriteLine($"[put-api-check] {err}");
+            _logger.LogError(err, "put-api-check failed");
             return StatusCode(500, new { error = "Internal server error" });
         }
     }
@@ -211,7 +213,7 @@ public sealed class ApiChecksController : ControllerBase
         }
         catch (Exception err)
         {
-            Console.Error.WriteLine($"[delete-api-check] {err}");
+            _logger.LogError(err, "delete-api-check failed");
             return StatusCode(500, new { error = "Internal server error" });
         }
     }
@@ -250,7 +252,7 @@ public sealed class ApiChecksController : ControllerBase
         }
         catch (Exception err)
         {
-            Console.Error.WriteLine($"[test-api-check] {err}");
+            _logger.LogError(err, "test-api-check failed");
             return StatusCode(500, new { error = "Internal server error" });
         }
     }
