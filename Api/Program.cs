@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Threading.RateLimiting;
 using Api.Auth;
 using Api.Data;
+using Microsoft.AspNetCore.HttpOverrides;
 
 // Keep JWT claim names verbatim ("type", "studentId", "role", ...) instead of
 // remapping them to long SOAP URIs, so the auth filters can read them directly.
@@ -41,6 +42,15 @@ builder.Services.AddSingleton<JwtService>();
 builder.Services.AddSingleton<AzureAdTokenValidator>();
 builder.Services.AddSingleton<Api.Services.Encryption>();
 builder.Services.AddSingleton<Api.Services.ApiCheckRunner>();
+
+// Honor X-Forwarded-* from the nginx reverse proxy so rate limiting and audit logging
+// key on the real client IP, not the proxy's. Only the web container fronts the api.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 // CORS — same behavior as the old server (allow the SPA origin with credentials;
 // in production CORS is effectively closed unless Cors:Origin is set).
@@ -86,7 +96,11 @@ if (autoCreateDatabase)
     await SchemaInitializer.EnsureDatabaseAsync(connectionString);
 
 await SchemaInitializer.RunAsync(db, Path.Combine(AppContext.BaseDirectory, "Data", "schema.sql"));
-await Seeder.RunAsync(db, app.Configuration, app.Environment);
+
+// Seed bootstrap data (default term, checklist, default admin, integration client) on an
+// empty database. Idempotent. Disable with Database:Seed=false if a DBA seeds out-of-band.
+if (app.Configuration.GetValue<bool?>("Database:Seed") ?? true)
+    await Seeder.RunAsync(db, app.Configuration, app.Environment);
 
 // Outermost: turn any unhandled error into the old { error: "Internal server error" }
 // envelope (and never leak stack traces).
@@ -108,6 +122,9 @@ app.Use(async (context, next) =>
         }
     }
 });
+
+// Trust the reverse proxy's forwarded headers (must run before rate limiting/audit).
+app.UseForwardedHeaders();
 
 // Security headers — the Helmet-equivalent set from the old server.
 app.Use(async (context, next) =>

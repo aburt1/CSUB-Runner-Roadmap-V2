@@ -10,8 +10,22 @@ namespace Api.Data;
 // Boring on purpose: every query is hand-written T-SQL passed in by the caller,
 // parameters are passed as a plain anonymous object (e.g. new { id, term_id }).
 // No repositories, no LINQ, no query builder.
+//
+// Transient faults (failover, throttling, brief network drops, deadlocks, timeouts)
+// are retried with exponential backoff so routine SQL Server events don't surface as
+// 500s. Calls already inside a transaction are not retried individually — the whole
+// transaction is retried instead, since it rolls back cleanly.
 public sealed class Db
 {
+    private const int MaxAttempts = 4;
+
+    // Standard transient SQL Server error numbers (Azure SQL + on-prem failover/cluster).
+    private static readonly HashSet<int> TransientErrorNumbers =
+    [
+        49920, 49919, 49918, 41839, 41325, 41305, 41302, 41301, 40613, 40501, 40197,
+        10936, 10929, 10928, 10060, 10054, 10053, 4221, 1205, 233, 121, 64, 20, -2,
+    ];
+
     private readonly string _connectionString;
 
     // When this Db represents an open transaction, these are set and every
@@ -37,8 +51,11 @@ public sealed class Db
         if (_txConnection is not null)
             return await _txConnection.QueryFirstOrDefaultAsync<T>(sql, param, _transaction);
 
-        await using var connection = new SqlConnection(_connectionString);
-        return await connection.QueryFirstOrDefaultAsync<T>(sql, param);
+        return await RetryAsync(async () =>
+        {
+            await using var connection = new SqlConnection(_connectionString);
+            return await connection.QueryFirstOrDefaultAsync<T>(sql, param);
+        });
     }
 
     // Returns every row mapped to T.
@@ -47,8 +64,11 @@ public sealed class Db
         if (_txConnection is not null)
             return (await _txConnection.QueryAsync<T>(sql, param, _transaction)).AsList();
 
-        await using var connection = new SqlConnection(_connectionString);
-        return (await connection.QueryAsync<T>(sql, param)).AsList();
+        return await RetryAsync<IReadOnlyList<T>>(async () =>
+        {
+            await using var connection = new SqlConnection(_connectionString);
+            return (await connection.QueryAsync<T>(sql, param)).AsList();
+        });
     }
 
     // Runs an INSERT/UPDATE/DELETE/DDL statement and returns rows affected.
@@ -57,8 +77,11 @@ public sealed class Db
         if (_txConnection is not null)
             return await _txConnection.ExecuteAsync(sql, param, _transaction);
 
-        await using var connection = new SqlConnection(_connectionString);
-        return await connection.ExecuteAsync(sql, param);
+        return await RetryAsync(async () =>
+        {
+            await using var connection = new SqlConnection(_connectionString);
+            return await connection.ExecuteAsync(sql, param);
+        });
     }
 
     // Runs `work` inside a single transaction. The Db handed to `work` routes
@@ -70,24 +93,55 @@ public sealed class Db
         if (_txConnection is not null)
             return await work(this);
 
-        await using var connection = new SqlConnection(_connectionString);
-        await connection.OpenAsync();
-        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
-        try
+        // Retry the whole transaction on a transient fault (it rolls back cleanly first).
+        return await RetryAsync(async () =>
         {
-            var scoped = new Db(connection, transaction);
-            var result = await work(scoped);
-            await transaction.CommitAsync();
-            return result;
-        }
-        catch
-        {
-            await transaction.RollbackAsync();
-            throw;
-        }
+            await using var connection = new SqlConnection(_connectionString);
+            await connection.OpenAsync();
+            await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
+            try
+            {
+                var scoped = new Db(connection, transaction);
+                var result = await work(scoped);
+                await transaction.CommitAsync();
+                return result;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
     }
 
     // Overload for transactions that don't return a value.
     public Task TransactionAsync(Func<Db, Task> work) =>
         TransactionAsync(async db => { await work(db); return true; });
+
+    private static async Task<T> RetryAsync<T>(Func<Task<T>> operation)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await operation();
+            }
+            catch (Exception ex) when (attempt < MaxAttempts && IsTransient(ex))
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(200 * Math.Pow(2, attempt - 1)));
+            }
+        }
+    }
+
+    private static bool IsTransient(Exception ex)
+    {
+        if (ex is TimeoutException) return true;
+        if (ex is SqlException sql)
+        {
+            foreach (SqlError error in sql.Errors)
+                if (TransientErrorNumbers.Contains(error.Number))
+                    return true;
+        }
+        return false;
+    }
 }

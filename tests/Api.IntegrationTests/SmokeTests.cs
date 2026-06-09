@@ -48,6 +48,18 @@ public class SmokeTests
     }
 
     [Fact]
+    public async Task Liveness_and_readiness_probes_respond()
+    {
+        var live = await _fx.Anonymous().GetAsync("/api/health/live");
+        Assert.Equal(HttpStatusCode.OK, live.StatusCode);
+
+        var ready = await _fx.Anonymous().GetAsync("/api/health/ready");
+        Assert.Equal(HttpStatusCode.OK, ready.StatusCode); // DB is up in tests
+        var body = await ready.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("ready", body.GetProperty("status").GetString());
+    }
+
+    [Fact]
     public async Task Schema_version_is_recorded_on_startup()
     {
         var version = Api.Data.SchemaInitializer.CurrentSchemaVersion;
