@@ -86,6 +86,14 @@ public static class Seeder
         });
     }
 
+    // A production admin password is unacceptable if it is missing, too short, the
+    // committed dev default, or a placeholder from .env.example.
+    public static bool IsWeakAdminPassword(string? password) =>
+        string.IsNullOrEmpty(password)
+        || password.Length < 12
+        || password == "admin123"
+        || password.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase);
+
     private static async Task SeedDefaultAdminAsync(Db db, IConfiguration config, bool isProduction)
     {
         var count = await db.QueryOneAsync<int>("SELECT COUNT(*) FROM admin_users");
@@ -93,8 +101,9 @@ public static class Seeder
 
         var email = config["Admin:DefaultEmail"] ?? "admin@csub.edu";
         var password = config["Admin:DefaultPassword"];
-        if (string.IsNullOrEmpty(password) && isProduction)
-            throw new InvalidOperationException("Admin:DefaultPassword is required in production. Refusing to seed default credentials.");
+        // Fail safe in production: refuse to seed a missing/weak/default admin password.
+        if (isProduction && IsWeakAdminPassword(password))
+            throw new InvalidOperationException("Admin:DefaultPassword must be set to a strong, non-default value in Production. Refusing to seed default credentials.");
         password ??= "admin123";
 
         await db.ExecuteAsync(

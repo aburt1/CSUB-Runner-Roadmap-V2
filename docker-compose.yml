@@ -3,6 +3,7 @@
 # Apple Silicon (M-series) has no native SQL Server build, so it runs as a
 # linux/amd64 image under Rancher/Docker Desktop's VZ + Rosetta emulation.
 #
+# First time:  cp .env.example .env  and fill in the secrets (the api refuses weak/missing ones).
 # Launch the whole stack:        docker compose up --build        -> web on http://localhost:3000
 # Launch pieces individually:
 #   docker compose up -d sqlserver          # just the database (:1433)
@@ -38,19 +39,21 @@ services:
         condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      ConnectionStrings__Default: "Server=sqlserver,1433;Database=csub_admissions;User Id=sa;Password=${MSSQL_SA_PASSWORD:-Csub_Local_Dev_2026!};TrustServerCertificate=True;Encrypt=False"
-      Jwt__Secret: "${JWT_SECRET:-change-me-in-production-0123456789-abcdefghijklmnopqrstuvwxyz}"
+      # Secrets are REQUIRED (no weak defaults). `${VAR:?msg}` makes compose fail with
+      # the message if the var is unset — copy .env.example to .env and fill these in.
+      ConnectionStrings__Default: "Server=sqlserver,1433;Database=csub_admissions;User Id=sa;Password=${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False"
+      Jwt__Secret: "${JWT_SECRET:?set JWT_SECRET to a random 32+ character string in .env}"
       Admin__DefaultEmail: "${ADMIN_DEFAULT_EMAIL:-admin@csub.edu}"
-      Admin__DefaultPassword: "${ADMIN_DEFAULT_PASSWORD:-admin123}"
-      LocalLogin__Username: "${LOCAL_LOGIN_USERNAME:-localadmin}"
-      LocalLogin__Password: "${LOCAL_LOGIN_PASSWORD:-Local_Admin_2026!}"
-      # 64-hex (32-byte) key for encrypting stored API-check credentials. OVERRIDE in real deployments.
-      ApiCheck__EncryptionKey: "${API_CHECK_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"
-      # The frontend is a separate origin only if you bypass the nginx proxy; the
-      # proxy keeps it same-origin, so CORS normally isn't needed. Set if required:
-      # Cors__Origin, AzureAd__ClientId, AzureAd__TenantId, Integration__DefaultKey
+      Admin__DefaultPassword: "${ADMIN_DEFAULT_PASSWORD:?set ADMIN_DEFAULT_PASSWORD in .env}"
+      ApiCheck__EncryptionKey: "${API_CHECK_ENCRYPTION_KEY:?set API_CHECK_ENCRYPTION_KEY to 64 hex chars in .env}"
+      # Break-glass local admin login is DISABLED unless BOTH are set (leave unset to keep off).
+      LocalLogin__Username: "${LOCAL_LOGIN_USERNAME:-}"
+      LocalLogin__Password: "${LOCAL_LOGIN_PASSWORD:-}"
+      # Optional: Cors__Origin, AzureAd__ClientId, AzureAd__TenantId, Integration__DefaultKey
     ports:
-      - "8080:8080"
+      # Bound to localhost: the browser reaches the API through the web container's
+      # nginx proxy; the published port is only for direct local debugging.
+      - "127.0.0.1:8080:8080"
     restart: unless-stopped
 
   # ---- Database: SQL Server 2022 ----
@@ -60,10 +63,11 @@ services:
     container_name: csub-sqlserver
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-Csub_Local_Dev_2026!}"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env}"
       MSSQL_PID: "Developer"
     ports:
-      - "1433:1433"
+      # Localhost only — not exposed to the network.
+      - "127.0.0.1:1433:1433"
     volumes:
       - csub_sqlserver_data:/var/opt/mssql
     healthcheck:

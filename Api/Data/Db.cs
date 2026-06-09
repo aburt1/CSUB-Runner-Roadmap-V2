@@ -65,6 +65,11 @@ public sealed class Db
     // every query through that transaction; commit on success, rollback on throw.
     public async Task<T> TransactionAsync<T>(Func<Db, Task<T>> work)
     {
+        // Already inside a transaction — join it (the outer commit/rollback governs),
+        // so callers can safely wrap a unit of work that may itself be nested.
+        if (_txConnection is not null)
+            return await work(this);
+
         await using var connection = new SqlConnection(_connectionString);
         await connection.OpenAsync();
         await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();

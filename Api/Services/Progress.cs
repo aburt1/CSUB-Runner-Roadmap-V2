@@ -73,56 +73,62 @@ public static class Progress
         if (invalid)
             return new ProgressChangeResult { Error = "completed_at must be a valid ISO timestamp" };
 
-        var current = await db.QueryOneAsync<CurrentProgress>(
-            @"SELECT student_id, step_id, completed_at, status, note, completed_by
-              FROM student_progress WITH (UPDLOCK)
-              WHERE student_id = @studentId AND step_id = @stepId",
-            new { studentId = input.StudentId, stepId = input.StepId });
-
-        if (nextStatus == "not_completed")
+        // Read-modify-write in ONE transaction so the UPDLOCK on the SELECT holds until
+        // the write commits (otherwise each call opens its own connection and the lock
+        // is released immediately, allowing a lost update or a duplicate-key 500).
+        return await db.TransactionAsync(async tx =>
         {
-            if (current is null)
-                return new ProgressChangeResult { Result = "noop", Status = "not_completed", CompletedAt = null, CompletedBy = normalizedCompletedBy };
-
-            await db.ExecuteAsync(
-                "DELETE FROM student_progress WHERE student_id = @studentId AND step_id = @stepId",
+            var current = await tx.QueryOneAsync<CurrentProgress>(
+                @"SELECT student_id, step_id, completed_at, status, note, completed_by
+                  FROM student_progress WITH (UPDLOCK)
+                  WHERE student_id = @studentId AND step_id = @stepId",
                 new { studentId = input.StudentId, stepId = input.StepId });
-            return new ProgressChangeResult { Result = "updated", Status = "not_completed", CompletedAt = null, CompletedBy = normalizedCompletedBy };
-        }
 
-        if (current is not null)
-        {
-            var nextCompletedAt = explicitCompletedAt ?? current.completed_at ?? DateTime.UtcNow;
-            var sameCompletedAt = input.CompletedAt is null || current.completed_at == explicitCompletedAt;
-
-            if (current.status == nextStatus
-                && (current.note ?? null) == normalizedNote
-                && sameCompletedAt
-                && (string.IsNullOrEmpty(current.completed_by) ? "manual" : current.completed_by) == normalizedCompletedBy)
+            if (nextStatus == "not_completed")
             {
-                return new ProgressChangeResult
-                {
-                    Result = "noop",
-                    Status = nextStatus,
-                    CompletedAt = current.completed_at,
-                    CompletedBy = string.IsNullOrEmpty(current.completed_by) ? "manual" : current.completed_by,
-                };
+                if (current is null)
+                    return new ProgressChangeResult { Result = "noop", Status = "not_completed", CompletedAt = null, CompletedBy = normalizedCompletedBy };
+
+                await tx.ExecuteAsync(
+                    "DELETE FROM student_progress WHERE student_id = @studentId AND step_id = @stepId",
+                    new { studentId = input.StudentId, stepId = input.StepId });
+                return new ProgressChangeResult { Result = "updated", Status = "not_completed", CompletedAt = null, CompletedBy = normalizedCompletedBy };
             }
 
-            await db.ExecuteAsync(
-                @"UPDATE student_progress
-                  SET status = @status, note = @note, completed_at = @completedAt, completed_by = @completedBy
-                  WHERE student_id = @studentId AND step_id = @stepId",
-                new { status = nextStatus, note = normalizedNote, completedAt = nextCompletedAt, completedBy = normalizedCompletedBy, studentId = input.StudentId, stepId = input.StepId });
-            return new ProgressChangeResult { Result = "updated", Status = nextStatus, CompletedAt = nextCompletedAt, CompletedBy = normalizedCompletedBy };
-        }
+            if (current is not null)
+            {
+                var nextCompletedAt = explicitCompletedAt ?? current.completed_at ?? DateTime.UtcNow;
+                var sameCompletedAt = input.CompletedAt is null || current.completed_at == explicitCompletedAt;
 
-        var insertCompletedAt = explicitCompletedAt ?? DateTime.UtcNow;
-        await db.ExecuteAsync(
-            @"INSERT INTO student_progress (student_id, step_id, completed_at, status, note, completed_by)
-              VALUES (@studentId, @stepId, @completedAt, @status, @note, @completedBy)",
-            new { studentId = input.StudentId, stepId = input.StepId, completedAt = insertCompletedAt, status = nextStatus, note = normalizedNote, completedBy = normalizedCompletedBy });
-        return new ProgressChangeResult { Result = "created", Status = nextStatus, CompletedAt = insertCompletedAt, CompletedBy = normalizedCompletedBy };
+                if (current.status == nextStatus
+                    && (current.note ?? null) == normalizedNote
+                    && sameCompletedAt
+                    && (string.IsNullOrEmpty(current.completed_by) ? "manual" : current.completed_by) == normalizedCompletedBy)
+                {
+                    return new ProgressChangeResult
+                    {
+                        Result = "noop",
+                        Status = nextStatus,
+                        CompletedAt = current.completed_at,
+                        CompletedBy = string.IsNullOrEmpty(current.completed_by) ? "manual" : current.completed_by,
+                    };
+                }
+
+                await tx.ExecuteAsync(
+                    @"UPDATE student_progress
+                      SET status = @status, note = @note, completed_at = @completedAt, completed_by = @completedBy
+                      WHERE student_id = @studentId AND step_id = @stepId",
+                    new { status = nextStatus, note = normalizedNote, completedAt = nextCompletedAt, completedBy = normalizedCompletedBy, studentId = input.StudentId, stepId = input.StepId });
+                return new ProgressChangeResult { Result = "updated", Status = nextStatus, CompletedAt = nextCompletedAt, CompletedBy = normalizedCompletedBy };
+            }
+
+            var insertCompletedAt = explicitCompletedAt ?? DateTime.UtcNow;
+            await tx.ExecuteAsync(
+                @"INSERT INTO student_progress (student_id, step_id, completed_at, status, note, completed_by)
+                  VALUES (@studentId, @stepId, @completedAt, @status, @note, @completedBy)",
+                new { studentId = input.StudentId, stepId = input.StepId, completedAt = insertCompletedAt, status = nextStatus, note = normalizedNote, completedBy = normalizedCompletedBy });
+            return new ProgressChangeResult { Result = "created", Status = nextStatus, CompletedAt = insertCompletedAt, CompletedBy = normalizedCompletedBy };
+        });
     }
 
     public sealed class ResolvedStudent

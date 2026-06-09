@@ -17,7 +17,9 @@ namespace Api.Services;
 // same sequential 15s-capped run loop the old server used.
 public sealed class ApiCheckRunner
 {
-    private static readonly HttpClient Http = new();
+    // AllowAutoRedirect = false so a validated URL can't 3xx-redirect to an internal
+    // target (SSRF bypass); a redirect is treated as a non-success response.
+    private static readonly HttpClient Http = new(new SocketsHttpHandler { AllowAutoRedirect = false });
 
     private readonly Db _db;
     private readonly Encryption _encryption;
@@ -234,22 +236,17 @@ public sealed class ApiCheckRunner
         if (addresses.Length == 0)
             return new UrlValidation { valid = false, reason = $"DNS resolution failed for {hostname}" };
 
-        // dns.lookup returns a single address; take the first resolved one.
-        var address = addresses[0];
-        var family = address.AddressFamily;
-        var addressText = address.ToString();
+        // Validate EVERY resolved address (a host can return multiple A/AAAA records);
+        // reject if any maps to a private/internal range. In dev these are allowed.
+        foreach (var address in addresses)
+        {
+            var family = address.AddressFamily;
+            var addressText = address.ToString();
 
-        if (family == AddressFamily.InterNetwork && IsPrivateIPv4(addressText))
-        {
-            if (!_isDev)
+            if (!_isDev && family == AddressFamily.InterNetwork && IsPrivateIPv4(addressText))
                 return new UrlValidation { valid = false, reason = $"Resolved to private IP {addressText}" };
-            return new UrlValidation { valid = true };
-        }
-        if (family == AddressFamily.InterNetworkV6 && IsPrivateIPv6(addressText))
-        {
-            if (!_isDev)
+            if (!_isDev && family == AddressFamily.InterNetworkV6 && IsPrivateIPv6(addressText))
                 return new UrlValidation { valid = false, reason = $"Resolved to private IPv6 {addressText}" };
-            return new UrlValidation { valid = true };
         }
 
         return new UrlValidation { valid = true };

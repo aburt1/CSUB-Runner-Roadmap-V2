@@ -63,6 +63,17 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
 
     public HttpClient Anonymous() => CreateClient();
 
+    // Run SQL directly against the test DB, for setup the API itself won't allow
+    // (e.g. deactivating the only admin to test per-request revocation).
+    public async Task ExecSqlAsync(string sql)
+    {
+        await using var conn = new SqlConnection(TestConn);
+        await conn.OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        await cmd.ExecuteNonQueryAsync();
+    }
+
     public HttpClient Admin()
     {
         var client = CreateClient();

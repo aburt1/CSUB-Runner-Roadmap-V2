@@ -44,6 +44,22 @@ public sealed class AdminAuthAttribute : Attribute, IAsyncActionFilter
             Email: principal.FindFirst("email")?.Value ?? "",
             DisplayName: principal.FindFirst("displayName")?.Value ?? "");
 
+        // Re-check the admin against the DB every request so a deactivated or demoted
+        // admin loses access immediately, instead of trusting the role/active flag baked
+        // into the (8h) token. Break-glass has a non-numeric id and no DB row, so skip it.
+        if (int.TryParse(admin.Id, out var adminId))
+        {
+            var db = http.RequestServices.GetRequiredService<Api.Data.Db>();
+            var row = await db.QueryOneAsync<AdminRow>(
+                "SELECT role, is_active FROM admin_users WHERE id = @adminId", new { adminId });
+            if (row is null || row.is_active == 0)
+            {
+                context.Result = Error(403, "Account is inactive");
+                return;
+            }
+            admin = admin with { Role = row.role }; // authorize on the CURRENT role, not the token's
+        }
+
         if (_allowedRoles.Length > 0 && !_allowedRoles.Contains(admin.Role))
         {
             context.Result = Error(403, "Insufficient permissions");
@@ -56,4 +72,10 @@ public sealed class AdminAuthAttribute : Attribute, IAsyncActionFilter
 
     private static ObjectResult Error(int status, string message) =>
         new(new { error = message }) { StatusCode = status };
+
+    private sealed class AdminRow
+    {
+        public string role { get; set; } = "";
+        public int is_active { get; set; }
+    }
 }
