@@ -17,6 +17,15 @@
 SET QUOTED_IDENTIFIER ON;
 SET ANSI_NULLS ON;
 
+------------------------------------------------------------------- schema_version
+-- Append-only history of which schema versions have been applied (auditable, never
+-- destructive). SchemaInitializer records the current version on startup.
+IF OBJECT_ID('dbo.schema_version', 'U') IS NULL
+CREATE TABLE dbo.schema_version (
+    version     NVARCHAR(64) NOT NULL PRIMARY KEY,
+    applied_at  DATETIME2    NOT NULL DEFAULT SYSUTCDATETIME()
+);
+
 ------------------------------------------------------------------- students
 IF OBJECT_ID('dbo.students', 'U') IS NULL
 CREATE TABLE dbo.students (

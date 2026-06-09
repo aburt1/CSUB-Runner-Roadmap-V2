@@ -74,6 +74,16 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
         await cmd.ExecuteNonQueryAsync();
     }
 
+    // Runs a scalar query against the test DB (for asserting DB state directly).
+    public async Task<object?> ScalarAsync(string sql)
+    {
+        await using var conn = new SqlConnection(TestConn);
+        await conn.OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        return await cmd.ExecuteScalarAsync();
+    }
+
     public HttpClient Admin()
     {
         var client = CreateClient();

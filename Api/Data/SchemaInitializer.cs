@@ -8,8 +8,16 @@ namespace Api.Data;
 // T-SQL schema script (SqlClient runs the whole multi-statement batch at once).
 public static class SchemaInitializer
 {
+    // Bump when schema.sql changes; recorded (append-only) in dbo.schema_version so an
+    // operator can see which schema versions a database has had applied.
+    public const string CurrentSchemaVersion = "2026.06.09";
+
     // Connects to master and creates the target database if it doesn't exist.
     // Retries to tolerate SQL Server still warming up (e.g. in docker-compose).
+    //
+    // DEV/TEST ONLY: in production the database is provisioned by a DBA and the app's
+    // login is not expected to hold server-level CREATE DATABASE rights. Program.cs
+    // only calls this when Database:AutoCreate is enabled (default: non-Production).
     public static async Task EnsureDatabaseAsync(string connectionString)
     {
         var builder = new SqlConnectionStringBuilder(connectionString);
@@ -42,9 +50,16 @@ public static class SchemaInitializer
         throw new InvalidOperationException("Could not connect to SQL Server to ensure the database exists.", last);
     }
 
+    // Applies the idempotent schema, then records the current schema version
+    // (append-only; never drops or alters existing data).
     public static async Task RunAsync(Db db, string schemaSqlPath)
     {
         var sql = await File.ReadAllTextAsync(schemaSqlPath);
         await db.ExecuteAsync(sql);
+
+        await db.ExecuteAsync(
+            @"IF NOT EXISTS (SELECT 1 FROM schema_version WHERE version = @version)
+              INSERT INTO schema_version (version) VALUES (@version);",
+            new { version = CurrentSchemaVersion });
     }
 }

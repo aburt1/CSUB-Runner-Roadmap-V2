@@ -75,10 +75,16 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
-// Ensure the database exists, create/upgrade the schema, and seed defaults on
-// startup, mirroring the old server (no manual DB setup needed).
+// Create/upgrade the schema and seed defaults on startup.
+//   - Production: the database is provisioned by a DBA and the app's login is NOT
+//     expected to have CREATE DATABASE rights — the app only applies the schema.
+//   - Dev/test: auto-create the database so it's zero-setup.
+// Override explicitly with Database:AutoCreate (default: true off-Production).
 var db = app.Services.GetRequiredService<Db>();
-await SchemaInitializer.EnsureDatabaseAsync(connectionString);
+var autoCreateDatabase = app.Configuration.GetValue<bool?>("Database:AutoCreate") ?? !app.Environment.IsProduction();
+if (autoCreateDatabase)
+    await SchemaInitializer.EnsureDatabaseAsync(connectionString);
+
 await SchemaInitializer.RunAsync(db, Path.Combine(AppContext.BaseDirectory, "Data", "schema.sql"));
 await Seeder.RunAsync(db, app.Configuration, app.Environment);
 

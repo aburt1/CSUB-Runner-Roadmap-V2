@@ -46,4 +46,12 @@ public class SmokeTests
         var res = await _fx.Anonymous().PostAsJsonAsync("/api/admin/auth/login", new { email = "admin@csub.edu", password = "wrong" });
         Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
     }
+
+    [Fact]
+    public async Task Schema_version_is_recorded_on_startup()
+    {
+        var version = Api.Data.SchemaInitializer.CurrentSchemaVersion;
+        var count = Convert.ToInt32(await _fx.ScalarAsync($"SELECT COUNT(*) FROM schema_version WHERE version = '{version}'"));
+        Assert.Equal(1, count);
+    }
 }
