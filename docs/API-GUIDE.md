@@ -9,11 +9,25 @@ This guide covers how external systems integrate with the CSUB Admissions app. T
 | **Who initiates** | Your system | Our app (triggered by the student) |
 | **Auth method** | Integration key | Configured per-step by a sysadmin (none, basic, or bearer) |
 
-The app is an ASP.NET Core (.NET 10) service using Dapper + hand-written T-SQL against SQL Server. The endpoints below (paths, payloads, status codes) are preserved verbatim from the original Node/Express implementation — only the runtime and setup have changed.
+The app is an **ASP.NET Core (.NET 10)** service using **Dapper** + hand-written T-SQL against **SQL Server**, paired with a **Vue 3 (Vite)** single-page app. The endpoints below — paths, payloads, status codes, JSON key names — are preserved **verbatim** from the original Node/Express implementation. Only the runtime, the deployment topology, and the local-dev setup have changed. Where a behavior is enforced by a specific source file, that file is named so you can verify it.
 
 **Base URL:** `https://your-domain.com` (substitute your production hostname)
 
-In production the API and the built Vue SPA are served by a **single process on port 8080**. In local development the API runs on `http://localhost:3001` and the Vite dev server on `http://localhost:3000` proxies `/api` to it — so integration calls in dev go to `:3001` (or `:3000/api` through the proxy).
+### Where the API lives (deployment topology)
+
+In production the app runs as **three containers** that talk over an internal Docker network:
+
+| Container | Image / build | Port (host:container) | Role |
+|-----------|---------------|-----------------------|------|
+| `web` | Vue build served by **nginx** (`client/Dockerfile`) | `3000:80` | Serves the SPA and **reverse-proxies `/api` to the `api` container** |
+| `api` | **ASP.NET Core** (`Api/Dockerfile`) | `8080:8080` | The API only; auto-creates the DB + schema + seed on startup |
+| `sqlserver` | `mcr.microsoft.com/mssql/server:2022-latest` | `1433:1433` | SQL Server 2022 |
+
+Browsers (and your integration clients, if they go through the public hostname) hit **`web` on port 3000**. nginx forwards every `/api/...` request to `api:8080` over the internal network (`client/nginx.conf.template`). Because the browser only ever sees one origin (`http://localhost:3000`), **the SPA and the API are same-origin and CORS is not involved**. The `api` container also still bundles a static-file fallback (`Api/Program.cs` calls `UseStaticFiles` + `MapFallbackToFile`), so it *can* serve a SPA on its own, but in the supported topology the `web`/nginx container owns that job.
+
+If you call the API directly (skipping nginx), use the `api` container's port — e.g. `http://localhost:8080/api/integrations/v1/step-catalog`. If you call it through the front door, use `http://localhost:3000/api/...`.
+
+> **Local development** runs without containers and uses different ports: the API runs on `http://localhost:3001` (`dotnet run`) and the Vite dev server runs on `http://localhost:3000` and proxies `/api` to the API. See [Running the app](#running-the-app) for the full local workflow. The client always calls a **relative** `/api` path, so no API URL is ever hardcoded — the proxy (Vite in dev, nginx in containers) decides where it lands.
 
 ---
 
@@ -23,7 +37,8 @@ In production the API and the built Vue SPA are served by a **single process on 
 2. [Inbound Integration (Push Data In)](#inbound-integration-push-data-in)
 3. [Outbound Integration (Poll External APIs)](#outbound-integration-poll-external-apis)
 4. [Configuration](#configuration)
-5. [Error Code Reference](#error-code-reference)
+5. [Running the app](#running-the-app)
+6. [Error Code Reference](#error-code-reference)
 
 ---
 
@@ -33,7 +48,7 @@ The app uses three separate authentication models depending on the audience.
 
 ### Integration Key (for inbound API)
 
-Integration clients are provisioned with a secret key. The raw key is never stored — only a bcrypt hash is kept in the database (`integration_clients.key_hash`).
+Integration clients are provisioned with a secret key. The raw key is never stored — only a **bcrypt hash** is kept in the database (`integration_clients.key_hash`). The gate that enforces this is `Api/Auth/IntegrationAuthAttribute.cs`, applied as `[IntegrationAuth]` to the whole `IntegrationsController` (the equivalent of the old `router.use(integrationAuth)`).
 
 Send your key in one of two ways:
 
@@ -47,11 +62,18 @@ or
 Authorization: Bearer your-secret-key
 ```
 
-The gate (`Api/Auth/IntegrationAuthAttribute.cs`) bcrypt-compares your key against active clients. Optionally send an `X-Client-Name` header to look up your single client directly (avoids scanning every active client and is the recommended path for production); without it, the app scans up to the first 10 active clients.
+`X-Integration-Key` is checked first; if it is empty, the `Authorization: Bearer` value is used. Either way the value is trimmed before comparison.
 
-**Key provisioning:** A default client is seeded on startup from the `Integration__DefaultName` / `Integration__DefaultKey` configuration values (see [Configuration](#configuration)). In local development, if no key is configured, a client named `PeopleSoft Dev` is seeded with the key `dev-integration-key`. In production no client is auto-seeded unless `Integration__DefaultKey` is set. You can also add clients by inserting directly into the `integration_clients` table — each row has a `name`, `key_hash`, and `is_active` flag.
+**How the gate validates your key:** the raw key you send is bcrypt-compared (`Passwords.Verify`) against the stored `key_hash` of active clients. There are two lookup paths:
 
-**Rotating keys:** Create a new integration client, update your systems to use the new key, then deactivate the old client by setting `is_active = 0`.
+- **Recommended for production —** send an `X-Client-Name` header naming your client. The app looks up that **single** active client by name and bcrypt-compares against just its hash. This is fast and avoids a bcrypt computation per active client.
+- **Fallback —** if you do not send `X-Client-Name`, the app scans up to the **first 10 active clients** (`SELECT TOP 10 ... WHERE is_active = 1`) and bcrypt-compares each. This is kept for backward compatibility and bounded at 10 to prevent a bcrypt-amplification DoS.
+
+On success, the gate stashes the client's name and id on the request (`HttpContext.Items["integrationClientName"]` / `["integrationClientId"]`). The name becomes the audit-log actor (`source_system`) for any completion the request records, and the id scopes idempotency.
+
+**Key provisioning:** A default client is seeded on startup from the `Integration__DefaultName` / `Integration__DefaultKey` configuration values (see [Configuration](#configuration)). In **local development**, if no key is configured, a client named `PeopleSoft Dev` is seeded with the key `dev-integration-key`. In **production**, no client is auto-seeded unless `Integration__DefaultKey` is set. You can also add clients by inserting directly into the `integration_clients` table — each row has a `name`, `key_hash`, and `is_active` flag.
+
+**Rotating keys:** Create a new integration client, update your systems to use the new key, then deactivate the old client by setting `is_active = 0`. Because the gate only considers `is_active = 1` rows, the old key stops working the moment you flip the flag.
 
 ### Admin JWT (for API check configuration)
 
@@ -70,32 +92,42 @@ Admin roles control access:
 | `admissions_editor` | Can create/edit steps and terms |
 | `sysadmin` | Full access including API check configuration and user management |
 
+The API-check configuration endpoints in this guide are gated to **`sysadmin`** specifically (`[AdminAuth("sysadmin")]` on `Api/Controllers/Admin/ApiChecksController.cs`).
+
 > **Note:** The legacy `X-API-Key` admin authentication path from the original app has been **dropped**. Admin access is JWT-only.
 
 ### Rate Limiting
 
-All `/api/` routes are rate-limited to **200 requests per 15 minutes** per IP address (configured in `Api/Program.cs` via ASP.NET Core's built-in rate limiter). Requests over the limit receive HTTP **429**. Auth endpoints have stricter named limits (login: 10/15min, break-glass local login: 5/15min). Static/SPA asset requests are not counted against the API budget.
+All `/api/` routes are rate-limited to **200 requests per 15 minutes** per IP address, configured in `Api/Program.cs` using ASP.NET Core's built-in `RateLimiter`. Requests over the limit receive HTTP **429**.
+
+- The limiter is **scoped to paths starting with `/api`**, so SPA/static-asset requests do not consume your API budget.
+- Auth endpoints opt into stricter named policies: **login** is `10 / 15 min` per IP and the break-glass **local login** is `5 / 15 min` per IP.
+- The whole limiter can be disabled with `RateLimiting__Disabled=true` (used by the xUnit integration test suite so the per-IP login limit doesn't trip during a run). Do not set this in production.
+
+> The original Express app advertised `RateLimit-Limit` / `RateLimit-Remaining` / `RateLimit-Reset` response headers. The .NET built-in limiter rejects with a bare **429** and does not emit those headers by default — treat any 429 as "back off and retry later."
 
 ### Credential Encryption
 
-Outbound API check credentials (basic auth passwords, bearer tokens) are encrypted at rest using **AES-256-GCM** (`Api/Services/Encryption.cs`, 12-byte IV + 16-byte auth tag, stored as a hex JSON `{ iv, data, tag }` blob). The encryption key is configured via the `ApiCheck__EncryptionKey` environment variable — a 64-character (32-byte) hex string.
+Outbound API-check credentials (basic-auth passwords, bearer tokens) are encrypted at rest using **AES-256-GCM** (`Api/Services/Encryption.cs`). The on-disk format is a JSON string `{ "iv": ..., "data": ..., "tag": ... }` where each field is **hex-encoded** — a **12-byte IV** and a **16-byte GCM authentication tag** — byte-for-byte compatible with the original Node `crypto` implementation. The encryption key is read once at startup from `ApiCheck__EncryptionKey` and must be a **64-character (32-byte) hex string**; anything else leaves encryption "not configured" and any attempt to save credentials returns `500 Encryption key not configured on server`.
 
 ### SSRF Protection
 
-Outbound API check URLs are validated before requests are made (`Api/Services/ApiCheckRunner.cs`). In production, the following are blocked:
+Outbound API-check URLs are validated before any request is made (`ApiCheckRunner.ValidateUrlAsync` in `Api/Services/ApiCheckRunner.cs`). In **production**, the following are blocked:
 
-- Private IPv4 ranges (10.x, 172.16-31.x, 192.168.x, 127.x, 169.254.x, 0.x)
-- Private IPv6 (::1, fc/fd prefixes)
-- localhost
-- Non-HTTP(S) schemes
+- Non-HTTP(S) schemes (only `http:` and `https:` are allowed)
+- `localhost` (and `::1` / `[::1]`)
+- Private IPv4 ranges: `10.x`, `172.16–31.x`, `192.168.x`, `127.x`, `169.254.x`, and `0.x`
+- Private IPv6: `::1`, and addresses with `fc` / `fd` prefixes
 
-The hostname is resolved via DNS and the resolved address is checked, so DNS-rebinding to a private IP is also rejected. In development (`ASPNETCORE_ENVIRONMENT=Development`), localhost and private IPs are allowed for testing with mock APIs.
+The hostname is **resolved via DNS** and the **resolved address** is checked (the first address returned by `Dns.GetHostAddressesAsync`), so DNS-rebinding a public hostname to a private IP is also rejected. If DNS resolution fails, the URL is rejected with `DNS resolution failed for <host>`.
+
+In **development** (`ASPNETCORE_ENVIRONMENT=Development`), `localhost` and private IPs are **allowed** so you can point checks at a local mock server while testing.
 
 ---
 
 ## Inbound Integration (Push Data In)
 
-External systems (e.g., PeopleSoft) call these endpoints to update student step completion status. All endpoints require an integration key and are served by `Api/Controllers/IntegrationsController.cs`.
+External systems (e.g., PeopleSoft) call these endpoints to update student step-completion status. All endpoints require an integration key and are served by `Api/Controllers/IntegrationsController.cs`.
 
 ### Quick Start
 
@@ -120,7 +152,9 @@ Discover the available steps and their `step_key` values. Call this first to kno
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `term_id` | integer | No | Filter to a specific term. If omitted, returns steps for all terms (newest term first). A non-numeric or zero value returns 400. |
+| `term_id` | integer | No | Filter to a specific term. If omitted, returns steps for **all** terms (newest term first, then by step `sort_order`). A non-numeric or zero value returns 400. |
+
+> The `term_id` parser mirrors JavaScript's `parseInt(x, 10)`: it reads the leading integer of the string and treats `0` or a non-numeric value as falsy, which trips the old `req.query.term_id && !termId` guard and returns `400 {"error": "term_id must be a valid number"}`.
 
 **Example Request:**
 
@@ -150,13 +184,15 @@ curl -H "X-Integration-Key: your-secret-key" \
 ]
 ```
 
+Within a term, rows come back in step `sort_order` (then `id`). With no `term_id`, terms are ordered by `created_at` descending so the most recent term appears first.
+
 > **Note:** Only send completions for steps where `is_active` is `1`. Inactive steps will return a `step_inactive` error.
 
 ---
 
 ### PUT /api/integrations/v1/step-completions
 
-Update a single student's step completion status.
+Update a single student's step-completion status.
 
 **Request Body:**
 
@@ -168,6 +204,8 @@ Update a single student's step completion status.
 | `source_event_id` | string | Yes | Unique ID for idempotency (see [Idempotency](#idempotency)) |
 | `note` | string | No | Optional note attached to the completion |
 | `completed_at` | string | No | ISO 8601 timestamp. Defaults to current time if omitted. |
+
+**Validation order** (`ProcessCompletionItemAsync`): `source_event_id` is required → if a stored event for `(client, source_event_id)` already exists it is **replayed immediately** → `status` is validated → the student is resolved by emplid → the step is resolved by `step_key` within that student's term → the progress change is applied. The first failing check short-circuits with the matching error code.
 
 **Example Request:**
 
@@ -201,7 +239,7 @@ curl -X PUT \
 }
 ```
 
-Timestamps are emitted as ISO-8601 UTC with a trailing `Z` (preserved from the old app).
+Timestamps are emitted as ISO-8601 UTC with a trailing `Z` (a custom `UtcDateTimeConverter` enforces this app-wide, matching the old app). `student_id` is the internal GUID for the resolved student.
 
 **Result Values:**
 
@@ -210,6 +248,8 @@ Timestamps are emitted as ISO-8601 UTC with a trailing `Z` (preserved from the o
 | `created` | New completion record was created |
 | `updated` | Existing record was changed (e.g., status or note updated) |
 | `noop` | Already in the requested state — no changes made |
+
+When `result` is anything other than `noop`, the change is written to the audit log with an action of `integration_complete`, `integration_waive`, or `integration_uncomplete` (depending on the status), tagged with the integration client name as `source_system` and the `source_event_id`.
 
 **Error Response (4xx):**
 
@@ -226,11 +266,13 @@ Timestamps are emitted as ISO-8601 UTC with a trailing `Z` (preserved from the o
 }
 ```
 
+The failure body grows extra identifiers as the request gets further along: a `student_not_found` failure has no `student_id`; a step-resolution failure adds `student_id`; an invalid-`completed_at` failure adds both `student_id` and `step_id`. See the [Error Code Reference](#error-code-reference) for every `code`.
+
 ---
 
 ### POST /api/integrations/v1/step-completions/batch
 
-Update multiple students/steps in a single request. Each item has the same fields as the single endpoint. The batch is capped at **500 items**; an empty or missing `items` array returns 400, and more than 500 items returns 400.
+Update multiple students/steps in a single request. Each item has the same fields as the single endpoint. The batch is capped at **500 items**: an empty or missing `items` array returns `400 {"error": "items must be a non-empty array"}`, and more than 500 items returns `400 {"error": "Batch size must not exceed 500 items"}`.
 
 **Request Body:**
 
@@ -301,7 +343,9 @@ curl -X POST \
 }
 ```
 
-> **Important:** The batch endpoint always returns HTTP 200 at the envelope level, even if individual items fail. Always check each item's `success` field. Items are processed sequentially in array order. Each item is independently idempotent via its own `source_event_id`.
+Each item in `items` is exactly the body the single `PUT` endpoint would have returned for that item — success or failure. The `summary` counts items whose body carried `success: true`.
+
+> **Important:** The batch endpoint always returns HTTP 200 at the envelope level, even if individual items fail (the per-item HTTP status is folded into each item's body, not the response code). Always check each item's `success` field. Items are processed **sequentially in array order**. Each item is independently idempotent via its own `source_event_id`.
 
 ---
 
@@ -311,9 +355,11 @@ Every request **must** include a `source_event_id`. This is the key to safe retr
 
 **How it works:**
 
-1. The first time a `(integration_client_id, source_event_id)` pair is seen, the request is processed normally and the full response is stored in the `integration_events` table (which has a unique constraint on that pair).
-2. If the same pair is sent again, the stored response is returned immediately — byte-for-byte identical to the original, no re-processing occurs.
+1. The first time a `(integration_client_id, source_event_id)` pair is seen, the request is processed normally and the full response — both HTTP status and body — is stored in the `integration_events` table, which has a **unique constraint** on `(integration_client_id, source_event_id)`.
+2. If the same pair is sent again, the stored response is returned immediately — **byte-for-byte identical** to the original (the stored body is serialized with the same UTC-`Z` timestamp converter), no re-processing occurs.
 3. A different `source_event_id` is always treated as a new request.
+
+> The stored response is keyed by the integration **client** id, so two different clients may safely use the same `source_event_id` string. Idempotency is also race-safe: if two identical requests arrive concurrently and one loses the unique-constraint insert, the loser re-reads and replays the winner's stored response.
 
 **Choosing good source_event_id values:**
 
@@ -327,28 +373,32 @@ Every request **must** include a `source_event_id`. This is the key to safe retr
 | Retry with same event ID `ABC-123` | Returns stored response (no re-processing) |
 | New call with event ID `ABC-456` | Processes as a new request |
 
+> Note that even *failure* responses are stored once a student/step has been resolved, so retrying a failed `source_event_id` replays the same failure rather than re-validating. Use a fresh `source_event_id` for a genuinely new attempt.
+
 ---
 
 ## Outbound Integration (Poll External APIs)
 
-The app can poll external HTTP endpoints to automatically check whether a student has completed a step. A sysadmin configures a URL template and response field path per step (`Api/Controllers/Admin/ApiChecksController.cs`). When a student triggers a check, the app (`Api/Services/ApiCheckRunner.cs`) calls each configured URL, extracts a value, and updates the step accordingly.
+The app can poll external HTTP endpoints to automatically check whether a student has completed a step. A sysadmin configures a URL template and response-field path per step (`Api/Controllers/Admin/ApiChecksController.cs`). When a student triggers a check, the app (`Api/Services/ApiCheckRunner.cs`) calls each configured URL, extracts a value, and updates the step accordingly.
 
 ### How It Works
 
-1. A sysadmin configures an API check on a step (URL, auth, response field path)
+1. A sysadmin configures an API check on a step (URL, auth, response-field path)
 2. A student visits their roadmap and triggers a check run
-3. The app iterates through all enabled checks for the student's active term, in step `sort_order`
+3. The app loads all **enabled** checks for the student's **active term whose steps are active**, ordered by step `sort_order`
 4. For each check, it substitutes the student's identifier into the URL, calls the external API, and extracts the configured field
-5. **Truthy value** = mark step completed (as `api_check`), only if the step is not already completed
-6. **Falsy value** = revert to incomplete, **but only if** the step was previously auto-completed by `api_check` (never reverts manual or integration completions)
+5. **Truthy value** = mark the step completed (recorded with `completed_by = api_check`), but **only if** the step is not already completed
+6. **Falsy value** = revert the step to incomplete, but **only if** it was previously auto-completed by `api_check` — it never reverts a manual or integration completion
+
+The throttle timestamp (`students.last_api_check_at`) is updated at the end of every run.
 
 **Throttling & Timeouts:**
 
-- **5-minute cooldown** per student between check runs
+- **5-minute cooldown** per student between check runs (enforced against `last_api_check_at`)
 - **5-second timeout** per individual external API call
-- **15-second total cap** across all checks in a single run (remaining checks are skipped once the cap is reached)
+- **15-second total cap** across all checks in a single run — once the cap is reached, remaining checks are skipped and the run finishes with whatever it has
 
-> **Note:** The dev-only mock API-check routes from the original app have been **dropped**. To test a configuration use the `.../api-check/test` admin endpoint below, or point a check at a local mock server (allowed in development).
+> **Note:** The dev-only mock API-check routes from the original app have been **dropped**. To test a configuration, use the `.../api-check/test` admin endpoint below, or point a check at a local mock server (allowed in development).
 
 ---
 
@@ -360,7 +410,7 @@ If you are building an API that the admissions app will poll, here is what it ne
 2. **Accept a student identifier** in the URL (substituted via a placeholder)
 3. **Return JSON** with a field that evaluates to truthy (step complete) or falsy (step incomplete)
 
-The app sends an `Accept: application/json` header. Truthiness follows JavaScript `Boolean()` semantics (preserved from the old app): `false`, `null`, `0`, and `""` are falsy; non-empty strings, non-zero numbers, and any object/array are truthy.
+The app sends an `Accept: application/json` header on every call. Truthiness follows JavaScript `Boolean()` semantics (preserved from the old app): `false`, `null`, `0` (and `-0`), and the empty string `""` are **falsy**; non-empty strings, non-zero numbers, and any object or array (even an empty one) are **truthy**. If the response is not valid JSON, or the field path doesn't resolve, the extracted value is treated as `null` (falsy).
 
 **Simple example:**
 
@@ -392,11 +442,11 @@ Your endpoint returns:
 }
 ```
 
-The `response_field_path` would be `data.admissions.depositPaid`. Numeric path segments index into arrays (e.g., `items.0.status`).
+The `response_field_path` would be `data.admissions.depositPaid`. Numeric path segments index into arrays (e.g., `items.0.status` reads the `status` of the first array element).
 
 **URL Placeholders:**
 
-The placeholder name defaults to `studentId` but can be customized via `student_param_name`. At runtime, the placeholder is replaced with the student's emplid (default) or email, depending on `student_param_source`. The value is URI-encoded.
+The placeholder name defaults to `studentId` but can be customized via `student_param_name`. At runtime the placeholder `{{name}}` is replaced with the student's emplid (default) or email, depending on `student_param_source`. The value is URI-encoded. If the student has no value for the configured source (e.g. no emplid on file), that step's check is skipped.
 
 | `student_param_source` | What gets substituted |
 |------------------------|----------------------|
@@ -411,17 +461,17 @@ The placeholder name defaults to `studentId` but can be customized via `student_
 | `basic` | `{"username": "user", "password": "pass"}` | `Authorization: Basic <base64>` |
 | `bearer` | `{"token": "your-token"}` | `Authorization: Bearer your-token` |
 
-Custom headers can also be configured as an array of `{"key": "X-Custom", "value": "value"}` objects.
+Custom headers can also be configured as an array of `{"key": "X-Custom", "value": "value"}` objects; each is sent as-is. Malformed header JSON is ignored rather than failing the call.
 
 ---
 
 ### Admin Configuration Endpoints
 
-These endpoints require an admin JWT with the **sysadmin** role.
+These endpoints require an admin JWT with the **sysadmin** role (`[AdminAuth("sysadmin")]`).
 
 #### GET /api/admin/steps/{id}/api-check
 
-Get the current API check configuration for a step. Credentials are masked in the response.
+Get the current API-check configuration for a step. Credentials are **masked** in the response (the literal eight-bullet string `••••••••`); they are never returned in the clear.
 
 ```bash
 curl -H "Authorization: Bearer <admin-jwt>" \
@@ -432,7 +482,6 @@ curl -H "Authorization: Bearer <admin-jwt>" \
 
 ```json
 {
-  "configured": true,
   "id": 1,
   "step_id": 5,
   "is_enabled": true,
@@ -443,9 +492,14 @@ curl -H "Authorization: Bearer <admin-jwt>" \
   "headers": [{"key": "X-Campus", "value": "CSUB"}],
   "student_param_name": "studentId",
   "student_param_source": "emplid",
-  "response_field_path": "completed"
+  "response_field_path": "completed",
+  "created_at": "2026-03-01T12:00:00.000Z",
+  "updated_at": "2026-03-10T09:15:00.000Z",
+  "configured": true
 }
 ```
+
+`auth_credentials` is only masked when a value is actually stored; a `null` or empty value is passed through unchanged. `headers` is parsed back into JSON when it was stored as valid JSON, otherwise the raw stored string is returned.
 
 **Response (not configured):**
 
@@ -457,21 +511,23 @@ curl -H "Authorization: Bearer <admin-jwt>" \
 
 #### PUT /api/admin/steps/{id}/api-check
 
-Create or update an API check configuration (upsert on `step_id`).
+Create or update an API-check configuration. This is an **upsert keyed on `step_id`** (the old `ON CONFLICT (step_id) DO UPDATE`), done inside a transaction.
 
 **Request Body:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `url` | string | Yes | URL with `{{placeholder}}` for student ID |
+| `url` | string | Yes | URL with `{{placeholder}}` for the student identifier |
 | `response_field_path` | string | Yes | Dot-notation path to the field in the response |
-| `http_method` | string | No | `"GET"` (default) or `"POST"` |
+| `http_method` | string | No | `"GET"` (default) or `"POST"` (case-insensitive; uppercased server-side) |
 | `auth_type` | string | No | `"none"` (default), `"basic"`, or `"bearer"` |
-| `auth_credentials` | object | No | See auth options table above. Encrypted at rest. Send the masked sentinel `"••••••••"` to preserve existing credentials unchanged. |
+| `auth_credentials` | object/string | No | See the auth-options table above. Encrypted at rest. Send the masked sentinel `"••••••••"` to **preserve existing credentials unchanged**. |
 | `headers` | array | No | Array of `{"key": "...", "value": "..."}` objects |
-| `student_param_name` | string | No | Placeholder name in URL (default: `"studentId"`) |
+| `student_param_name` | string | No | Placeholder name in the URL (default: `"studentId"`) |
 | `student_param_source` | string | No | `"emplid"` (default) or `"email"` |
-| `is_enabled` | boolean | No | Only a literal JSON `true` enables the check; anything else (including omitting it) disables it. |
+| `is_enabled` | boolean | No | **Only a literal JSON `true` enables the check**; anything else — including omitting it — disables it. |
+
+**Validation:** `url` and `response_field_path` are required. The URL is validated for format **after** substituting a placeholder probe value (so `{{studentId}}` doesn't break URL parsing); a malformed result returns `400 Invalid URL format`. `http_method` must resolve to `GET` or `POST`; `auth_type` must be `none`, `basic`, or `bearer`. If you supply real (non-masked) credentials with a non-`none` auth type and the server has no encryption key configured, the request returns `500 Encryption key not configured on server`.
 
 ```bash
 curl -X PUT \
@@ -492,9 +548,11 @@ curl -X PUT \
 
 **Response:** `{"success": true}`
 
+A successful upsert is recorded in the audit log (`step_api_check` / `upsert`) with the URL, `auth_type`, and `response_field_path`.
+
 #### DELETE /api/admin/steps/{id}/api-check
 
-Remove the API check configuration for a step.
+Remove the API-check configuration for a step.
 
 ```bash
 curl -X DELETE \
@@ -502,11 +560,11 @@ curl -X DELETE \
   "https://your-domain.com/api/admin/steps/5/api-check"
 ```
 
-**Response:** `{"success": true}`
+**Response:** `{"success": true}` (also audit-logged as `step_api_check` / `delete`).
 
 #### POST /api/admin/steps/{id}/api-check/test
 
-Test an API check with a sample student identifier before going live. No DB writes occur.
+Test an API check with a sample student identifier before going live. **No DB writes occur** — this only makes the outbound call and reports what *would* happen. The check must already be saved on the step (a `404 No API check configured for this step` is returned otherwise).
 
 ```bash
 curl -X POST \
@@ -527,19 +585,23 @@ curl -X POST \
 }
 ```
 
-The `responseBody` is truncated to 2048 characters. Use `wouldMarkComplete` to verify the configuration is working as expected before enabling.
+`responseBody` is the raw body returned by your endpoint, **truncated to 2048 characters** (with a trailing `...` when truncated). `extractedValue` is the value found at `response_field_path` (or `null` if absent / the body wasn't JSON). `wouldMarkComplete` is the JavaScript-truthiness of that value. Use it to verify the configuration before enabling.
 
-**Response (failure):** a single-key object, e.g. `{"error": "URL rejected: ..."}`, `{"error": "Failed to decrypt credentials"}`, or `{"error": "Request failed: ..."}`.
+**Response (failure):** a single-key object, e.g.:
+
+- `{"error": "URL rejected: ..."}` — failed SSRF validation
+- `{"error": "Failed to decrypt credentials"}` — stored credentials couldn't be decrypted (e.g. the encryption key changed)
+- `{"error": "Request failed: ..."}` — the outbound call threw (timeout, connection refused, etc.)
 
 ---
 
 ### Student-Facing Trigger
 
-These endpoints require a student JWT and are served by `Api/Controllers/RoadmapApiChecksController.cs`.
+These endpoints require a **student JWT** and are served by `Api/Controllers/RoadmapApiChecksController.cs` (gated with `[StudentAuth]`).
 
 #### POST /api/roadmap/run-api-checks
 
-Trigger a background check run. Returns immediately.
+Trigger a background check run. Returns immediately; the actual checks run fire-and-forget on the server.
 
 ```bash
 curl -X POST \
@@ -549,8 +611,8 @@ curl -X POST \
 
 **Responses:**
 
-- `{"status": "started"}` — checks are running in the background (also returned if a run is already in progress for this student)
-- `{"status": "skipped"}` — within the 5-minute cooldown, try again later
+- `{"status": "started"}` — checks are running in the background (this is also returned if a run is **already in progress** for this student, so the same run isn't kicked off twice)
+- `{"status": "skipped"}` — within the **5-minute cooldown** since the last run; try again later
 
 #### GET /api/roadmap/check-status
 
@@ -573,7 +635,9 @@ curl -H "Authorization: Bearer <student-jwt>" \
 }
 ```
 
-Status values: `"running"`, `"complete"`, `"no_run"` (no recent run). Run state is held in memory and cleaned up after 2 minutes once complete, so poll promptly after starting a run.
+`checkedSteps` lists **only the steps whose status actually changed** during the run — a step the check confirmed was already complete won't appear.
+
+Status values: `"running"`, `"complete"`, `"no_run"` (no recent run). Run state is held **in memory** in the singleton `ApiCheckRunner` (it does not survive an app restart, and is per-`api`-process) and is cleaned up **2 minutes** after a run completes — so poll promptly after starting a run, or you'll fall back to `no_run`.
 
 **Polling pattern (TypeScript):**
 
@@ -595,11 +659,13 @@ async function runAndPoll(token) {
 }
 ```
 
+> The client calls these via a **relative `/api`** path (proxied by Vite in dev, by nginx in containers), so the same code works in every environment without an API base URL.
+
 ---
 
 ## Configuration
 
-Configuration is read from environment variables (or `appsettings.json`). ASP.NET Core maps nested config keys with a **double underscore** (`__`) separator — e.g. `Integration__DefaultKey` binds to the `Integration:DefaultKey` config key. These are the variables relevant to integration features.
+Configuration is read from environment variables (or `appsettings.json`). ASP.NET Core maps nested config keys with a **double-underscore** (`__`) separator — e.g. `Integration__DefaultKey` binds to the `Integration:DefaultKey` config key. These are the variables relevant to integration features:
 
 | Variable | Required For | Description |
 |----------|-------------|-------------|
@@ -607,9 +673,12 @@ Configuration is read from environment variables (or `appsettings.json`). ASP.NE
 | `Integration__DefaultKey` | Inbound | Raw secret key for the default client (bcrypt-hashed before storage). In dev, defaults to `dev-integration-key` if unset; in production no client is seeded unless this is set. |
 | `ApiCheck__EncryptionKey` | Outbound | 64-character hex string (32 bytes) for AES-256-GCM encryption of stored credentials |
 | `ASPNETCORE_ENVIRONMENT` | Both | Set to `Production` to enable SSRF protection on outbound checks. `Development` allows localhost/private IPs for testing. |
-| `Cors__Origin` | Browser callers | Allowed SPA origin for CORS (defaults to `http://localhost:3000` in dev; closed in production unless set). |
+| `Cors__Origin` | Browser callers (only when bypassing the proxy) | Allowed SPA origin for CORS. Defaults to `http://localhost:3000` in dev; **closed** in production unless set. Through the nginx proxy the SPA and API are same-origin, so CORS normally isn't needed. |
+| `RateLimiting__Disabled` | Tests only | `true` turns off the rate limiter (used by the xUnit suite). Leave unset in production. |
 
-> **Note:** The app auto-creates the database, applies the schema, and seeds defaults on startup — there is no manual DB setup step. The default seeded admin is `admin@csub.edu` / `admin123` (override `Admin__DefaultEmail` / `Admin__DefaultPassword`); a break-glass local admin is `localadmin` / `Local_Admin_2026!` (`LocalLogin__Username` / `LocalLogin__Password`).
+Other configuration the API consumes (full reference) uses the same `__` convention: `ConnectionStrings__Default`, `Jwt__Secret`, `AzureAd__ClientId` / `AzureAd__TenantId`, `Admin__DefaultEmail` / `Admin__DefaultPassword`, and `LocalLogin__Username` / `LocalLogin__Password`.
+
+> **Note:** The app auto-creates the database, applies the schema (`Api/Data/schema.sql`), and seeds defaults on startup — there is **no manual DB setup step** (`Api/Program.cs` runs `SchemaInitializer` + `Seeder` before serving). The default seeded admin is `admin@csub.edu` / `admin123` (override `Admin__DefaultEmail` / `Admin__DefaultPassword`); a break-glass local admin is `localadmin` / `Local_Admin_2026!` (`LocalLogin__Username` / `LocalLogin__Password`).
 
 **Generate an encryption key:**
 
@@ -618,10 +687,34 @@ Configuration is read from environment variables (or `appsettings.json`). ASP.NE
 openssl rand -hex 32
 ```
 
-### Running the app
+---
+
+## Running the app
+
+### Full stack with Docker (three containers)
 
 ```bash
-# Local SQL Server only (for backend dev):
+docker compose up --build      # -> web on http://localhost:3000
+```
+
+This builds and starts all three services (`web`, `api`, `sqlserver`). Open **http://localhost:3000** — nginx serves the SPA and proxies `/api` to the API. To bring services up one at a time (each pulls its dependencies via `depends_on`):
+
+```bash
+docker compose up -d sqlserver        # just the database (:1433)
+docker compose up -d --build api      # database + API (:8080)
+docker compose up -d --build web      # full stack (:3000); pulls api + sqlserver
+```
+
+Override secrets/config by setting the matching env vars before `docker compose up` (see the `api` service in `docker-compose.yml`): `MSSQL_SA_PASSWORD`, `JWT_SECRET`, `ADMIN_DEFAULT_EMAIL/PASSWORD`, `LOCAL_LOGIN_USERNAME/PASSWORD`, `API_CHECK_ENCRYPTION_KEY`, and so on.
+
+> SQL Server runs as a `linux/amd64` container. On Apple Silicon this requires Rancher Desktop (or Docker Desktop) with the VZ virtualization backend and Rosetta enabled.
+
+### Local development without containers
+
+Run the database in a container and the API + client on the host:
+
+```bash
+# Database only:
 docker compose up -d sqlserver
 
 # Backend (from Api/):
@@ -633,12 +726,34 @@ dotnet build
 npm install
 npm run dev       # Vite dev server on http://localhost:3000, proxies /api -> :3001
 npm run build
-
-# Full stack in containers (built app + database, single process on :8080):
-docker compose up --build
 ```
 
-> SQL Server runs as a `linux/amd64` container. On Apple Silicon this requires Rancher Desktop (or Docker) with the VZ virtualization backend and Rosetta enabled.
+The Vite dev proxy target is the `VITE_API_PROXY_TARGET` env var (default `http://localhost:3001`). The client always calls a relative `/api`, so it works through either the Vite proxy (dev) or nginx (containers) with no hardcoded URL.
+
+### Running the frontend on its own (e.g. a Windows desktop)
+
+You can run just the Vue client and point it at a backend hosted elsewhere:
+
+1. Install **Node.js LTS** from [nodejs.org](https://nodejs.org).
+2. Open **PowerShell**.
+3. `cd client`
+4. `npm install`
+5. `npm run dev`
+6. Open **http://localhost:3000**.
+
+By default this proxies `/api` to `http://localhost:3001`. To point at a backend that is **not** on `localhost:3001`, set the env var before starting the dev server:
+
+```powershell
+# PowerShell
+$env:VITE_API_PROXY_TARGET="http://<host>:<port>"; npm run dev
+```
+
+```bat
+:: cmd.exe
+set VITE_API_PROXY_TARGET=http://<host>:<port> && npm run dev
+```
+
+Alternatively, use Docker Desktop on Windows and run `docker compose up web` (it pulls the `api` and `sqlserver` containers via `depends_on`).
 
 ---
 
@@ -657,7 +772,9 @@ docker compose up --build
 | `step_not_found` | 404 | No step found with the given `step_key` in the student's term |
 | `student_term_missing` | 409 | Student does not have an assigned term |
 | `step_inactive` | 409 | The step exists but is deactivated |
-| `duplicate_student_id_number` | 409 | Multiple students share the same emplid (data integrity issue) |
+| `duplicate_student_id_number` | 409 | Multiple students share the same emplid (data-integrity issue) |
+
+> These `code` values appear inside the per-item failure body. The HTTP status above is what the single `PUT` endpoint returns; in a batch, the status is folded into the item body and the envelope is always 200.
 
 The catalog endpoint also returns `400 {"error": "term_id must be a valid number"}` for a non-numeric/zero `term_id`. The batch endpoint returns `400 {"error": "items must be a non-empty array"}` or `400 {"error": "Batch size must not exceed 500 items"}` at the envelope level.
 
@@ -665,9 +782,9 @@ The catalog endpoint also returns `400 {"error": "term_id must be a valid number
 
 | HTTP Status | Response | Cause |
 |-------------|----------|-------|
-| 401 | `{"error": "Integration authentication required"}` | No key provided |
-| 401 | `{"error": "Invalid integration credentials"}` | Key does not match any active client |
-| 429 | (rate-limit rejection) | Exceeded 200 requests / 15 minutes per IP |
+| 401 | `{"error": "Integration authentication required"}` | No key provided in `X-Integration-Key` or `Authorization: Bearer` |
+| 401 | `{"error": "Invalid integration credentials"}` | Key does not match any active client (or no match for the named `X-Client-Name`) |
+| 429 | (bare rate-limit rejection) | Exceeded 200 requests / 15 minutes per IP on `/api` |
 
 ### Admin API Check Configuration Errors
 
@@ -679,6 +796,6 @@ The catalog endpoint also returns `400 {"error": "term_id must be a valid number
 | 400 | `auth_type must be none, basic, or bearer` | Unsupported auth type |
 | 400 | `testStudentId is required` | Test endpoint called without a sample identifier |
 | 404 | `No API check configured for this step` | Test endpoint called on an unconfigured step |
-| 500 | `Encryption key not configured on server` | `ApiCheck__EncryptionKey` env var missing/invalid when saving credentials |
+| 500 | `Encryption key not configured on server` | `ApiCheck__EncryptionKey` missing/invalid when saving real credentials |
 
-> Admin endpoints also return `401 {"error": "Authentication required"}` / `401 {"error": "Invalid or expired token"}` for missing/invalid JWTs, and `403 {"error": "Insufficient permissions"}` for a non-sysadmin token.
+> Admin endpoints also return `401 {"error": "Authentication required"}` / `401 {"error": "Invalid or expired token"}` for missing/invalid JWTs, and `403 {"error": "Insufficient permissions"}` for a non-sysadmin token. Any unhandled server error is normalized to `500 {"error": "Internal server error"}` and never leaks a stack trace.
