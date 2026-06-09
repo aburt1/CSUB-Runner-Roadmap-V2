@@ -54,7 +54,9 @@ async function handleLogin(e: Event): Promise<void> {
   }
 }
 
-const showDevLogin = import.meta.env.VITE_ALLOW_DEV_LOGIN !== 'false'
+// Dev-login is a development convenience (the server 404s the endpoint in Production).
+// Show it only in dev builds, or when explicitly opted in at build time.
+const showDevLogin = import.meta.env.DEV || import.meta.env.VITE_ALLOW_DEV_LOGIN === 'true'
 
 // Step detail panel navigation/index helpers (public steps only)
 const selectedIndex = computed(() =>

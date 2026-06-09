@@ -48,7 +48,9 @@ builder.Services.AddSingleton<Api.Services.ApiCheckRunner>();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    options.KnownNetworks.Clear();
+    // Trust the forwarded headers regardless of source: the api is only reachable
+    // through the web container's nginx proxy on the internal Docker network.
+    options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
 });
 

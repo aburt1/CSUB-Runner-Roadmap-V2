@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import NoteModal from './NoteModal.vue'
+import { useToastStore } from '../../stores/toast'
 import type { AdminApi } from '../../composables/useAdminApi'
+
+const toast = useToastStore()
 
 type ModalAction = 'complete' | 'waive' | 'uncomplete'
 
@@ -44,7 +47,9 @@ const handleConfirm = async (note: string | null) => {
       emit('toggle', props.stepId, progressStatus)
     }
   } catch {
-    // ignore
+    // The emit (and any parent state change) only happens on success above, so
+    // there's nothing to roll back — just tell the admin it didn't take.
+    toast.error('Could not update that step. Please try again.')
   } finally {
     loading.value = false
   }

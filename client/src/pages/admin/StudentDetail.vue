@@ -3,7 +3,10 @@ import { ref, computed, watch } from 'vue'
 import TagEditor from './TagEditor.vue'
 import StepToggle from './StepToggle.vue'
 import AuditTimeline from './AuditTimeline.vue'
+import { useToastStore } from '../../stores/toast'
 import type { AdminApi } from '../../composables/useAdminApi'
+
+const toast = useToastStore()
 
 interface Student {
   id: number
@@ -129,12 +132,16 @@ const handleStepToggle = (stepId: number, newStatus: string | null) => {
 }
 
 const saveTags = async (newTags: string[]) => {
+  // Optimistically show the new tags, but remember the old set so we can roll
+  // back (and tell the admin) if the save fails.
+  const previousTags = studentTags.value
   studentTags.value = newTags
   try {
     await props.api.put(`/students/${props.student!.id}/tags`, { tags: newTags })
     refreshAudit()
   } catch {
-    // ignore
+    studentTags.value = previousTags
+    toast.error('Could not save tags. Please try again.')
   }
 }
 

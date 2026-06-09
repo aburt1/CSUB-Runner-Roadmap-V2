@@ -1,6 +1,7 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '../stores/auth'
+import { useToastStore } from '../stores/toast'
 import type { Step, StepWithStatus, StepStatus, ProgressResponse, Term } from '../types/api'
 
 const API_BASE = '/api'
@@ -54,6 +55,7 @@ function deriveAllStepStatuses(steps: Step[], progressMap: Map<number, ProgressM
 // every 30s, derives statuses, and exposes computed completion metrics.
 export function useProgress() {
   const auth = useAuthStore()
+  const toast = useToastStore()
   const { token, isAuthenticated } = storeToRefs(auth)
 
   const rawSteps = ref<Step[]>([])
@@ -93,6 +95,10 @@ export function useProgress() {
         studentTags.value = data.tags || []
         if (data.term) term.value = data.term
         error.value = null
+      } else if (res.status === 401) {
+        // Token expired/invalid — drop back to the public/login view.
+        toast.error('Your session expired — please sign in again.')
+        auth.logout()
       }
     } catch {
       // Server unavailable — keep existing data

@@ -6,6 +6,16 @@ WORKDIR /client
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . ./
+# Vite inlines VITE_* values at build time, so production config must be passed
+# as build args (not runtime env). Defaults keep SSO off and dev-login disabled.
+ARG VITE_AZURE_AD_CLIENT_ID=""
+ARG VITE_AZURE_AD_TENANT_ID=""
+ARG VITE_AZURE_AD_REDIRECT_URI=""
+ARG VITE_ALLOW_DEV_LOGIN="false"
+ENV VITE_AZURE_AD_CLIENT_ID=$VITE_AZURE_AD_CLIENT_ID \
+    VITE_AZURE_AD_TENANT_ID=$VITE_AZURE_AD_TENANT_ID \
+    VITE_AZURE_AD_REDIRECT_URI=$VITE_AZURE_AD_REDIRECT_URI \
+    VITE_ALLOW_DEV_LOGIN=$VITE_ALLOW_DEV_LOGIN
 RUN npm run build
 
 FROM nginx:1.27-alpine AS final

@@ -18,6 +18,13 @@ services:
   web:
     build:
       context: ./client
+      # Vite inlines these at build time. Set them in .env to enable Azure AD SSO
+      # or (only for a non-prod build) the break-glass dev-login form.
+      args:
+        VITE_AZURE_AD_CLIENT_ID: "${VITE_AZURE_AD_CLIENT_ID:-}"
+        VITE_AZURE_AD_TENANT_ID: "${VITE_AZURE_AD_TENANT_ID:-}"
+        VITE_AZURE_AD_REDIRECT_URI: "${VITE_AZURE_AD_REDIRECT_URI:-}"
+        VITE_ALLOW_DEV_LOGIN: "${VITE_ALLOW_DEV_LOGIN:-false}"
     container_name: csub-web
     depends_on:
       - api
