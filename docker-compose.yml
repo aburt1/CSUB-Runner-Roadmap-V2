@@ -1,34 +1,59 @@
-# Local SQL Server for development.
+# Three containers: web (Vue + nginx), api (ASP.NET Core), sqlserver (SQL Server).
 #
-# Apple Silicon (M-series) has no native SQL Server build, so we run the
-# linux/amd64 image under Rancher Desktop's emulation. This is for LOCAL DEV only;
-# production uses a real SQL Server / Azure SQL instance.
+# Apple Silicon (M-series) has no native SQL Server build, so it runs as a
+# linux/amd64 image under Rancher/Docker Desktop's VZ + Rosetta emulation.
 #
-# Local dev: just the database  ->  docker compose up -d sqlserver
-# Full stack (built app + database)  ->  docker compose up --build
-# The SA password can be overridden with the MSSQL_SA_PASSWORD env var.
+# Launch the whole stack:        docker compose up --build        -> web on http://localhost:3000
+# Launch pieces individually:
+#   docker compose up -d sqlserver          # just the database (:1433)
+#   docker compose up -d --build api        # database + API (:8080); pulls sqlserver via depends_on
+#   docker compose up -d --build web        # full stack (:3000); pulls api + sqlserver
+#
+# Override secrets/config with env vars (see the api service below).
 name: csub-runner-roadmap-v2
+
 services:
-  app:
-    build: .
-    container_name: csub-app
+  # ---- Frontend: built Vue app served by nginx, which proxies /api -> api ----
+  web:
+    build:
+      context: ./client
+    container_name: csub-web
+    depends_on:
+      - api
+    environment:
+      # Where nginx forwards /api calls. The compose service name resolves on the
+      # internal network; override to point at a different backend.
+      API_URL: "${WEB_API_URL:-http://api:8080}"
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+
+  # ---- Backend: ASP.NET Core API (creates DB + schema + seed on startup) ----
+  api:
+    build:
+      context: ./Api
+    container_name: csub-api
     depends_on:
       sqlserver:
         condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      # The app creates the database + schema and seeds defaults on startup.
       ConnectionStrings__Default: "Server=sqlserver,1433;Database=csub_admissions;User Id=sa;Password=${MSSQL_SA_PASSWORD:-Csub_Local_Dev_2026!};TrustServerCertificate=True;Encrypt=False"
       Jwt__Secret: "${JWT_SECRET:-change-me-in-production-0123456789-abcdefghijklmnopqrstuvwxyz}"
       Admin__DefaultEmail: "${ADMIN_DEFAULT_EMAIL:-admin@csub.edu}"
       Admin__DefaultPassword: "${ADMIN_DEFAULT_PASSWORD:-admin123}"
       LocalLogin__Username: "${LOCAL_LOGIN_USERNAME:-localadmin}"
       LocalLogin__Password: "${LOCAL_LOGIN_PASSWORD:-Local_Admin_2026!}"
-      # 64-hex (32-byte) key used to encrypt stored API-check credentials. OVERRIDE in real deployments.
+      # 64-hex (32-byte) key for encrypting stored API-check credentials. OVERRIDE in real deployments.
       ApiCheck__EncryptionKey: "${API_CHECK_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}"
-      # Optional: AzureAd__ClientId / AzureAd__TenantId, Integration__DefaultKey, Cors__Origin.
+      # The frontend is a separate origin only if you bypass the nginx proxy; the
+      # proxy keeps it same-origin, so CORS normally isn't needed. Set if required:
+      # Cors__Origin, AzureAd__ClientId, AzureAd__TenantId, Integration__DefaultKey
     ports:
       - "8080:8080"
+    restart: unless-stopped
+
+  # ---- Database: SQL Server 2022 ----
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
     platform: linux/amd64
@@ -42,7 +67,6 @@ services:
     volumes:
       - csub_sqlserver_data:/var/opt/mssql
     healthcheck:
-      # /opt/mssql-tools18/bin uses the newer tools; -C trusts the dev cert.
       test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD:-Csub_Local_Dev_2026!}\" -C -Q \"SELECT 1\" || exit 1"]
       interval: 10s
       timeout: 5s
