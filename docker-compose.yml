@@ -27,13 +27,15 @@ services:
         VITE_ALLOW_DEV_LOGIN: "${VITE_ALLOW_DEV_LOGIN:-false}"
     container_name: csub-web
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     environment:
       # Where nginx forwards /api calls. The compose service name resolves on the
       # internal network; override to point at a different backend.
       API_URL: "${WEB_API_URL:-http://api:8080}"
     ports:
-      - "3000:80"
+      # Host 3000 -> container 8080 (the unprivileged nginx listens on 8080).
+      - "3000:8080"
     restart: unless-stopped
 
   # ---- Backend: ASP.NET Core API (creates DB + schema + seed on startup) ----

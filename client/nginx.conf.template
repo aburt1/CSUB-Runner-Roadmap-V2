@@ -1,7 +1,9 @@
 # Rendered at container start: ${API_URL} is substituted from the env var.
 # nginx's own variables ($uri, $host, ...) are left untouched (not env vars).
 server {
-    listen 80;
+    # 8080, not 80: the unprivileged nginx image runs as a non-root user and
+    # cannot bind low ports. The web container is published on host :3000.
+    listen 8080;
     server_name _;
     root /usr/share/nginx/html;
     index index.html;

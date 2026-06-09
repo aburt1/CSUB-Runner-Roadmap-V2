@@ -1,0 +1,34 @@
+# EditorConfig for the CSUB Runner Roadmap solution.
+# These [*.cs] rules govern the C# API; the Vue client is governed by Prettier
+# and ESLint (see client/.prettierrc.json and client/eslint.config.js).
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+trim_trailing_whitespace = true
+
+[*.cs]
+indent_size = 4
+
+# --- .NET analyzer rule tuning ----------------------------------------------
+# The build runs with TreatWarningsAsErrors at the default ("latest") analysis
+# level, which is clean today. These two rules are turned off explicitly so the
+# build stays green if someone later raises AnalysisLevel to "recommended".
+
+# CA1707 — identifiers should not contain underscores.
+#   Intentionally off. The Dapper row models and DTOs use snake_case member names
+#   so they map 1:1 to SQL columns and serialize to the exact JSON contract the
+#   client (and the original Node app) expect. Renaming them would break both the
+#   database mapping and the public API shape.
+dotnet_diagnostic.CA1707.severity = none
+
+# CA1848 — use LoggerMessage delegates for logging performance.
+#   Off. Logging here is low-volume (warnings/errors on failure paths); the
+#   source-generated delegate pattern is more ceremony than this app warrants.
+dotnet_diagnostic.CA1848.severity = none
+
+[*.{json,sql,yml,yaml}]
+indent_size = 2

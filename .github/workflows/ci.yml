@@ -1,0 +1,89 @@
+name: CI
+
+# Build, lint, and test both halves of the app on every push/PR. The backend job
+# stands up a real SQL Server (the integration tests run against it, not a mock);
+# the frontend job type-checks, lints, unit-tests, and production-builds the SPA.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  backend:
+    name: API (build + integration tests)
+    runs-on: ubuntu-latest
+
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: 'Y'
+          # Ephemeral CI database only. This is the same well-known local/test password
+          # the integration-test fixture hardcodes (tests/Api.IntegrationTests/WebAppFixture.cs),
+          # not a production secret — they must match for the tests to connect.
+          MSSQL_SA_PASSWORD: 'Csub_Local_Dev_2026!'
+          MSSQL_PID: 'Developer'
+        ports:
+          - 1433:1433
+        # GitHub holds the job until this probe reports healthy, so SQL Server is
+        # accepting connections before `dotnet test` runs.
+        options: >-
+          --health-cmd="/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P Csub_Local_Dev_2026! -C -Q 'SELECT 1' -b"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+          --health-start-period=30s
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # The solution (CsubRunnerRoadmapV2.slnx) sits at the repo root.
+      - name: Restore
+        run: dotnet restore
+
+      # Release build with TreatWarningsAsErrors — analyzer/style violations fail CI.
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Test
+        run: dotnet test --no-build -c Release --logger "console;verbosity=normal"
+
+  frontend:
+    name: Client (lint + test + build)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Unit tests
+        run: npm run test
+
+      # vue-tsc type-check + production bundle.
+      - name: Build
+        run: npm run build

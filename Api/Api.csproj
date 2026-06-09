@@ -4,6 +4,13 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Treat the build like CI does: analyzers on, warnings fail the build. The
+         default ("latest") tier catches real correctness issues; the stricter
+         style/perf rules that fight our deliberate snake_case DB models are turned
+         off in .editorconfig with a rationale. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
   </PropertyGroup>
 
   <ItemGroup>
