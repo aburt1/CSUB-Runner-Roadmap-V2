@@ -48,16 +48,6 @@ public sealed class Step
     public int? is_active { get; set; }
 }
 
-public sealed class StudentProgress
-{
-    public string student_id { get; set; } = "";
-    public int step_id { get; set; }
-    public DateTime? completed_at { get; set; }
-    public string? status { get; set; }
-    public string? note { get; set; }
-    public string? completed_by { get; set; }
-}
-
 public sealed class AdminUser
 {
     public int id { get; set; }
@@ -97,19 +87,6 @@ public sealed class IntegrationClient
     public string name { get; set; } = "";
     public string key_hash { get; set; } = "";
     public int is_active { get; set; }
-    public DateTime created_at { get; set; }
-}
-
-public sealed class IntegrationEvent
-{
-    public int id { get; set; }
-    public int integration_client_id { get; set; }
-    public string source_event_id { get; set; } = "";
-    public string? student_id_number { get; set; }
-    public string? step_key { get; set; }
-    public string? request_body { get; set; }
-    public int response_status { get; set; }
-    public string response_body { get; set; } = "";
     public DateTime created_at { get; set; }
 }
 

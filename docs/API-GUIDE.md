@@ -374,7 +374,7 @@ Every request **must** include a `source_event_id`. This is the key to safe retr
 | Retry with same event ID `ABC-123` | Returns stored response (no re-processing) |
 | New call with event ID `ABC-456` | Processes as a new request |
 
-> Note that even *failure* responses are stored once a student/step has been resolved, so retrying a failed `source_event_id` replays the same failure rather than re-validating. Use a fresh `source_event_id` for a genuinely new attempt.
+> Which failures are stored: **student/step-resolution failures** (`student_not_found`, `duplicate_student_id_number`, `step_not_found`, `step_inactive`) **are stored and replayed** for the same `source_event_id` — fixing the student record and retrying the same event ID will keep returning the stored failure. **Input-validation failures** (`invalid_source_event_id`, `invalid_status`, `invalid_completed_at`) are *not* stored and are re-validated on retry. Use a fresh `source_event_id` for a genuinely new attempt.
 
 ---
 
@@ -796,9 +796,9 @@ Run the database in a container and the API + client on the host:
 # Database only:
 docker compose up -d sqlserver
 
-# Backend (from Api/):
-dotnet run        # serves the API on http://localhost:3001
-dotnet test       # run the xUnit suite in tests/
+# Backend:
+cd Api && dotnet run    # serves the API on http://localhost:3001
+dotnet test             # from the REPO ROOT (resolves the .slnx incl. tests/) — not from Api/
 dotnet build
 
 # Client (from client/):

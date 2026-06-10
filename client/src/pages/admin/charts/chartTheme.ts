@@ -12,8 +12,6 @@
  *   - Green (#10B981) for success/fast completion
  */
 
-import type { CSSProperties } from 'vue'
-
 // ── Brand colors ──────────────────────────────────────────
 export const CSUB_BLUE: string = '#003594'
 export const CSUB_BLUE_DARK: string = '#001A70'
@@ -32,17 +30,6 @@ export const GRID_COLOR: string = '#E5E7EB'
 
 // ── Bar styling ───────────────────────────────────────────
 export const BAR_RADIUS: [number, number, number, number] = [4, 4, 0, 0]
-export const BAR_RADIUS_HORIZONTAL: [number, number, number, number] = [0, 4, 4, 0]
-
-// ── Tooltip styling ───────────────────────────────────────
-export const TOOLTIP_STYLE: CSSProperties = {
-  backgroundColor: '#fff',
-  border: `1px solid ${GRID_COLOR}`,
-  borderRadius: '8px',
-  fontSize: '12px',
-}
-
-export const TOOLTIP_CURSOR: { fill: string } = { fill: 'rgba(0, 53, 148, 0.08)' }
 
 // ── Progress bucket colors (0% → 100%) ───────────────────
 // Tells a clear story: red (none) → amber (starting) → blue (progressing) → dark blue (strong) → gold (complete)

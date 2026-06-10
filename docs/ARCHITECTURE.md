@@ -60,7 +60,7 @@ CSUB-Runner-Roadmap-V2/
 │   │   │   ├── Celebration.vue          # canvas-confetti completion celebration
 │   │   │   ├── HighContrastToggle.vue   # Accessibility toggle
 │   │   │   ├── PublicRoadmapPreview.vue # Anonymous public step preview
-│   │   │   ├── RoadrunnerMascot.vue     # CSUB Roadrunner mascot
+│   │   │   ├── ToastContainer.vue       # Global transient notifications (errors/success)
 │   │   │   └── roadmap/                 # The student timeline UI
 │   │   │       ├── RoadmapTimeline.vue
 │   │   │       ├── TimelineStep.vue
@@ -77,11 +77,11 @@ CSUB-Runner-Roadmap-V2/
 │   │   │       ├── AdminPage.vue         # Tabbed console shell
 │   │   │       ├── AdminLogin.vue        # Admin password / SSO login
 │   │   │       ├── AdminLocalLogin.vue   # Break-glass local login
-│   │   │       ├── StepsTab.vue          # Step CRUD + reorder
 │   │   │       ├── StudentsTab.vue       # Student list/search
 │   │   │       ├── StudentDetail.vue     # Per-student progress/profile/tags
 │   │   │       ├── StudentDrillDown.vue
-│   │   │       ├── TermsTab.vue / TermStepsTab.vue / TermBar.vue / TermHeader.vue
+│   │   │       ├── TermStepsTab.vue      # Step CRUD + reorder per term
+│   │   │       ├── TermBar.vue / TermHeader.vue
 │   │   │       ├── CloneTermModal.vue
 │   │   │       ├── AnalyticsTab.vue      # Charts + summary stats
 │   │   │       ├── SummaryStats.vue
@@ -165,7 +165,6 @@ CSUB-Runner-Roadmap-V2/
 │   │   └── UtcDateTimeConverter.cs   # ISO-8601 UTC 'Z' timestamp output
 │   ├── appsettings.json              # Base config
 │   ├── appsettings.Development.json  # Dev config (Urls=:3001, dev secrets)
-│   ├── .editorconfig                 # Analyzer rules + documented CA1707/CA1848 suppressions
 │   ├── Dockerfile                    # Multi-stage: SDK build -> aspnet runtime (non-root + HEALTHCHECK)
 │   └── Api.csproj                    # EnableNETAnalyzers + AnalysisLevel=latest + TreatWarningsAsErrors
 │
@@ -183,8 +182,11 @@ CSUB-Runner-Roadmap-V2/
 │       ├── AdminAnalyticsTests.cs    # Analytics + exports
 │       ├── IntegrationsTests.cs      # Inbound integration push API
 │       ├── ApiChecksTests.cs         # Outbound API checks
+│       ├── AdminRevocationTests.cs   # Deactivated admin token rejected per-request
+│       ├── SecurityHardeningTests.cs # Production fail-safe guards (JWT secret, passwords)
 │       └── MiscTests.cs              # Cross-cutting cases
 │
+├── .editorconfig                    # Analyzer rules + documented CA1707/CA1848 suppressions (repo root)
 ├── .github/workflows/ci.yml.disabled # CI (PARKED): build+test API vs. SQL Server service; lint+test+build client
 ├── docs/                            # Documentation (this file lives here)
 │   └── screenshots/                 # public-preview / student-dashboard / admin-dashboard
@@ -394,9 +396,16 @@ private static async Task<T> RetryAsync<T>(Func<Task<T>> operation)
 }
 ```
 
-`IsTransient` returns true for any `TimeoutException` and for `SqlException`s whose error number is in a curated set of standard transient codes (Azure SQL throttling `40197/40501/40613/49918-49920`, on-prem failover/connection codes `10053/10054/10060/10928/10929/10936`, deadlock `1205`, and the connection-level `-2/20/64/121/233/4221`). Non-transient errors (a constraint violation, a syntax error) are **not** retried — they re-throw immediately.
+What is retried depends on **what the statement does and when the fault happened**, because retrying a write after an *ambiguous* failure could apply it twice:
 
-**3. Transactions retry as a whole, not piecemeal.** When a `Db` instance represents an open transaction, individual calls run on that single connection and are **not** retried in isolation — retrying one statement inside an aborted transaction would be incorrect. Instead `TransactionAsync` wraps the entire unit of work in `RetryAsync`: on a transient fault the transaction rolls back cleanly and the whole closure runs again. Nested `TransactionAsync` calls simply join the outer transaction (the outer commit/rollback governs), so callers can compose units of work safely.
+- **Safe transient errors** — the request was rejected before running or was definitively rolled back: deadlock victim `1205`, throttling `40501`, request-rejected `49918/49919/49920`, resource limits `10928/10929/10936`, and the in-memory-OLTP/AG validation codes `41301/41302/41305/41325/41839`. Retried for **reads and writes**.
+- **Ambiguous transient errors** — the failure can strike mid-command after the server already committed: failovers `40613/40197`, network drops `10053/10054/10060/233/121/64/20/4221`, and client timeouts (`-2`, `TimeoutException`). Retried for **reads only**; for writes they surface as errors instead of risking a double-apply.
+- **Connection-open failures** are always retried (nothing was sent yet), whatever the error.
+- Non-transient errors (a constraint violation, a syntax error) are **never** retried.
+
+Write-shaped statements that return a row (`INSERT ... SELECT SCOPE_IDENTITY()`) go through the dedicated `InsertReturningAsync`, which carries write semantics — passing them through the read-classified `QueryOneAsync` would re-run them after ambiguous failures.
+
+**3. Transactions retry as a whole, not piecemeal.** When a `Db` instance represents an open transaction, individual calls run on that single connection and are **not** retried in isolation — retrying one statement inside an aborted transaction would be incorrect. Instead `TransactionAsync` wraps the entire unit of work in `RetryAsync` with **write semantics**: only safe transient errors (e.g. a deadlock victim, which the server definitively rolled back) re-run the whole closure; an ambiguous failure during commit is *not* retried, because the commit may have succeeded. A rollback that itself fails (zombied transaction after a connection drop) is swallowed so the original error keeps its transient classification. Nested `TransactionAsync` calls simply join the outer transaction (the outer commit/rollback governs), so callers can compose units of work safely.
 
 This is the layer underneath every flow in [Request / Data Flow](#request--data-flow) and the readiness probe in [Health Probes](#health-probes).
 
@@ -720,7 +729,7 @@ Alternatively, use **Docker Desktop on Windows** and run `docker compose up web`
 
 The project treats lint, format, and tests as build-time contracts on both halves of the stack.
 
-**Backend.** `Api/Api.csproj` enables the .NET analyzers (`EnableNETAnalyzers`, `AnalysisLevel=latest`) and turns warnings into errors (`TreatWarningsAsErrors`), so an analyzer warning fails the build. `Api/.editorconfig` carries the analyzer rule set and documents the few **intentional** suppressions — `CA1707` (the snake_case identifiers that mirror the SQL/JSON contract) and `CA1848` (the high-performance `LoggerMessage` pattern, deliberately not adopted for this app's logging volume).
+**Backend.** `Api/Api.csproj` enables the .NET analyzers (`EnableNETAnalyzers`, `AnalysisLevel=latest`) and turns warnings into errors (`TreatWarningsAsErrors`), so an analyzer warning fails the build. The repo-root `.editorconfig` carries the analyzer rule set and documents the few **intentional** suppressions — `CA1707` (the snake_case identifiers that mirror the SQL/JSON contract) and `CA1848` (the high-performance `LoggerMessage` pattern, deliberately not adopted for this app's logging volume).
 
 **Frontend.** `client/` ships Vitest unit tests (`client/src/**/*.test.ts`), an ESLint **flat** config (`eslint.config.js`), and Prettier (`.prettierrc.json`). The `npm` scripts `test`, `lint`, and `format` run them.
 

@@ -110,7 +110,8 @@ For the tightest edit/run loop, run SQL Server in Docker but run the API and the
 client directly on the host:
 
 ```bash
-# 1. Start SQL Server (Docker)
+# 1. Start SQL Server (Docker). Requires MSSQL_SA_PASSWORD in .env — use
+#    Csub_Local_Dev_2026! locally so dotnet run / dotnet test match (see Database Setup).
 docker compose up -d sqlserver
 
 # 2. Run the API (creates DB + schema + seed on first boot)
@@ -127,9 +128,10 @@ and can be overridden with the `VITE_API_PROXY_TARGET` environment variable.
 
 There is **no manual database setup**: on startup the API ensures the
 `csub_admissions` database exists, applies the schema (`Api/Data/schema.sql`),
-and seeds default data (admin account, break-glass local admin, integration
-client, Fall 2026 checklist, and — when not running in Production — 50 sample
-students). No `createdb`, migrations, or hand-run scripts are required. The
+and seeds default data (admin account, integration client, Fall 2026 checklist,
+and — when not running in Production — 50 sample students). The break-glass local
+admin is **not** seeded: it is enabled by the `LocalLogin:Username`/`Password`
+config values (defaulted in `appsettings.Development.json`). No `createdb`, migrations, or hand-run scripts are required. The
 exact boot sequence and the flags that control it are described under
 [What the API does on startup](#what-the-api-does-on-startup).
 
@@ -220,8 +222,12 @@ empty-state behavior without the seeded checklist/students getting in the way.
 docker compose up -d sqlserver
 ```
 
-This starts **SQL Server 2022** on `localhost:1433` with SA credentials
-`sa` / `Csub_Local_Dev_2026!` (override with the `MSSQL_SA_PASSWORD` env var).
+This starts **SQL Server 2022** on `localhost:1433`. The SA password is **required —
+compose has no default**: copy `.env.example` to `.env` and set `MSSQL_SA_PASSWORD`
+first. For the host-process dev loop, set it to **`Csub_Local_Dev_2026!`** — that is
+the password hardcoded in `Api/appsettings.Development.json` (used by `dotnet run`)
+and in the integration-test fixture (`tests/Api.IntegrationTests/WebAppFixture.cs`),
+so a different value breaks `dotnet run` and `dotnet test` until you update those too.
 Data persists in the `csub_sqlserver_data` volume. The compose file defines a
 health check (`sqlcmd ... SELECT 1`) so the API can wait for the database to be
 ready before it starts.
@@ -284,7 +290,7 @@ dotnet run            # serves http://localhost:3001, creates DB + schema + seed
 
 In development the API listens on `:3001` (set via `Urls` in
 `appsettings.Development.json`). `dotnet build` compiles without running.
-OpenAPI docs are exposed in development at `/openapi`.
+The raw OpenAPI document is exposed in development at `/openapi/v1.json` (no docs UI is mapped).
 
 **Containerized:**
 
@@ -382,7 +388,8 @@ docker compose up -d sqlserver
 
 # 2. Run the integration suite
 dotnet test                       # from the repo root, against CsubRunnerRoadmapV2.slnx
-# or:  cd Api && dotnet test      # the Api directory also resolves the test project
+# (run it from the repo root — Api/ contains only the app project, so a
+#  `dotnet test` from inside Api/ would not discover the xUnit suite)
 ```
 
 The suite covers auth, admin endpoints, integrations, API-checks, and security
@@ -559,13 +566,16 @@ local-login (admins):
 
 ## Default Credentials
 
-On first run, the seeder creates the following accounts. These exist for local
-development and demos — change or disable them for any real deployment.
+These work out of the box in local development — change or disable them for any
+real deployment. The admin, integration client, and sample students are **seeded**
+on first run; the break-glass login is **config-gated, not seeded** (enabled by
+`LocalLogin:Username`/`Password`, defaulted in `appsettings.Development.json` —
+`Database:Seed=false` does not disable it).
 
 | Account | Username / Email | Password |
 |---------|------------------|----------|
 | Admin (sysadmin) | `admin@csub.edu` | `admin123` |
-| Local (break-glass) admin | `localadmin` | `Local_Admin_2026!` |
+| Local (break-glass) admin — config-gated | `localadmin` | `Local_Admin_2026!` |
 | Integration client | key: `dev-integration-key` | — |
 | Sample students | Various `@csub.edu` emails | Dev login (name + email) |
 

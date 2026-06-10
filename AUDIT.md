@@ -18,7 +18,7 @@ dev-only mock API-check routes; PostgreSQL→SQL Server dialect changes that are
 | Area | Issue | Fix |
 |---|---|---|
 | **All date responses** | Dapper reads SQL Server datetimes as `Unspecified`, so timestamps serialized without the trailing `Z` the old app's `toISOString()` always emitted | Global `UtcDateTimeConverter` → ISO-8601 UTC with `Z` (millisecond precision) |
-| **Security headers** | Only CSP + 3 headers vs. Helmet's full default set | Added HSTS, COOP, CORP, X-DNS-Prefetch-Control, X-Permitted-Cross-Domain-Policies, X-Download-Options, Origin-Agent-Cluster; X-Frame-Options → SAMEORIGIN (Helmet default) |
+| **Security headers** | Only CSP + 3 headers vs. Helmet's full default set | Added HSTS, COOP, CORP, X-DNS-Prefetch-Control, X-Permitted-Cross-Domain-Policies, X-Download-Options, Origin-Agent-Cluster; X-Frame-Options: DENY |
 | **Rate limiting** | Global limiter covered ALL routes incl. static assets | Scoped the 200/15min limiter to `/api` only (matches old `/api/` mount) |
 | **Error envelope** | Malformed JSON / unhandled errors didn't return the old `{error:...}` body | Added exception-handling middleware → `400 {error:"Invalid JSON body"}` / `500 {error:"Internal server error"}` |
 | **Analytics day-math** | `DATEDIFF(day,…)` counts calendar boundaries; Postgres `EXTRACT(DAY FROM interval)` counts elapsed 24h periods → off-by-one bucket membership | Use `DATEDIFF(second,…)/86400` (whole elapsed days) in stalled / velocity / completion-velocity |

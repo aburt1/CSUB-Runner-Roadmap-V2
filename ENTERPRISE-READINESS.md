@@ -66,8 +66,8 @@ shipped in waves (2a–2b backend infra, 3 frontend robustness, 4a–4b CI/tooli
 - ✅ `client/src/pages/admin/StepsTab.vue`, `TermsTab.vue` (superseded by `TermStepsTab.vue`).
 - ✅ `client/src/components/RoadrunnerMascot.vue` (never imported).
 - ✅ `FluentValidation` NuGet dependency (declared, never used).
-- ✅ `Api/Api.http` + Vite scaffold leftovers (vue.svg/vite.svg/scaffold README).
-- Kept: C# row models `StudentProgress`, `IntegrationEvent` — verified **in use** (not dead).
+- ✅ `Api/Api.http` + Vite scaffold leftovers (vue.svg/vite.svg); the stock scaffold `client/README.md` was missed in that wave and replaced in the 2026-06-10 audit.
+- ✅ C# row models `StudentProgress`, `IntegrationEvent` — initially kept on a substring-match false positive; re-verified in the 2026-06-10 audit as genuinely unused and removed.
 
 ## Execution order (all waves complete)
 

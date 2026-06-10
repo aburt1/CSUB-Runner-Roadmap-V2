@@ -173,9 +173,9 @@ app.UseCors();
 if (!app.Configuration.GetValue<bool>("RateLimiting:Disabled"))
     app.UseRateLimiter();
 
-// Serve the built Vue SPA in production (single process serves API + client,
-// same as the old Express server). In dev these no-op because wwwroot is empty
-// and Vite serves the client on :3000.
+// Static-file fallback: in the supported 3-container deployment the web/nginx
+// container serves the SPA and wwwroot here stays empty (these middlewares no-op).
+// Kept so a single-process deployment (SPA published into wwwroot) also works.
 app.UseDefaultFiles();
 app.UseStaticFiles();
 

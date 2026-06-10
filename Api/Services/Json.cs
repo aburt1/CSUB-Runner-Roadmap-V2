@@ -18,6 +18,4 @@ public static class Json
             return fallback;
         }
     }
-
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value);
 }

@@ -60,7 +60,7 @@ cp .env.example .env        # then set JWT_SECRET, ADMIN_DEFAULT_PASSWORD, API_C
 docker compose up --build   # -> http://localhost:3000
 ```
 
-Default admin login: `admin@csub.edu` / `admin123` (override `ADMIN_DEFAULT_PASSWORD` in `.env`).
+Default admin login: `admin@csub.edu` with the `ADMIN_DEFAULT_PASSWORD` you set in `.env` — the containerized api runs as Production and **rejects** weak/default passwords like `admin123` (that default applies only to local `dotnet run` development).
 
 See the [Development Setup Guide](docs/SETUP.md) for local (non-container) development and for running the frontend on its own (e.g. a Windows desktop).
 

@@ -353,47 +353,6 @@ public sealed class StudentsController : ControllerBase
         return Ok(new { students, total, page, per_page = perPage });
     }
 
-    // GET /api/admin/students/overdue?term_id=
-    [HttpGet("students/overdue")]
-    public async Task<IActionResult> Overdue()
-    {
-        var termId = QueryHelpers.ParseTermId(Request);
-        var termFilter = termId is not null ? "AND st.term_id = @termId" : "";
-        var studentTermFilter = termId is not null ? "AND s.term_id = @studentTermId" : "";
-
-        var parameters = new Dictionary<string, object?>();
-        if (termId is not null)
-        {
-            parameters["termId"] = termId;
-            parameters["studentTermId"] = termId;
-        }
-
-        var rows = await _db.QueryAllAsync<OverdueRow>(
-            $@"SELECT s.id, s.display_name, s.email,
-                 COUNT(st.id) as overdue_count
-               FROM students s
-               JOIN steps st ON st.is_active = 1 AND COALESCE(st.is_optional, 0) = 0 AND st.deadline_date IS NOT NULL AND st.deadline_date < CONVERT(varchar(10), CAST(SYSUTCDATETIME() AS date), 23) {termFilter}
-               LEFT JOIN student_progress sp ON sp.student_id = s.id AND sp.step_id = st.id
-               WHERE sp.student_id IS NULL {studentTermFilter}
-               GROUP BY s.id, s.display_name, s.email
-               ORDER BY overdue_count DESC",
-            parameters);
-
-        var result = new List<object>();
-        foreach (var r in rows)
-        {
-            result.Add(new
-            {
-                id = r.id,
-                display_name = r.display_name,
-                email = r.email,
-                overdue_count = r.overdue_count,
-            });
-        }
-
-        return Ok(result);
-    }
-
     // ─── Audit Log ───────────────────────────────────────────
 
     // GET /api/admin/audit
@@ -608,11 +567,4 @@ public sealed class StudentsController : ControllerBase
         public int overdue_step_count { get; set; }
     }
 
-    private sealed class OverdueRow
-    {
-        public string id { get; set; } = "";
-        public string? display_name { get; set; }
-        public string? email { get; set; }
-        public int overdue_count { get; set; }
-    }
 }

@@ -183,22 +183,25 @@ These are wired through `client/Dockerfile` (ARG/ENV) and `docker-compose.yml`
 In production you typically run only **web** + **api** as containers and point the API at
 the external SQL Server — so you would *not* start the compose `sqlserver` service.
 
-### Option A — compose, app services only
+### Option A — the production compose file (recommended)
 
-Set `ConnectionStrings__Default` (or `WEB_API_URL` etc.) in `.env`, then:
+Use **[`docker-compose.prod.yml`](../docker-compose.prod.yml)** — a standalone stack with
+**only web + api**, no `sqlserver` service, and the connection string read from `.env`:
 
 ```bash
-# Build with the frontend config baked in (from .env build args), then start only
-# the two app containers — SQL Server is external.
-docker compose build web api
-docker compose up -d web api
+cp .env.example .env
+# In .env set: PROD_CONNECTION_STRING (from §3), JWT_SECRET, ADMIN_DEFAULT_PASSWORD,
+# API_CHECK_ENCRYPTION_KEY, and the VITE_* build args if using SSO.
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-> The default `docker-compose.yml` includes a `sqlserver` service and points the api at
-> it for convenience. For production against an external SQL Server, override
-> `ConnectionStrings__Default` to your real server and start only `web` and `api` (above),
-> or maintain a `docker-compose.prod.yml` that omits the `sqlserver` service and the
-> `depends_on: sqlserver` condition. Keep the database **out** of the container set.
+> **Do not use the default `docker-compose.yml` for production.** It exists for
+> local/testing: its api service hardcodes the connection string to the throwaway
+> `sqlserver` container (a `ConnectionStrings__Default` entry in `.env` is ignored),
+> sets `Database__AutoCreate=true`, and `depends_on` would start that container even
+> with `docker compose up web api`. The prod file has none of that: AutoCreate stays
+> off (Production default), the api container is not published, and the database
+> stays **out** of the container set.
 
 ### Option B — build images in CI, run with your orchestrator
 

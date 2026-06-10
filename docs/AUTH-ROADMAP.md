@@ -743,10 +743,12 @@ The `api` container waits for `sqlserver` to pass its health check, then
 Apple Silicon, SQL Server runs as a `linux/amd64` image under Rancher / Docker
 Desktop's VZ + Rosetta emulation (it has no native arm64 build).
 
-Auth-relevant compose env vars live on the `api` service and default to the dev
-values (`Jwt__Secret`, `Admin__DefaultEmail/Password`, `LocalLogin__Username/Password`,
-`ApiCheck__EncryptionKey`). **Override every secret for a real deployment** (see the
-production checklist and [docs/DEPLOYMENT.md](./DEPLOYMENT.md)).
+Auth-relevant compose env vars live on the `api` service and are **required, with
+no dev defaults**: `JWT_SECRET`, `ADMIN_DEFAULT_PASSWORD`, and `API_CHECK_ENCRYPTION_KEY`
+use compose's `${VAR:?}` form, so `docker compose up` fails fast until you copy
+`.env.example` to `.env` and set them. `LocalLogin__*` default to empty (break-glass
+login disabled unless both are set). See the production checklist and
+[docs/DEPLOYMENT.md](./DEPLOYMENT.md).
 
 ---
 
@@ -795,12 +797,15 @@ pulls `api` + `sqlserver` via `depends_on`).
 
 ### Default credentials (dev only)
 
-These are seeded automatically in non-production; **change them for any real
-deployment.**
+These work out of the box in non-production; **change them for any real deployment.**
 
-- **Admin (email/password):** `admin@csub.edu` / `admin123`
-- **Break-glass (local) admin:** `localadmin` / `Local_Admin_2026!`
-- **Integration key:** `dev-integration-key` (client `PeopleSoft Dev`)
+- **Admin (email/password):** `admin@csub.edu` / `admin123` — seeded into `admin_users`
+  by `Seeder.cs` on an empty database.
+- **Break-glass (local) admin:** `localadmin` / `Local_Admin_2026!` — **not a seeded
+  account**: it is enabled by the `LocalLogin:Username`/`LocalLogin:Password` config
+  values (defaulted in `appsettings.Development.json`); no `admin_users` row exists,
+  and `Database:Seed=false` does not disable it.
+- **Integration key:** `dev-integration-key` (client `PeopleSoft Dev`) — seeded.
 
 The seeder (`Api/Data/Seeder.cs`) enforces production guards:
 
