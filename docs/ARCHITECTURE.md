@@ -1,16 +1,19 @@
 # Architecture
 
-This document describes the architecture of the CSUB Runner Roadmap application after its conversion from the original **React + Node/Express + PostgreSQL** stack to **Vue 3 + ASP.NET Core + SQL Server**. The rewrite deliberately keeps the REST API contract (paths, payloads, status codes, even the snake_case vs. camelCase JSON key conventions) identical to the original app, so the two implementations diff cleanly and the same client behavior is preserved. Where the original prose still applies, it has been kept and updated only where the stack changed.
+The CSUB Runner Roadmap is a student-onboarding app: newly admitted students sign in and
+follow a personalized checklist of admissions steps, while staff manage the steps, track
+cohorts, and connect campus systems. It is a **Vue 3 SPA** talking to an **ASP.NET Core
+(.NET 10) API** over a stable REST contract, backed by **SQL Server**. The code is
+deliberately simple and low-abstraction — controllers, hand-written T-SQL via Dapper, and
+explicit logic a maintainer can read top to bottom.
 
-This is the "how it all fits together" document. For specific topics it hands off to the sibling docs:
+This is the "how it all fits together" document — including **why the app behaves the way
+it does** (the business logic). For specific topics it hands off to the sibling docs:
 
 - Getting a dev environment running → [SETUP.md](SETUP.md)
 - Shipping to a Windows Server + SQL Server box → [DEPLOYMENT.md](DEPLOYMENT.md)
 - Endpoint-by-endpoint reference → [API-GUIDE.md](API-GUIDE.md)
-- The auth model and its roadmap → [AUTH-ROADMAP.md](AUTH-ROADMAP.md)
-- Third-party packages and why → [LIBRARIES.md](LIBRARIES.md)
-- The test strategy → [TESTING.md](TESTING.md)
-- Security and enterprise-readiness posture → [../SECURITY-AUDIT.md](../SECURITY-AUDIT.md), [../ENTERPRISE-READINESS.md](../ENTERPRISE-READINESS.md), [../AUDIT.md](../AUDIT.md)
+- Historical audit records → [history/](history/)
 
 ---
 
@@ -27,15 +30,107 @@ This is the "how it all fits together" document. For specific topics it hands of
 | **Testing** | xUnit + `WebApplicationFactory` integration tests against a real SQL Server database |
 | **Deployment** | Docker Compose — three containers: **web** (Vue build served by nginx), **api** (ASP.NET Core), **sqlserver** (SQL Server 2022). nginx reverse-proxies `/api` to the API so the browser sees a single origin. See [DEPLOYMENT.md](DEPLOYMENT.md) for production. |
 
-A few things from the old app were intentionally **dropped** in the rewrite:
-
-- The legacy `X-API-Key` admin authentication path (admins now authenticate exclusively via JWT — password login, SSO, or break-glass local login).
-- The development-only "live activity" simulator.
-- The development-only mock API-check routes.
-
-Everything else — the data model, the student/admin/integration flows, the analytics, and the JSON contract — was carried over faithfully.
-
 ---
+
+## How the App Works — the Business Logic
+
+This is the part worth understanding before touching any code: what the app is *for* and
+why each behavior exists.
+
+### Terms are cohorts
+
+Everything is scoped to a **term** (e.g. "Fall 2026"). A term owns its own set of steps,
+and every student belongs to exactly one term. **Why:** each admissions cycle gets its own
+checklist that staff can evolve without rewriting history — cloning a term copies its
+steps so the next cycle starts from the last one. Exactly one term is *active* at a time;
+new students are assigned to it on first sign-in.
+
+### Steps and tag-based personalization
+
+A step is one task on the road to enrollment ("Submit Intent to Enroll", "Register for
+Orientation"). Not every step applies to every student, so steps carry optional tag rules
+and students carry tags (manual ones set by staff, plus tags derived from their imported
+profile — applicant type, residency, major):
+
+- **`excluded_tags` always wins** — if the student has any excluded tag, the step is
+  hidden no matter what. *Why: exclusion is a safety rule ("transfer students must never
+  see the freshman orientation step"), so it must not be overridable by a matching
+  required tag.*
+- **`required_tags`** with mode **`any`** (default — step applies if the student has at
+  least one tag) or **`all`** (must have every tag). *Why two modes: "any" models
+  alternatives (veteran OR transfer), "all" models compound requirements (international
+  AND graduate).*
+- A step with no tag rules applies to everyone.
+
+### The progression cursor — what "current step" means
+
+Required steps form a **progression**: the first incomplete required step (in sort order)
+is the student's *current* step, shown as `in_progress`; everything after it is
+`not_started`. Only one step is ever "current". **Why:** the whole product idea is "tell
+me exactly what to do next" — a wall of 22 unordered tasks is what this app exists to
+replace.
+
+**Optional steps never advance the cursor and never become "current".** *Why: an optional
+step ("Apply for Housing") must not block or distract from the required path — it is shown
+in its position but stays `not_started` until the student acts on it.*
+
+**Completion = required steps only.** The progress percentage and the "all done"
+celebration count required steps; `waived` counts as done. *Why waived counts: staff waive
+a step when it doesn't apply or was satisfied another way — to the student that step is
+finished.*
+
+### Students start with one step already done
+
+When a student record is created (first sign-in), the server auto-completes the
+**`accepted`** step. *Why: the student is only here because they were admitted — opening
+on a 0%-complete page would be both wrong and demotivating. The roadmap opens with step 1
+checked and step 2 current.*
+
+### Who can sign in, and what they may do
+
+Three separate auth systems issue the same kind of 8-hour HS256 JWT:
+
+| Audience | How they sign in | Notes |
+|----------|------------------|-------|
+| **Students** | Azure AD SSO (when configured) or a dev-only name/email login | The dev login returns `404` in Production — it exists so the app is testable without a tenant |
+| **Staff (admins)** | Email/password, Azure AD SSO, or a config-gated break-glass login | Admin accounts are **pre-created** by a sysadmin; SSO authenticates but never creates admins |
+| **External systems** | A per-client integration key (bcrypt-hashed at rest) | For SIS/ERP systems pushing completions in |
+
+Staff roles are cumulative — each adds one capability tier:
+
+| Role | May do |
+|------|--------|
+| `viewer` | Read everything (dashboards, analytics, audit log) |
+| `admissions` | + change **student progress** (complete/waive/uncomplete, tags, profile) |
+| `admissions_editor` | + edit the **checklist itself** (steps, terms, reorder, clone) |
+| `sysadmin` | + manage **admin users** and **API-check configurations** (credentials) |
+
+*Why this split:* front-line staff update students all day but should not reshape the
+checklist; the checklist defines the process and changes rarely; credentials and accounts
+are limited to the smallest possible group. Every mutation lands in the **audit log**
+(who, what, when), and admin authorization is re-checked against the database on every
+request — deactivating an admin locks them out immediately, even with a still-valid token.
+
+### Integrations: push in, poll out
+
+- **Inbound (push):** an external system (e.g. PeopleSoft) calls the integration API to
+  mark steps complete, identifying students by their campus ID (`emplid`). Each request
+  may carry a `source_event_id`; repeating one **replays the stored outcome instead of
+  re-executing**. *Why: batch jobs retry — idempotency makes "send it again" always safe.*
+- **Outbound (API checks):** a sysadmin can attach a URL probe to a step ("ask the housing
+  portal whether this student submitted the form"). When a student opens their roadmap,
+  the app polls the configured endpoints (throttled to once per 5 minutes per student) and
+  auto-completes matching steps. Stored credentials are AES-256-GCM-encrypted, and all
+  outbound URLs pass an SSRF guard (no private/internal addresses). *Why this exists: it
+  removes the "I did it but the checklist doesn't know" gap without giving the external
+  system any access to the app.*
+
+### The public preview
+
+Before signing in, anyone sees the first few **public** steps (`is_public = 1`) in full
+plus the titles of what comes after. *Why: the first steps (accept, activate your
+account) must be doable before the student can sign in at all — the preview is the
+on-ramp, and the locked titles show the journey ahead.*
 
 ## Project Structure
 
@@ -196,7 +291,7 @@ CSUB-Runner-Roadmap-V2/
 └── README.md
 ```
 
-Note the structural change from the original: the old layout had a single `server/` Express app that **also** served the React build out of one process. In the rewrite the frontend and backend are fully separated — `client/` produces a static bundle that is served by its own nginx container, and `Api/` is a backend-only ASP.NET Core process. They are stitched back into a single browser origin by an nginx reverse proxy (see [Deployment Architecture](#deployment-architecture)).
+The frontend and backend are deliberately separated — `client/` produces a static bundle served by its own nginx container, and `Api/` serves only the API — so each can be built, shipped, and scaled independently. The deployment section below covers this.
 
 ---
 
@@ -482,7 +577,7 @@ This trusts the forwarded headers regardless of source — which is safe **only*
 
 ### Security headers
 
-A single middleware sets the Helmet-equivalent header set the old Express server used:
+A single middleware sets a strict security-header set on every response:
 
 | Header | Value | Purpose |
 |--------|-------|---------|
@@ -512,13 +607,13 @@ No naming policy is applied (`PropertyNamingPolicy = null`), so each response sp
 
 ### CORS
 
-Mirrors the old server: the SPA origin is allowed with credentials. The origin comes from `Cors:Origin`, defaulting to `http://localhost:3000` in non-production and to *nothing* in Production (CORS effectively closed unless explicitly configured). In the container deployment CORS is normally unnecessary because nginx makes the browser see one origin (see [Deployment Architecture](#deployment-architecture)).
+The SPA origin is allowed with credentials. The origin comes from `Cors:Origin`, defaulting to `http://localhost:3000` in non-production and to *nothing* in Production (CORS effectively closed unless explicitly configured). In the container deployment CORS is normally unnecessary because nginx keeps everything same-origin.
 
 ---
 
 ## Authentication
 
-Two app-issued JWT session types, both HS256 with an 8-hour lifetime (`JwtService`), with claim names matching the original app:
+Two app-issued JWT session types, both HS256 with an 8-hour lifetime (`JwtService`):
 
 - **Student** — `{ type: "student", studentId, email }`. Issued by `POST /api/auth/dev-login` (dev/POC only, name + email) or `POST /api/auth/sso` (Azure AD). Enforced by `[StudentAuth]`. `GET /api/steps` reads the token optionally; new students start with the `accepted` step auto-completed.
 - **Admin** — `{ type: "admin", adminId, role, email, displayName }`. Issued by `POST /api/admin/auth/login` (email + bcrypt password), `POST /api/admin/auth/sso` (Azure AD), or the env-gated break-glass `POST /api/admin/auth/local-login`. Enforced by `[AdminAuth]`, which also does the role check: `[AdminAuth]` = any authenticated admin, `[AdminAuth("admissions_editor", "sysadmin")]` = only those roles.
@@ -535,7 +630,7 @@ The auth filters stash identity on `HttpContext.Items`; controllers read it thro
 | Break-glass local admin | `localadmin` | `Local_Admin_2026!` (dev) | `LocalLogin:Username` / `LocalLogin:Password` |
 | Integration key (dev) | `PeopleSoft Dev` | `dev-integration-key` | `Integration:DefaultName` / `Integration:DefaultKey` |
 
-**Azure AD SSO** is optional. When `AzureAd:ClientId`/`AzureAd:TenantId` are unset, the `/sso` endpoints return `501`. The client reads its SSO config from `VITE_AZURE_AD_*` (see `client/src/auth/msalConfig.ts`). The full auth design and its future direction live in [AUTH-ROADMAP.md](AUTH-ROADMAP.md).
+**Azure AD SSO** is optional. When `AzureAd:ClientId`/`AzureAd:TenantId` are unset, the `/sso` endpoints return `501`. The client reads its SSO config from `VITE_AZURE_AD_*` (see `client/src/auth/msalConfig.ts`). The auth model and roles are summarized in [How the App Works](#how-the-app-works--the-business-logic).
 
 ---
 
@@ -568,7 +663,7 @@ SQL Server tables (see `Api/Data/schema.sql`):
 | `step_api_checks` | Per-step outbound API-check config (encrypted credentials) |
 | `schema_version` | Append-only log of applied schema versions (written by `SchemaInitializer`) |
 
-Notable translations from the old Postgres schema:
+Notable schema choices:
 
 - `SERIAL` → `INT IDENTITY(1,1)`
 - `TEXT` → `NVARCHAR(MAX)`
@@ -581,7 +676,7 @@ Notable translations from the old Postgres schema:
 
 ## Deployment Architecture
 
-This is the most significant change from the original. The old app shipped as a **single Docker container** running one Express process that served both the API and the pre-built React bundle. The rewrite splits the deployment into **three containers** orchestrated by `docker-compose.yml`:
+The deployment splits into **three containers** orchestrated by `docker-compose.yml` — frontend, API, and database each own their lifecycle:
 
 | Container | Image / Build | Port (host:container) | Role |
 |-----------|---------------|-----------------------|------|
@@ -614,7 +709,6 @@ This is the most significant change from the original. The old app shipped as a 
 
 **Self-initializing API.** The `api` container waits for `sqlserver` to be healthy (`depends_on: condition: service_healthy`, backed by a `sqlcmd SELECT 1` healthcheck), then runs the [startup sequence](#startup-sequence-programcs--schemainitializercs). Nothing has to be run by hand against the database in dev. (In production, `Database:AutoCreate`/`Database:Seed` are turned off and a DBA provisions the database — see [DEPLOYMENT.md](DEPLOYMENT.md).)
 
-**Apple Silicon note.** SQL Server has no native ARM build, so `sqlserver` is pinned to `platform: linux/amd64` and runs under Docker Desktop / Rancher VZ + Rosetta emulation on M-series Macs.
 
 ### Hardened Containers
 
@@ -733,13 +827,13 @@ The project treats lint, format, and tests as build-time contracts on both halve
 
 **Frontend.** `client/` ships Vitest unit tests (`client/src/**/*.test.ts`), an ESLint **flat** config (`eslint.config.js`), and Prettier (`.prettierrc.json`). The `npm` scripts `test`, `lint`, and `format` run them.
 
-**CI (currently parked).** A GitHub Actions workflow is written and ready but **intentionally disabled** for now — it lives at `.github/workflows/ci.yml.disabled` (GitHub ignores non-`.yml` files), so nothing runs on push yet. When enabled (rename it to `ci.yml`), it builds and tests the API against a real **SQL Server service container** (the integration tests need real SQL behavior — no mocks) and separately lints, tests, and builds the client. The integration-test design is detailed in [TESTING.md](TESTING.md). Until then, run the same checks locally (see [SETUP.md](SETUP.md)).
+**CI (currently parked).** A GitHub Actions workflow is written and ready but **intentionally disabled** for now — it lives at `.github/workflows/ci.yml.disabled` (GitHub ignores non-`.yml` files), so nothing runs on push yet. When enabled (rename it to `ci.yml`), it builds and tests the API against a real **SQL Server service container** (the integration tests need real SQL behavior — no mocks) and separately lints, tests, and builds the client. Until then, run the same checks locally (see [SETUP.md](SETUP.md)).
 
 ---
 
 ## Testing
 
-The `tests/Api.IntegrationTests` project hosts the **real application** via `WebApplicationFactory` (enabled by `public partial class Program {}` at the bottom of `Program.cs`) and exercises it end-to-end against a real SQL Server instance. `WebAppFixture.cs` points the app at a dedicated `csub_admissions_test` database that is dropped before each run, so the [startup sequence](#startup-sequence-programcs--schemainitializercs) rebuilds the schema and re-seeds deterministically. Rate limiting is disabled in tests (`RateLimiting:Disabled=true`) so the per-IP login limit doesn't interfere. The test files mirror the controller surface (`AuthTests`, `AdminAuthTests`, `StepsTests`, `AdminStepsTests`, `AdminStudentsTests`, `AdminTermsTests`, `AdminUsersTests`, `AdminAnalyticsTests`, `IntegrationsTests`, `ApiChecksTests`, plus `SmokeTests` and `MiscTests`). Running the suite requires the SQL Server container to be up. See [TESTING.md](TESTING.md) for the full strategy.
+The `tests/Api.IntegrationTests` project hosts the **real application** via `WebApplicationFactory` (enabled by `public partial class Program {}` at the bottom of `Program.cs`) and exercises it end-to-end against a real SQL Server instance. `WebAppFixture.cs` points the app at a dedicated `csub_admissions_test` database that is dropped before each run, so the [startup sequence](#startup-sequence-programcs--schemainitializercs) rebuilds the schema and re-seeds deterministically. Rate limiting is disabled in tests (`RateLimiting:Disabled=true`) so the per-IP login limit doesn't interfere. The test files mirror the controller surface (`AuthTests`, `AdminAuthTests`, `StepsTests`, `AdminStepsTests`, `AdminStudentsTests`, `AdminTermsTests`, `AdminUsersTests`, `AdminAnalyticsTests`, `IntegrationsTests`, `ApiChecksTests`, plus `SmokeTests` and `MiscTests`). Running the suite requires the SQL Server container to be up. How to run the suites (and the quality workflow) is covered in [SETUP.md](SETUP.md).
 
 ---
 
@@ -747,13 +841,13 @@ The `tests/Api.IntegrationTests` project hosts the **real application** via `Web
 
 - **No ORM.** Every query is hand-written T-SQL passed to Dapper through the thin `Db` wrapper (`QueryOne`/`QueryAll`/`Execute`/`Transaction`). Parameters are plain anonymous objects (`new { id, term_id }`); no repositories, no LINQ, no query builder. This mirrors the old Node `db/pool.ts` so ported code reads the same — and SQL injection is avoided through parameterization rather than string building.
 - **Resilient data layer.** That same `Db` wrapper retries transient SQL faults with exponential backoff (4 attempts), retrying whole transactions rather than individual statements, so routine failover/throttling/deadlock events don't surface as 500s. See [The Data Layer](#the-data-layer-dbcs).
-- **Preserve the API contract exactly.** Paths, payloads, status codes, error envelopes, snake_case vs. camelCase keys, and UTC `Z` timestamps all match the original app byte-for-byte. This is enforced in `Program.cs` (no JSON naming policy, suppressed model-state 400, custom UTC converter) and lets the two implementations diff cleanly.
+- **Stable API contract.** Paths, payloads, status codes, error envelopes, snake_case vs. camelCase keys, and UTC `Z` timestamps are treated as a frozen contract (enforced in `Program.cs`: no JSON naming policy, suppressed model-state 400, custom UTC converter). Integration partners and the SPA can rely on shapes not shifting between releases.
 - **App-managed schema + seed, gated for production.** `SchemaInitializer` + `Seeder` run on boot. The schema is idempotent and its version is recorded in `schema_version`; the optional `CREATE DATABASE` is gated behind `Database:AutoCreate` (off in Production, where a DBA provisions the DB) and seeding behind `Database:Seed`. No migration tool, no manual SQL step in dev.
 - **Liveness vs. readiness health probes.** `/api/health/live` never touches the DB (so a DB outage doesn't restart healthy processes); `/api/health/ready` returns 503 when the DB is unreachable (so the instance is pulled from rotation instead). Containers probe liveness; load balancers should probe readiness.
 - **Three-container deployment with same-origin proxy.** Splitting `web` / `api` / `sqlserver` lets each scale and ship independently, while nginx reverse-proxying `/api` keeps the browser on a single origin so **CORS is normally unnecessary**. The client's relative `/api` calls work identically in dev (Vite proxy) and in production (nginx proxy).
 - **Hardened, self-sequencing containers.** Both app containers run non-root (the api as `$APP_UID`, the web as nginx-unprivileged on 8080); all three declare HEALTHCHECKs, and Compose gates each service on the next being healthy. Required secrets use the `${VAR:?msg}` form so a misconfigured stack fails fast.
 - **Trust the proxy, but only the proxy.** `UseForwardedHeaders` honors `X-Forwarded-For`/`-Proto` from nginx so rate limiting and audit log key on the real client IP. The known-proxy allowlist is cleared because the api is only reachable behind nginx on the internal network / `127.0.0.1`.
-- **Transaction-based row locking.** Progress writes go through `Progress.ApplyAsync` using `WITH (UPDLOCK)` inside a `Db.TransactionAsync`, the SQL Server equivalent of the old `SELECT ... FOR UPDATE`, so concurrent admin edits and integration pushes can't corrupt a student's progress row.
+- **Transaction-based row locking.** Progress writes go through `Progress.ApplyAsync` using `WITH (UPDLOCK, HOLDLOCK)` inside a `Db.TransactionAsync`, the SQL Server equivalent of the old `SELECT ... FOR UPDATE`, so concurrent admin edits and integration pushes can't corrupt a student's progress row.
 - **Integration-test isolation.** `tests/Api.IntegrationTests` hosts the real app via `WebApplicationFactory` against a dedicated test database that is dropped and rebuilt per run — no mocks for the data layer, real SQL Server behavior under test.
 - **Split admin API.** The admin surface is split into focused controllers (`Analytics`, `Steps`, `Students`, `Terms`, `Users`, `ApiChecks`) under `/api/admin`, each declaring its own `[AdminAuth(...)]` role gates per action — the C# analog of the old "5 focused route modules" refactor of a single 1,660-line file.
 - **Shared helpers.** Common patterns (`ParseTermId`, `ParsePagination`, `CountActiveStepsAsync`, the active-step SQL fragment) live in `Api/Services/QueryHelpers.cs` to eliminate duplication across controllers.

@@ -33,12 +33,8 @@ host. To run the entire stack you only need Docker. To run *just the frontend*
 (see [Running the frontend on its own](#running-the-frontend-on-its-own-eg-a-windows-desktop)),
 you only need Node.
 
-> **Apple Silicon (M-series) note:** SQL Server has no native arm64 build, so it
-> runs as a `linux/amd64` container under emulation. Use the **VZ backend with
-> Rosetta** enabled, otherwise the server segfaults under qemu. On Rancher
-> Desktop: `rdctl set --virtual-machine.use-rosetta=true`. On Docker Desktop,
-> enable "Use Rosetta for x86_64/amd64 emulation" together with the VirtioFS/VZ
-> VM in Settings.
+> Running the SQL Server container on a Mac needs one VM setting — see the
+> [Troubleshooting](#troubleshooting) table if the container crashes on startup.
 
 ## Quick Start (full stack in Docker)
 
@@ -136,10 +132,9 @@ exact boot sequence and the flags that control it are described under
 [What the API does on startup](#what-the-api-does-on-startup).
 
 > **Why two different API ports?** In local dev the API listens on **`:3001`**
-> (set via `Urls` in `appsettings.Development.json`), matching the old Express
-> server's port so the Vite proxy default just works. In containers the API
-> listens on **`:8080`** (set via `ASPNETCORE_URLS` in `Api/Dockerfile`), and
-> nginx proxies to it there.
+> (set via `Urls` in `appsettings.Development.json`), which is what the Vite
+> proxy targets by default. In containers the API listens on **`:8080`** (set
+> via `ASPNETCORE_URLS` in `Api/Dockerfile`), and nginx proxies to it there.
 
 ## What the API does on startup
 
@@ -335,9 +330,8 @@ details.
 
 Before pushing, run the same checks the (currently parked) CI workflow is set up to
 run (`.github/workflows/ci.yml.disabled` builds and tests both halves). With CI off for
-now, running these locally is how the build stays honest. The frontend and backend each have their own tooling.
-This section is the day-to-day reference; for the test *strategy* and how the
-suites are organized, see [Testing](TESTING.md).
+now, running these locally is how the build stays honest. The frontend and backend each have their own tooling;
+this section is the day-to-day reference for all of it.
 
 ### Frontend npm scripts (`client/`)
 
@@ -395,9 +389,8 @@ dotnet test                       # from the repo root, against CsubRunnerRoadma
 The suite covers auth, admin endpoints, integrations, API-checks, and security
 hardening (e.g. `AuthTests.cs`, `AdminUsersTests.cs`, `SecurityHardeningTests.cs`,
 `SmokeTests.cs`). The test host sets `RateLimiting:Disabled=true` so the per-IP
-login limiter doesn't trip while the suite hammers the auth endpoints. CI runs
-this exact suite against a SQL Server *service container* — see
-[Testing](TESTING.md) for the full breakdown.
+login limiter doesn't trip while the suite hammers the auth endpoints. The (parked) CI workflow runs
+this exact suite against a SQL Server *service container*.
 
 ### Backend build quality gates
 
@@ -642,21 +635,8 @@ Real failure modes and their causes, fastest fix first.
 | Student page says "We couldn't load the admissions checklist" in local dev | The Vite proxy targets `http://localhost:3001` and the API isn't running (or is on another port) | Start the API (`dotnet run` in `Api/`), or point `VITE_API_PROXY_TARGET` at the right port; **Try Again** refetches everything |
 | Fresh database has no checklist/steps after startup | No **active** term exists (term-scoped seeding skips rather than writing dangling rows), or `Database__Seed=false` | Activate a term in the admin UI, or check the `Database__Seed` setting |
 
-## What's Different From the Original
+## Where to Go Next
 
-The REST API contract (paths, payloads, status codes) is preserved, but the
-deployment model changed and a few legacy pieces of the old Node/Express app
-were intentionally **dropped**:
-
-- **Three containers instead of one.** The old app served the React build and
-  the API from a single Express process. V2 splits these into a `web`
-  (Vue + nginx) container and an `api` (ASP.NET Core) container, plus the
-  `sqlserver` database container. nginx in the `web` container reverse-proxies
-  `/api` to `api`, preserving the single-origin (no-CORS) experience.
-- Legacy `X-API-Key` admin authentication — removed.
-- The dev activity simulator — removed.
-- Dev-only mock API-check routes — removed.
-
-For the full project structure, see [Architecture](ARCHITECTURE.md). For test
-strategy and CI, see [Testing](TESTING.md). For shipping to a real server, see
-[Deployment](DEPLOYMENT.md).
+For the full system picture and the business logic behind the app's behavior, see
+[Architecture](ARCHITECTURE.md). For shipping to a real server, see
+[Deployment](DEPLOYMENT.md). For endpoint shapes, see [API-GUIDE.md](API-GUIDE.md).

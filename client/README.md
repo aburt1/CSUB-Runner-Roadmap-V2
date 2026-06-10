@@ -8,4 +8,4 @@ All real documentation lives at the repo root:
 - [../README.md](../README.md) — overview + quick start
 - [../docs/SETUP.md](../docs/SETUP.md) — local development, every npm script
 - [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) — how the SPA fits the system
-- [../docs/TESTING.md](../docs/TESTING.md) — the Vitest suite (`npm run test`)
+- [../docs/SETUP.md](../docs/SETUP.md#developer-quality-workflow) — running the Vitest suite (`npm run test`), lint, format

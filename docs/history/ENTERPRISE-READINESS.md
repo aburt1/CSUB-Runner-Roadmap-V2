@@ -37,7 +37,7 @@ shipped in waves (2a–2b backend infra, 3 frontend robustness, 4a–4b CI/tooli
 | # | Finding | Status |
 |---|---------|--------|
 | 6 | No versioned migration / drift handling | ✅ `schema_version` table added; idempotent apply retained (DBA-applied script documented in DEPLOYMENT) |
-| 7 | Windows Integrated auth impossible from Linux container, undocumented | ✅ Connection-string model + SQL-auth-from-container caveat documented in [DEPLOYMENT.md](docs/DEPLOYMENT.md) §2–3 |
+| 7 | Windows Integrated auth impossible from Linux container, undocumented | ✅ Connection-string model + SQL-auth-from-container caveat documented in [DEPLOYMENT.md](../DEPLOYMENT.md) §2–3 |
 | 8 | `/api/health` returns 200 even when DB down — bad readiness probe | ✅ `/api/health/live` (always 200) vs `/api/health/ready` (503 if DB down); legacy kept |
 | 9 | No container HEALTHCHECK on api/web | ✅ `HEALTHCHECK` in both Dockerfiles (api → `/api/health/live` via curl; web → SPA via wget) |
 | 10 | App logging effectively absent (ILogger used once) | ✅ Structured `ILogger` in `ApiCheckRunner` + controllers + startup error envelope |
@@ -53,7 +53,7 @@ shipped in waves (2a–2b backend infra, 3 frontend robustness, 4a–4b CI/tooli
 
 | # | Finding | Status |
 |---|---------|--------|
-| 21 | TLS off in connection strings (`Encrypt=False`) | ✅ `Encrypt=True` / `TrustServerCertificate` guidance in [DEPLOYMENT.md](docs/DEPLOYMENT.md) §3 |
+| 21 | TLS off in connection strings (`Encrypt=False`) | ✅ `Encrypt=True` / `TrustServerCertificate` guidance in [DEPLOYMENT.md](../DEPLOYMENT.md) §3 |
 | 22 | Production seeding coupled to DDL bootstrap | ✅ `Database:Seed` flag (default true) decouples seeding; documented |
 | 23, 30 | `Console.Error.WriteLine` → `ILogger` in ApiCheckRunner + controllers | ✅ Replaced with `ILogger` warnings/errors |
 | 24 | Metrics / OpenTelemetry absent | ⬜ Optional — health endpoints cover liveness/readiness; OTel deferred |

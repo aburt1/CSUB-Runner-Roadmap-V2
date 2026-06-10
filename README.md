@@ -2,7 +2,7 @@
 
 An interactive student onboarding application for California State University, Bakersfield. Guides newly admitted students through every step of the admissions process — from acceptance to their first day of classes.
 
-This is a rewrite of the original React + Node/Express + PostgreSQL app onto a **Vue 3 + C# (ASP.NET Core) + SQL Server** stack, keeping the same functionality with deliberately simple, low-abstraction, readable code. The original lives in the sibling `CSUB-admissions/` folder and was the reference for behavior parity.
+Built on **Vue 3 + C# (ASP.NET Core) + SQL Server** with deliberately simple, low-abstraction, readable code — every behavior is explained in the docs so a new maintainer can understand not just *what* the app does, but *why*.
 
 ![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
@@ -47,10 +47,6 @@ This is a rewrite of the original React + Node/Express + PostgreSQL app onto a *
 - **Backend:** ASP.NET Core (.NET 10) controllers + Dapper (hand-written T-SQL). No ORM. Built with .NET analyzers and warnings-as-errors; transient-fault retry on all SQL; liveness/readiness health probes.
 - **Database:** SQL Server 2022. Schema is applied idempotently on startup and tracked in a `schema_version` table. **In production a DBA provisions the database and a least-privilege login — the app does not run `CREATE DATABASE`.** Database creation and seeding auto-run only outside Production (see [Deployment](docs/DEPLOYMENT.md)).
 
-See [docs/LIBRARIES.md](docs/LIBRARIES.md) for every dependency, what it does, and a link to its docs.
-
----
-
 ## Quick Start
 
 The fastest way to see the whole app is the three-container Docker stack. The `api` container runs in Production and refuses weak/missing secrets, so set them first:
@@ -70,15 +66,11 @@ See the [Development Setup Guide](docs/SETUP.md) for local (non-container) devel
 
 | Document | Description |
 |----------|-------------|
-| [Development Setup](docs/SETUP.md) | Prerequisites, running locally, running the frontend on Windows, environment variables, default credentials, lint/test/format commands |
-| [Architecture](docs/ARCHITECTURE.md) | Tech stack, project structure, request/data flow, startup sequence, resilience (retry + health probes), three-container deployment |
+| [Development Setup](docs/SETUP.md) | Prerequisites, running locally, running the frontend on Windows, environment variables, default credentials, the dev quality workflow (tests/lint/format), troubleshooting |
+| [Architecture](docs/ARCHITECTURE.md) | **How the app works and why** (terms, tag personalization, the progression cursor, roles, integrations), plus structure, request/data flow, startup, resilience, deployment topology |
 | [Deployment](docs/DEPLOYMENT.md) | **Production deployment to a Windows Server + SQL Server**: the connection-string model, least-privilege DBA-provisioned login, `Encrypt=True`, Windows/Integrated auth, the `Database:AutoCreate`/`Database:Seed` flags, container hardening, health probes, TLS, and a go-live checklist |
-| [Authentication](docs/AUTH-ROADMAP.md) | Student/admin/integration auth, JWT, RBAC, Azure AD SSO, the roadmap personalization logic, production checklist |
 | [API Integration](docs/API-GUIDE.md) | REST API reference for external system integration (inbound push + outbound API checks) + health endpoints |
-| [Libraries](docs/LIBRARIES.md) | Every backend/frontend/infra dependency, what it does, and a link to its docs |
-| [Testing](docs/TESTING.md) | Running the xUnit integration suite + the Vitest frontend suite, the CI pipeline, test strategy, adding new tests |
-| [Development with Claude Code](docs/CLAUDE-CODE.md) | Using Claude Code for feature development |
-| [Enterprise Readiness](ENTERPRISE-READINESS.md) · [Parity Audit](AUDIT.md) · [Security Audit](SECURITY-AUDIT.md) | Enterprise gap analysis + resolutions, the conversion parity audit, and security/code audit findings |
+| [docs/history/](docs/history/) | Historical records: the enterprise-readiness gap analysis and the audit reports |
 
 ---
 
@@ -109,8 +101,7 @@ docker compose up -d --build api  # database + API (depends_on starts sqlserver)
 docker compose up -d --build web  # full stack (depends_on pulls in api + sqlserver)
 ```
 
-> On Apple Silicon, SQL Server runs as a linux/amd64 container — enable Rancher/Docker Desktop's
-> **VZ backend with Rosetta** (`rdctl set --virtual-machine.use-rosetta=true`).
+> Mac users: the SQL Server container needs one VM setting — see [SETUP troubleshooting](docs/SETUP.md#troubleshooting).
 
 ---
 
@@ -146,8 +137,7 @@ tests/       xUnit integration tests (Api.IntegrationTests)
 docs/        documentation + screenshots
 docker-compose.yml   web + api + sqlserver
 .env.example         template for the secrets the api container requires
-AUDIT.md             parity audit of the conversion vs. the original app
-SECURITY-AUDIT.md    security/code audit findings and resolutions
+docs/history/        historical audit records
 ```
 
 ---

@@ -9,7 +9,7 @@ This guide covers how external systems integrate with the CSUB Admissions app. T
 | **Who initiates** | Your system | Our app (triggered by the student) |
 | **Auth method** | Integration key | Configured per-step by a sysadmin (none, basic, or bearer) |
 
-The app is an **ASP.NET Core (.NET 10)** service using **Dapper** + hand-written T-SQL against **SQL Server**, paired with a **Vue 3 (Vite)** single-page app. The endpoints below — paths, payloads, status codes, JSON key names — are preserved **verbatim** from the original Node/Express implementation. Only the runtime, the deployment topology, and the local-dev setup have changed. Where a behavior is enforced by a specific source file, that file is named so you can verify it.
+The app is an **ASP.NET Core (.NET 10)** service using **Dapper** + hand-written T-SQL against **SQL Server**, paired with a **Vue 3 (Vite)** single-page app. The endpoints below — paths, payloads, status codes, JSON key names — are a **stable contract**: integration partners can rely on these shapes not changing between releases. Where a behavior is enforced by a specific source file, that file is named so you can verify it.
 
 **Base URL:** `https://your-domain.com` (substitute your production hostname)
 
@@ -49,7 +49,7 @@ The app uses three separate authentication models depending on the audience.
 
 ### Integration Key (for inbound API)
 
-Integration clients are provisioned with a secret key. The raw key is never stored — only a **bcrypt hash** is kept in the database (`integration_clients.key_hash`). The gate that enforces this is `Api/Auth/IntegrationAuthAttribute.cs`, applied as `[IntegrationAuth]` to the whole `IntegrationsController` (the equivalent of the old `router.use(integrationAuth)`).
+Integration clients are provisioned with a secret key. The raw key is never stored — only a **bcrypt hash** is kept in the database (`integration_clients.key_hash`). The gate that enforces this is `Api/Auth/IntegrationAuthAttribute.cs`, applied as `[IntegrationAuth]` to the whole `IntegrationsController`.
 
 Send your key in one of two ways:
 
@@ -95,7 +95,7 @@ Admin roles control access:
 
 The API-check configuration endpoints in this guide are gated to **`sysadmin`** specifically (`[AdminAuth("sysadmin")]` on `Api/Controllers/Admin/ApiChecksController.cs`).
 
-> **Note:** The legacy `X-API-Key` admin authentication path from the original app has been **dropped**. Admin access is JWT-only.
+> **Note:** There is no API-key path for *admin* endpoints — admin access is JWT-only. (Integration keys only authenticate the `/api/integrations/*` surface.)
 
 ### Rate Limiting
 
@@ -105,11 +105,11 @@ All `/api/` routes are rate-limited to **200 requests per 15 minutes** per IP ad
 - Auth endpoints opt into stricter named policies: **login** is `10 / 15 min` per IP and the break-glass **local login** is `5 / 15 min` per IP.
 - The whole limiter can be disabled with `RateLimiting__Disabled=true` (used by the xUnit integration test suite so the per-IP login limit doesn't trip during a run). Do not set this in production.
 
-> The original Express app advertised `RateLimit-Limit` / `RateLimit-Remaining` / `RateLimit-Reset` response headers. The .NET built-in limiter rejects with a bare **429** and does not emit those headers by default — treat any 429 as "back off and retry later."
+> Rate-limited requests are rejected with a bare **429** — no `RateLimit-*` advisory headers are sent, so treat any 429 as "back off and retry later."
 
 ### Credential Encryption
 
-Outbound API-check credentials (basic-auth passwords, bearer tokens) are encrypted at rest using **AES-256-GCM** (`Api/Services/Encryption.cs`). The on-disk format is a JSON string `{ "iv": ..., "data": ..., "tag": ... }` where each field is **hex-encoded** — a **12-byte IV** and a **16-byte GCM authentication tag** — byte-for-byte compatible with the original Node `crypto` implementation. The encryption key is read once at startup from `ApiCheck__EncryptionKey` and must be a **64-character (32-byte) hex string**; anything else leaves encryption "not configured" and any attempt to save credentials returns `500 Encryption key not configured on server`.
+Outbound API-check credentials (basic-auth passwords, bearer tokens) are encrypted at rest using **AES-256-GCM** (`Api/Services/Encryption.cs`). The on-disk format is a JSON string `{ "iv": ..., "data": ..., "tag": ... }` where each field is **hex-encoded** — a **12-byte IV** and a **16-byte GCM authentication tag**. The encryption key is read once at startup from `ApiCheck__EncryptionKey` and must be a **64-character (32-byte) hex string**; anything else leaves encryption "not configured" and any attempt to save credentials returns `500 Encryption key not configured on server`.
 
 ### SSRF Protection
 
@@ -155,7 +155,7 @@ Discover the available steps and their `step_key` values. Call this first to kno
 |-----------|------|----------|-------------|
 | `term_id` | integer | No | Filter to a specific term. If omitted, returns steps for **all** terms (newest term first, then by step `sort_order`). A non-numeric or zero value returns 400. |
 
-> The `term_id` parser mirrors JavaScript's `parseInt(x, 10)`: it reads the leading integer of the string and treats `0` or a non-numeric value as falsy, which trips the old `req.query.term_id && !termId` guard and returns `400 {"error": "term_id must be a valid number"}`.
+> The `term_id` parser reads the leading integer of the value; `0`, a negative, or a non-numeric value means "no term filter" (all terms).
 
 **Example Request:**
 
@@ -240,7 +240,7 @@ curl -X PUT \
 }
 ```
 
-Timestamps are emitted as ISO-8601 UTC with a trailing `Z` (a custom `UtcDateTimeConverter` enforces this app-wide, matching the old app). `student_id` is the internal GUID for the resolved student.
+Timestamps are emitted as ISO-8601 UTC with a trailing `Z` (a custom `UtcDateTimeConverter` enforces this app-wide). `student_id` is the internal GUID for the resolved student.
 
 **Result Values:**
 
@@ -399,7 +399,7 @@ The throttle timestamp (`students.last_api_check_at`) is updated at the end of e
 - **5-second timeout** per individual external API call
 - **15-second total cap** across all checks in a single run — once the cap is reached, remaining checks are skipped and the run finishes with whatever it has
 
-> **Note:** The dev-only mock API-check routes from the original app have been **dropped**. To test a configuration, use the `.../api-check/test` admin endpoint below, or point a check at a local mock server (allowed in development).
+> **Note:** To test a configuration before enabling it, use the `.../test` endpoint below — there are no mock API-check routes.
 
 ---
 
@@ -411,7 +411,7 @@ If you are building an API that the admissions app will poll, here is what it ne
 2. **Accept a student identifier** in the URL (substituted via a placeholder)
 3. **Return JSON** with a field that evaluates to truthy (step complete) or falsy (step incomplete)
 
-The app sends an `Accept: application/json` header on every call. Truthiness follows JavaScript `Boolean()` semantics (preserved from the old app): `false`, `null`, `0` (and `-0`), and the empty string `""` are **falsy**; non-empty strings, non-zero numbers, and any object or array (even an empty one) are **truthy**. If the response is not valid JSON, or the field path doesn't resolve, the extracted value is treated as `null` (falsy).
+The app sends an `Accept: application/json` header on every call. Truthiness follows JavaScript `Boolean()` semantics: `false`, `null`, `0` (and `-0`), and the empty string `""` are **falsy**; non-empty strings, non-zero numbers, and any object or array (even an empty one) are **truthy**. If the response is not valid JSON, or the field path doesn't resolve, the extracted value is treated as `null` (falsy).
 
 **Simple example:**
 
@@ -512,7 +512,7 @@ curl -H "Authorization: Bearer <admin-jwt>" \
 
 #### PUT /api/admin/steps/{id}/api-check
 
-Create or update an API-check configuration. This is an **upsert keyed on `step_id`** (the old `ON CONFLICT (step_id) DO UPDATE`), done inside a transaction.
+Create or update an API-check configuration. This is an **upsert keyed on `step_id`**, done inside a transaction.
 
 **Request Body:**
 
@@ -728,7 +728,7 @@ Because a fresh boot serves traffic only once the DB is reachable, `/ready` is a
 
 ### GET /api/health (legacy)
 
-The original combined check, kept for backward compatibility. It probes the DB like `/ready` does, but **always returns `200`** — the database state is reported only in the body, never in the status code. Tooling that treats any non-200 as "down" will therefore never notice a DB outage through this endpoint, which is exactly why the split `/live` + `/ready` pair exists. Prefer those for new monitors.
+The legacy combined check, kept for backward compatibility. It probes the DB like `/ready` does, but **always returns `200`** — the database state is reported only in the body, never in the status code. Tooling that treats any non-200 as "down" will therefore never notice a DB outage through this endpoint, which is exactly why the split `/live` + `/ready` pair exists. Prefer those for new monitors.
 
 ```bash
 curl http://localhost:8080/api/health
@@ -790,7 +790,7 @@ docker compose up -d --build web      # full stack (:3000); pulls api + sqlserve
 
 Override secrets/config by setting the matching env vars before `docker compose up` (see the `api` service in `docker-compose.yml`): `MSSQL_SA_PASSWORD`, `JWT_SECRET`, `ADMIN_DEFAULT_EMAIL/PASSWORD`, `LOCAL_LOGIN_USERNAME/PASSWORD`, `API_CHECK_ENCRYPTION_KEY`, and so on.
 
-> SQL Server runs as a `linux/amd64` container. On Apple Silicon this requires Rancher Desktop (or Docker Desktop) with the VZ virtualization backend and Rosetta enabled.
+> SQL Server runs as a `linux/amd64` container — platform notes live in [SETUP.md](SETUP.md#troubleshooting).
 
 ### Local development without containers
 
