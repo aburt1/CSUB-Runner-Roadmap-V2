@@ -102,6 +102,10 @@ watch(
     props.api
       .get(`/students/${student.id}/progress`)
       .then((data: any) => {
+        // Stale-response guard: the admin may have switched students while this
+        // request was in flight — rendering it now would show student A's progress
+        // under student B's name.
+        if (props.student?.id !== student.id) return
         const map = new Map<number, ProgressInfo>()
         for (const p of data.progress) {
           map.set(p.step_id, {
@@ -120,6 +124,7 @@ watch(
     props.api
       .get(`/audit?studentId=${student.id}&limit=20`)
       .then((data: any) => {
+        if (props.student?.id !== student.id) return
         auditLogs.value = data.logs
       })
       .catch(() => {})
@@ -136,7 +141,7 @@ const refreshAudit = () => {
     .catch(() => {})
 }
 
-const handleStepToggle = (stepId: number, newStatus: string | null) => {
+const handleStepToggle = (stepId: number, newStatus: string | null, note: string | null = null) => {
   const next = new Map(progress.value)
   if (newStatus === null) {
     next.delete(stepId)
@@ -144,7 +149,7 @@ const handleStepToggle = (stepId: number, newStatus: string | null) => {
     next.set(stepId, {
       completed_at: new Date().toISOString(),
       status: newStatus,
-      note: null,
+      note,
     })
   }
   progress.value = next
@@ -152,16 +157,19 @@ const handleStepToggle = (stepId: number, newStatus: string | null) => {
   refreshAudit()
 }
 
+let tagSaveSeq = 0
 const saveTags = async (newTags: string[]) => {
   // Optimistically show the new tags, but remember the old set so we can roll
-  // back (and tell the admin) if the save fails.
+  // back (and tell the admin) if the save fails. The sequence number stops a
+  // SLOW failure from rolling the UI back past a NEWER successful save.
   const previousTags = studentTags.value
+  const seq = ++tagSaveSeq
   studentTags.value = newTags
   try {
     await props.api.put(`/students/${props.student!.id}/tags`, { tags: newTags })
     refreshAudit()
   } catch {
-    studentTags.value = previousTags
+    if (seq === tagSaveSeq) studentTags.value = previousTags
     toast.error('Could not save tags. Please try again.')
   }
 }

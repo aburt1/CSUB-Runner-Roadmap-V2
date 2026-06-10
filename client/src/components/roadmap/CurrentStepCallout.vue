@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { safeUrl } from '../../utils/links'
 import type { StepWithStatus, LinkItem } from '../../types/api'
 
 const props = defineProps<{
@@ -86,7 +87,7 @@ onMounted(() => {
             <div class="flex flex-wrap items-center gap-3 mt-4">
               <a
                 v-if="primaryAction"
-                :href="primaryAction.url"
+                :href="safeUrl(primaryAction.url)"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="inline-flex items-center gap-2 bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider text-sm px-5 py-2.5 rounded-lg shadow transition-colors"

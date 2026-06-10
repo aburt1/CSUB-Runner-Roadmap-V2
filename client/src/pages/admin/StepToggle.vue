@@ -28,7 +28,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  (e: 'toggle', stepId: number, newStatus: string | null): void
+  (e: 'toggle', stepId: number, newStatus: string | null, note: string | null): void
 }>()
 
 const loading = ref(false)
@@ -43,14 +43,14 @@ const handleConfirm = async (note: string | null) => {
   try {
     if (action === 'uncomplete') {
       await props.api.del(`/students/${props.studentId}/steps/${props.stepId}/complete`, { note })
-      emit('toggle', props.stepId, null)
+      emit('toggle', props.stepId, null, note)
     } else {
       const progressStatus = action === 'waive' ? 'waived' : 'completed'
       await props.api.post(`/students/${props.studentId}/steps/${props.stepId}/complete`, {
         note,
         status: progressStatus,
       })
-      emit('toggle', props.stepId, progressStatus)
+      emit('toggle', props.stepId, progressStatus, note)
     }
   } catch {
     // The emit (and any parent state change) only happens on success above, so

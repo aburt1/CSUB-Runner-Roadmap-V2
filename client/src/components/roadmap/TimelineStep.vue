@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { safeUrl } from '../../utils/links'
 import DeadlineCountdown from './DeadlineCountdown.vue'
 import type { StepWithStatus, LinkItem } from '../../types/api'
 
@@ -344,7 +345,7 @@ const handleClick = () => {
             <!-- Action CTA for in-progress step -->
             <a
               v-if="primaryAction"
-              :href="primaryAction.url"
+              :href="safeUrl(primaryAction.url)"
               target="_blank"
               rel="noopener noreferrer"
               @click.stop

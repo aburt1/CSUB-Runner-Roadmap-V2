@@ -36,11 +36,13 @@ export function useAdminApi(token: string | null, onAuthError?: () => void): Adm
       body: body !== undefined ? JSON.stringify(body) : undefined,
     })
 
-    if (returnRaw) return res
     if (res.status === 401) {
+      // Fire the auth handler even in raw mode (CSV export etc.) — an expired
+      // session should always send the admin back to login.
       onAuthError?.()
-      throw new Error('Session expired')
+      if (!returnRaw) throw new Error('Session expired')
     }
+    if (returnRaw) return res
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Request failed' }))
       throw new Error(err.error || 'Request failed')

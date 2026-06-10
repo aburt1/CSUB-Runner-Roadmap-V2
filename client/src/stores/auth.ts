@@ -57,14 +57,24 @@ export const useAuthStore = defineStore('auth', () => {
       try {
         await msalInstance.initialize()
         msalReady = true
-        const redirectResponse = await msalInstance.handleRedirectPromise()
-        if (redirectResponse?.idToken) {
-          await handleSsoResponse(redirectResponse.idToken)
-          loading.value = false
-          return
-        }
       } catch {
-        // MSAL init/redirect failed — continue to normal flow
+        // MSAL init failed — continue to normal flow
+      }
+      if (msalReady) {
+        try {
+          const redirectResponse = await msalInstance.handleRedirectPromise()
+          if (redirectResponse?.idToken) {
+            await handleSsoResponse(redirectResponse.idToken)
+            loading.value = false
+            return
+          }
+        } catch (err) {
+          // The user DID come back from a redirect sign-in — swallowing this would
+          // strand them on the public page with no explanation. Surface it.
+          console.error('[sso] redirect sign-in failed', err)
+          ssoError.value =
+            (err as { message?: string })?.message || 'Sign-in failed. Please try again.'
+        }
       }
     }
 
@@ -76,7 +86,9 @@ export const useAuthStore = defineStore('auth', () => {
         })
         if (res.ok) {
           user.value = await res.json()
-        } else {
+        } else if (res.status === 401 || res.status === 403) {
+          // Only an explicit rejection discards the session — a transient 5xx here
+          // would otherwise silently log the student out on page load.
           sessionStorage.removeItem('csub_token')
           token.value = null
         }
@@ -101,7 +113,14 @@ export const useAuthStore = defineStore('auth', () => {
           ['popup_window_error', 'empty_window_error', 'popup_timeout'].includes(err.errorCode)
         ) {
           redirecting = true
-          await msalInstance.loginRedirect(loginRequest)
+          try {
+            await msalInstance.loginRedirect(loginRequest)
+          } catch (redirectErr) {
+            // The redirect never happened — reset the flag so the finally block can
+            // clear the spinner instead of leaving "Signing in..." stuck forever.
+            redirecting = false
+            throw redirectErr
+          }
           return
         }
         throw err

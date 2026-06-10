@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useToastStore } from '../../stores/toast'
 import { useAdminApi } from '../../composables/useAdminApi'
 import AdminLogin from './AdminLogin.vue'
 import StudentsTab from './StudentsTab.vue'
@@ -57,6 +58,7 @@ function isTokenExpired(token: string): boolean {
   }
 }
 
+const toast = useToastStore()
 const token = ref<string | null>(
   (() => {
     const stored = sessionStorage.getItem('csub_admin_token')
@@ -128,7 +130,10 @@ watch(
       .then((data) => {
         handleTermsChange(data)
       })
-      .catch(() => {})
+      .catch(() => {
+        // Surface it — silently swallowing leaves tabs stuck on "Loading..." forever.
+        toast.error('Could not load terms. Please refresh or try again.')
+      })
   },
   { immediate: true },
 )
@@ -143,7 +148,9 @@ watch(
       .then((data) => {
         steps.value = data
       })
-      .catch(() => {})
+      .catch(() => {
+        toast.error('Could not load steps for this term.')
+      })
   },
   { immediate: true },
 )

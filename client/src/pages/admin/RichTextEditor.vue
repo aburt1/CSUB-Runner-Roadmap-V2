@@ -83,16 +83,28 @@ const applyLink = () => {
     return
   }
 
+  // Only allow web links, and never interpolate the raw value into HTML — a URL
+  // containing quotes/angle brackets (or a javascript: scheme) would otherwise be
+  // injected verbatim into the editor document.
+  const href = /^https?:\/\//i.test(url.value.trim())
+    ? url.value.trim()
+    : `https://${url.value.trim()}`
+  const escaped = href
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+
   const { from, to } = ed.state.selection
   if (from === to) {
     ed.chain()
       .focus()
       .insertContent(
-        `<a href="${url.value}" target="_blank" rel="noopener noreferrer">${url.value}</a>`,
+        `<a href="${escaped}" target="_blank" rel="noopener noreferrer">${escaped}</a>`,
       )
       .run()
   } else {
-    ed.chain().focus().extendMarkRange('link').setLink({ href: url.value }).run()
+    ed.chain().focus().extendMarkRange('link').setLink({ href }).run()
   }
   closeLinkInput()
 }

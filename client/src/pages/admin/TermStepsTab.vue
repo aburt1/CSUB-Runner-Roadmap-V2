@@ -58,6 +58,8 @@ const showInactive = ref(false)
 const selected = ref<Set<number>>(new Set())
 const showCloneModal = ref(false)
 const saveTimerRef = ref<ReturnType<typeof setTimeout> | null>(null)
+// The reorder payload waiting on the debounce timer (flushed on unmount).
+let pendingOrder: { id: number; sort_order: number }[] | null = null
 
 const selectedTerm = computed(
   () => props.terms.find((term) => term.id === props.selectedTermId) || null,
@@ -167,14 +169,22 @@ const handleDragReorder = (reorderedVisible: StepItem[]) => {
   steps.value = updatedSteps
 
   if (saveTimerRef.value) clearTimeout(saveTimerRef.value)
+  pendingOrder = reorderedVisible.map((step, index) => ({ id: step.id, sort_order: index + 1 }))
   saveTimerRef.value = setTimeout(() => {
-    const order = reorderedVisible.map((step, index) => ({ id: step.id, sort_order: index + 1 }))
-    props.api.put('/steps/reorder', { order }).catch(() => fetchSteps())
+    const order = pendingOrder
+    pendingOrder = null
+    if (order) props.api.put('/steps/reorder', { order }).catch(() => fetchSteps())
   }, 500)
 }
 
 onUnmounted(() => {
   if (saveTimerRef.value) clearTimeout(saveTimerRef.value)
+  // Flush a not-yet-sent reorder: the admin already saw the optimistic order, so
+  // silently dropping it on tab switch would lose their change.
+  if (pendingOrder) {
+    props.api.put('/steps/reorder', { order: pendingOrder }).catch(() => {})
+    pendingOrder = null
+  }
 })
 
 const toggleSelect = (id: number) => {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import DOMPurify from 'dompurify'
+import { safeUrl } from '../../utils/links'
 import type { StepWithStatus, LinkItem, ContactInfo } from '../../types/api'
 
 interface StatusLabelConfig {
@@ -49,13 +50,19 @@ function onNavigate(direction: 'prev' | 'next'): void {
 
 const panelRef = useTemplateRef<HTMLDivElement>('panelRef')
 
-const links = computed<LinkItem[]>(() =>
-  props.step.links
-    ? typeof props.step.links === 'string'
-      ? JSON.parse(props.step.links)
-      : props.step.links
-    : [],
-)
+// Guarded parse: these computeds run during render, so one malformed DB row must
+// degrade to "no links", not throw and take down the whole component tree.
+const links = computed<LinkItem[]>(() => {
+  try {
+    return props.step.links
+      ? typeof props.step.links === 'string'
+        ? JSON.parse(props.step.links)
+        : props.step.links
+      : []
+  } catch {
+    return []
+  }
+})
 const isHtmlContent = computed(
   () => !!props.step.guide_content && /<[a-z][\s\S]*>/i.test(props.step.guide_content),
 )
@@ -66,11 +73,16 @@ const sanitizedGuideContent = computed(() =>
 )
 
 const contact = computed<ContactInfo | null>(() => {
-  const c = props.step.contact_info
-    ? typeof props.step.contact_info === 'string'
-      ? JSON.parse(props.step.contact_info)
-      : props.step.contact_info
-    : null
+  let c: ContactInfo | null = null
+  try {
+    c = props.step.contact_info
+      ? typeof props.step.contact_info === 'string'
+        ? JSON.parse(props.step.contact_info)
+        : props.step.contact_info
+      : null
+  } catch {
+    return null
+  }
   if (!c || !c.name) return null
   return c
 })
@@ -342,7 +354,7 @@ function formatCompletedAt(value: string): string {
             <a
               v-for="(link, i) in links"
               :key="i"
-              :href="link.url"
+              :href="safeUrl(link.url)"
               target="_blank"
               rel="noopener noreferrer"
               class="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 bg-white hover:bg-csub-blue/5 hover:border-csub-blue/20 transition-all font-body text-sm text-csub-blue font-semibold group"
@@ -449,7 +461,7 @@ function formatCompletedAt(value: string): string {
         <!-- Primary action for in-progress -->
         <a
           v-if="step.status === 'in_progress' && !isHtmlContent && links.length > 0"
-          :href="links[0]!.url"
+          :href="safeUrl(links[0]!.url)"
           target="_blank"
           rel="noopener noreferrer"
           class="flex items-center justify-center gap-2 w-full bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider text-sm px-6 py-3.5 rounded-xl shadow transition-colors mb-3"

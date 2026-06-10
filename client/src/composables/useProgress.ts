@@ -170,6 +170,12 @@ export function useProgress() {
     percentage,
     currentStep,
     allComplete,
-    retry: fetchProgress,
+    // Retry must re-run BOTH fetches: if the steps fetch was the one that failed,
+    // retrying only progress would clear the error while steps stay empty —
+    // flipping the UI into a false "No Checklist Available" state.
+    retry: async () => {
+      await fetchSteps()
+      await fetchProgress()
+    },
   }
 }

@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import { onMounted, onErrorCaptured, ref } from 'vue'
 import { useAuthStore } from './stores/auth'
-import { useToastStore } from './stores/toast'
 import ToastContainer from './components/ToastContainer.vue'
 
 // Initialize auth (MSAL + existing-token validation) once on app start.
 const auth = useAuthStore()
-const toast = useToastStore()
 
 const renderError = ref(false)
 
@@ -15,9 +13,11 @@ onMounted(() => {
 })
 
 // Error boundary: a render/lifecycle error shows a fallback instead of a blank screen.
+// Deliberately NO toast here: ToastContainer stays mounted in the fallback, so a toast
+// whose own render throws would re-enter this handler in a loop. The fallback screen
+// is the message.
 onErrorCaptured((err) => {
   console.error('[app error boundary]', err)
-  toast.error('Something went wrong.')
   renderError.value = true
   return false
 })

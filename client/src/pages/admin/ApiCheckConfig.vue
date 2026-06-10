@@ -111,10 +111,18 @@ const handleSave = async () => {
   try {
     let authCredentials: string | null = null
     if (authType.value === 'basic') {
-      if (username.value !== '••••••••' || password.value !== '••••••••') {
-        authCredentials = JSON.stringify({ username: username.value, password: password.value })
-      } else {
+      const usernameMasked = username.value === '••••••••'
+      const passwordMasked = password.value === '••••••••'
+      if (usernameMasked && passwordMasked) {
+        // Untouched — the server keeps the stored credentials.
         authCredentials = '••••••••'
+      } else if (usernameMasked || passwordMasked) {
+        // A half-edited pair would store the literal mask as the real value,
+        // silently corrupting the saved credentials.
+        error.value = 'To change Basic credentials, re-enter both the username and the password.'
+        return
+      } else {
+        authCredentials = JSON.stringify({ username: username.value, password: password.value })
       }
     } else if (authType.value === 'bearer') {
       if (bearerToken.value !== '••••••••') {
