@@ -48,10 +48,21 @@ builder.Services.AddSingleton<Api.Services.ApiCheckRunner>();
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    // Trust the forwarded headers regardless of source: the api is only reachable
-    // through the web container's nginx proxy on the internal Docker network.
     options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
+
+    // By default forwarded headers are trusted from ANY source, which is only safe
+    // because the api's port is not reachable except through the trusted nginx
+    // (compose binds it to 127.0.0.1; prod doesn't publish it at all). If the api
+    // is ever exposed more widely, set ForwardedHeaders:KnownNetworks to the
+    // proxy's CIDR(s) (e.g. "172.16.0.0/12;10.0.0.0/8") so a direct caller can't
+    // spoof X-Forwarded-For to dodge per-IP rate limiting.
+    var knownNetworks = builder.Configuration["ForwardedHeaders:KnownNetworks"];
+    if (!string.IsNullOrEmpty(knownNetworks))
+    {
+        foreach (var cidr in knownNetworks.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(cidr));
+    }
 });
 
 // CORS — same behavior as the old server (allow the SPA origin with credentials;

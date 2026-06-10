@@ -197,25 +197,30 @@ public sealed class ApiCheckRunner
         public string? reason { get; set; }
     }
 
-    private static bool IsPrivateIPv4(string ip)
+    // Structured (not string-prefix) check so IPv4-mapped IPv6 (::ffff:10.0.0.1),
+    // link-local (fe80::), site-local, and unspecified addresses are all caught.
+    private static bool IsPrivateAddress(IPAddress address)
     {
-        if (ip.StartsWith("127.") || ip.StartsWith("10.") || ip.StartsWith("0.") || ip.StartsWith("169.254."))
-            return true;
-        if (ip.StartsWith("172."))
-        {
-            var octets = ip.Split('.');
-            if (octets.Length > 1 && int.TryParse(octets[1], out var second) && second >= 16 && second <= 31)
-                return true;
-        }
-        if (ip.StartsWith("192.168."))
-            return true;
-        return false;
-    }
+        if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
+        if (IPAddress.IsLoopback(address)) return true;
 
-    private static bool IsPrivateIPv6(string ip)
-    {
-        var normalized = ip.ToLowerInvariant();
-        return normalized == "::1" || normalized.StartsWith("fc") || normalized.StartsWith("fd");
+        var bytes = address.GetAddressBytes();
+        if (address.AddressFamily == AddressFamily.InterNetwork)
+        {
+            return bytes[0] == 0                                      // 0.0.0.0/8
+                || bytes[0] == 10                                     // 10/8
+                || (bytes[0] == 169 && bytes[1] == 254)               // 169.254/16 link-local
+                || (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31)  // 172.16/12
+                || (bytes[0] == 192 && bytes[1] == 168);              // 192.168/16
+        }
+        if (address.AddressFamily == AddressFamily.InterNetworkV6)
+        {
+            return address.Equals(IPAddress.IPv6Any)                  // ::
+                || address.IsIPv6LinkLocal                            // fe80::/10
+                || address.IsIPv6SiteLocal                            // fec0::/10
+                || (bytes[0] & 0xfe) == 0xfc;                         // fc00::/7 unique-local
+        }
+        return false;
     }
 
     // Validate a URL for SSRF protection: reject private IPs, localhost, and
@@ -263,13 +268,8 @@ public sealed class ApiCheckRunner
         // reject if any maps to a private/internal range. In dev these are allowed.
         foreach (var address in addresses)
         {
-            var family = address.AddressFamily;
-            var addressText = address.ToString();
-
-            if (!_isDev && family == AddressFamily.InterNetwork && IsPrivateIPv4(addressText))
-                return new UrlValidation { valid = false, reason = $"Resolved to private IP {addressText}" };
-            if (!_isDev && family == AddressFamily.InterNetworkV6 && IsPrivateIPv6(addressText))
-                return new UrlValidation { valid = false, reason = $"Resolved to private IPv6 {addressText}" };
+            if (!_isDev && IsPrivateAddress(address))
+                return new UrlValidation { valid = false, reason = $"Resolved to private IP {address}" };
         }
 
         return new UrlValidation { valid = true };

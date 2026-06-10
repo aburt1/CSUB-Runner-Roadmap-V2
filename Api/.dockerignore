@@ -1,4 +1,5 @@
 bin
 obj
-**/bin
-**/obj
+# Keep dev-only secrets/config out of the production image (the container runs
+# as Production and must get real config from the environment, not this file).
+appsettings.Development.json
