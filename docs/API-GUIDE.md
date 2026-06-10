@@ -523,6 +523,8 @@ Create or update an API-check configuration. This is an **upsert keyed on `step_
 | `http_method` | string | No | `"GET"` (default) or `"POST"` (case-insensitive; uppercased server-side) |
 | `auth_type` | string | No | `"none"` (default), `"basic"`, or `"bearer"` |
 | `auth_credentials` | object/string | No | See the auth-options table above. Encrypted at rest. Send the masked sentinel `"••••••••"` to **preserve existing credentials unchanged**. |
+
+> **Partial edits are all-or-nothing for `basic` auth.** The admin UI requires re-entering *both* the username and the password when changing either — submitting a pair where one field is still the mask would store the literal `••••••••` as that credential. If you call this endpoint directly, follow the same rule: send the full real pair, or the bare mask sentinel to keep what is stored.
 | `headers` | array | No | Array of `{"key": "...", "value": "..."}` objects |
 | `student_param_name` | string | No | Placeholder name in the URL (default: `"studentId"`) |
 | `student_param_source` | string | No | `"emplid"` (default) or `"email"` |
@@ -677,6 +679,8 @@ Conflating the two is a classic outage amplifier: if a liveness probe also check
 |----------|-------------|---------------------|---------------------|---------|
 | `GET /api/health/live` | No | `200` | `200` (unaffected) | Liveness — "restart me if this fails" |
 | `GET /api/health/ready` | Yes (`SELECT 1`) | `200` | `503` | Readiness — "stop sending me traffic if this fails" |
+
+> The DB probe runs on a dedicated connection with a **3-second** connect/command timeout and no retry, so `/api/health/ready` answers quickly (≤ ~3 s) even when the database is unreachable.
 | `GET /api/health` | Yes (`SELECT 1`) | `200` | `200` | Legacy combined check; **always** 200, DB status is in the body |
 
 All three are anonymous (no integration key, no JWT) and live behind the same `/api` rate limiter as every other route, so a monitor polling aggressively still counts against the per-IP **200 / 15 min** budget — keep probe intervals reasonable.

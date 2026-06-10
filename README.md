@@ -84,7 +84,7 @@ See the [Development Setup Guide](docs/SETUP.md) for local (non-container) devel
 
 ## Deployment
 
-> **Production deployment** (app in containers, SQL Server on a Windows Server) is documented step-by-step in **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — including the DBA-provisioned least-privilege login, `Encrypt=True`, Windows/Integrated auth, TLS, and a go-live checklist. The compose stack below is for local/testing.
+> **Production deployment** (app in containers, SQL Server on a Windows Server) uses the dedicated **[`docker-compose.prod.yml`](docker-compose.prod.yml)** (web + api only, external database, no `CREATE DATABASE` rights) and is documented step-by-step in **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — including the DBA-provisioned least-privilege login, `Encrypt=True`, Windows/Integrated auth, TLS, and a go-live checklist. The compose stack below is for local/testing.
 
 Three containers, defined in [`docker-compose.yml`](docker-compose.yml):
 
@@ -132,6 +132,8 @@ docker compose up -d --build web  # full stack (depends_on pulls in api + sqlser
 | `Cors__Origin` | No | Allowed CORS origin (only if the client is served from a different origin) |
 
 Client config is **inlined by Vite at build time** (not runtime), so it is passed as Docker build args: `VITE_AZURE_AD_CLIENT_ID`, `VITE_AZURE_AD_TENANT_ID`, `VITE_AZURE_AD_REDIRECT_URI`, and `VITE_ALLOW_DEV_LOGIN` (keep `false` for real deployments). See [Deployment](docs/DEPLOYMENT.md) and `.env.example`.
+
+> The table above uses the ASP.NET `Section__Key` environment names. When configuring via the compose `.env` file, use the friendlier names from `.env.example` (e.g. `AZURE_AD_CLIENT_ID`, `CORS_ORIGIN`, `INTEGRATION_DEFAULT_KEY`, `PROD_CONNECTION_STRING`) — the compose files map them onto the `__` names.
 
 ---
 

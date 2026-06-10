@@ -18,7 +18,7 @@ This is the "how it all fits together" document. For specific topics it hands of
 
 | Layer | Technologies |
 |-------|-------------|
-| **Frontend** | Vue 3 (Single-File Components), TypeScript, Vite, Pinia (state), vue-router, Tailwind CSS 3, vuedraggable (step reorder), vue-chartjs + Chart.js (analytics), Tiptap (rich-text step content), vue3-emoji-picker, canvas-confetti, DOMPurify (HTML sanitization) |
+| **Frontend** | Vue 3 (Single-File Components), TypeScript, Vite, Pinia (state), vue-router, Tailwind CSS 3, vuedraggable (step reorder), vue-chartjs + Chart.js (analytics), Tiptap (rich-text step content), vue3-emoji-picker, canvas-confetti, DOMPurify (HTML sanitization), a `safeUrl` scheme guard for admin-authored links (`utils/links.ts`) |
 | **Backend** | ASP.NET Core controllers (.NET 10), C#, Dapper + hand-written T-SQL, SQL Server 2022 |
 | **Auth** | App-issued JWT sessions (HS256), bcrypt password hashing (BCrypt.Net-Next), Azure AD SSO via MSAL (optional) |
 | **Security** | Helmet-equivalent security headers, CORS, ASP.NET Core rate limiting, AES-256-GCM credential encryption, SSRF-guarded outbound API checks, forwarded-headers handling behind a reverse proxy |
@@ -431,7 +431,7 @@ private async Task<bool> DbReachableAsync()
 }
 ```
 
-The container HEALTHCHECKs use **liveness** (see [Hardened Containers](#hardened-containers)): the `api` container curls `/api/health/live`, and Compose gates `web` on the `api` container reporting healthy. Production load balancers should poll `/api/health/ready` so traffic only arrives once the DB is reachable. See [DEPLOYMENT.md](DEPLOYMENT.md) for wiring these into a Windows/IIS or reverse-proxy front end.
+The DB probe uses its **own connection with a 3-second connect/command timeout and no retry** — it deliberately bypasses the `Db` retry layer, because a readiness probe that spends a minute retrying before admitting the database is down defeats its purpose. The container HEALTHCHECKs use **liveness** (see [Hardened Containers](#hardened-containers)): the `api` container curls `/api/health/live`, and Compose gates `web` on the `api` container reporting healthy. Production load balancers should poll `/api/health/ready` so traffic only arrives once the DB is reachable. See [DEPLOYMENT.md](DEPLOYMENT.md) for wiring these into a Windows/IIS or reverse-proxy front end.
 
 ---
 
@@ -610,7 +610,7 @@ This is the most significant change from the original. The old app shipped as a 
    depends_on (service_healthy):  web  ──waits-for──►  api  ──waits-for──►  sqlserver
 ```
 
-**Same-origin via nginx.** The browser only ever talks to `web` on `http://localhost:3000`. nginx serves the SPA for `/` (with `try_files $uri $uri/ /index.html` SPA fallback so client routes like `/admin` load), and reverse-proxies everything under `/api/` to the `api` container (`proxy_pass ${API_URL}`, default `http://api:8080`). Because the API responses come back through the same origin, **the browser never makes a cross-origin request, so CORS is not needed** in the container deployment. The nginx config (`client/nginx.conf.template`) is rendered at container start by `envsubst` from the `API_URL` env var, so you can repoint the proxy at a different backend without rebuilding. The proxy also sets `X-Real-IP` / `X-Forwarded-For` / `X-Forwarded-Proto`, which the API consumes via `UseForwardedHeaders` (see [Forwarded headers / reverse proxy](#forwarded-headers--reverse-proxy)).
+**Same-origin via nginx.** The browser only ever talks to `web` on `http://localhost:3000`. nginx serves the SPA for `/` (with `try_files $uri $uri/ /index.html` SPA fallback so client routes like `/admin` load), and reverse-proxies everything under `/api/` to the `api` container (`proxy_pass ${API_URL}`, default `http://api:8080`). Because the API responses come back through the same origin, **the browser never makes a cross-origin request, so CORS is not needed** in the container deployment. The nginx config (`client/nginx.conf.template`) is rendered at container start by `envsubst` from the `API_URL` env var, so you can repoint the proxy at a different backend without rebuilding. The proxy also sets `X-Real-IP` / `X-Forwarded-For` / `X-Forwarded-Proto`, which the API consumes via `UseForwardedHeaders` (see [Forwarded headers / reverse proxy](#forwarded-headers--reverse-proxy)). nginx also hardens what it serves: security headers on the SPA (CSP including the `login.microsoftonline.com` connect-src MSAL needs, `nosniff`, frame `DENY`, `no-referrer`), gzip for text assets, and a 1-year cache for the hashed `/assets/` bundle. One operational footgun is documented in the template itself: **`API_URL` must not end with a trailing slash**, or `proxy_pass` would strip the `/api/` prefix and every API route would 404.
 
 **Self-initializing API.** The `api` container waits for `sqlserver` to be healthy (`depends_on: condition: service_healthy`, backed by a `sqlcmd SELECT 1` healthcheck), then runs the [startup sequence](#startup-sequence-programcs--schemainitializercs). Nothing has to be run by hand against the database in dev. (In production, `Database:AutoCreate`/`Database:Seed` are turned off and a DBA provisions the database — see [DEPLOYMENT.md](DEPLOYMENT.md).)
 

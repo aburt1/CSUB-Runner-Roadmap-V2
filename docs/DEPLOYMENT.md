@@ -156,6 +156,14 @@ as environment variables using the ASP.NET Core double-underscore syntax (`Secti
 | `Integration__DefaultName` / `Integration__DefaultKey` | No | Seeds an integration client for the inbound push / outbound API-check features |
 | `Cors__Origin` | No | Only needed if the SPA is served from a **different** origin than the API. In the standard same-origin nginx setup, leave it unset |
 
+> **Variable names in `.env` vs. direct environment:** the table above shows the
+> ASP.NET `Section__Key` names, which is what you set when running the api image under
+> an orchestrator. The compose files map friendlier `.env` names onto them — e.g.
+> `AZURE_AD_CLIENT_ID` → `AzureAd__ClientId`, `CORS_ORIGIN` → `Cors__Origin`,
+> `INTEGRATION_DEFAULT_KEY` → `Integration__DefaultKey`, and (prod compose)
+> `PROD_CONNECTION_STRING` → `ConnectionStrings__Default`. `.env.example` lists every
+> `.env` name.
+
 > **Never commit real secrets.** Inject them from your platform's secret store (e.g. a
 > `.env` file with locked-down permissions on the host, Docker/compose secrets, or your
 > orchestrator's secret mechanism). `.env.example` documents every variable.
@@ -245,6 +253,9 @@ The API exposes three endpoints (see `Api/Controllers/HealthController.cs`):
   until the database is actually reachable.
 - Kubernetes example: `livenessProbe` → `/api/health/live`, `readinessProbe` →
   `/api/health/ready`.
+- The readiness probe is **fast by design**: it uses its own dedicated connection with
+  a 3-second connect/command timeout and bypasses the app's transient-retry layer, so a
+  down database reports `503` within seconds (not after a minute of retries).
 
 ---
 
@@ -260,6 +271,10 @@ The API exposes three endpoints (see `Api/Controllers/HealthController.cs`):
 - Because the API trusts forwarded headers unconditionally (it is only reachable through
   the trusted internal nginx), **do not expose the api container's port publicly.** Keep
   it on the internal network only.
+- If your topology ever requires exposing the api more widely, set
+  `ForwardedHeaders__KnownNetworks` to the proxy's CIDR list (semicolon-separated, e.g.
+  `"172.16.0.0/12;10.0.0.0/8"`). The API then only honors `X-Forwarded-*` from those
+  networks, so a direct caller cannot spoof its IP to dodge per-IP rate limiting.
 
 ---
 

@@ -624,6 +624,24 @@ explicitly set. To skip seeding entirely, set `Database__Seed=false` (see
 | `docker compose down -v` | Also delete the `csub_sqlserver_data` volume (fresh DB) |
 | `docker compose logs -f api` | Follow the API logs (schema + seed output) |
 
+## Troubleshooting
+
+Real failure modes and their causes, fastest fix first.
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `docker compose up` exits immediately with `set MSSQL_SA_PASSWORD in .env` (or similar) | A required secret is unset — compose validates with `${VAR:?}` | Copy `.env.example` to `.env` and fill in the four required values |
+| `dotnet run` / `dotnet test` can't connect to SQL Server, but the container is healthy | Your `MSSQL_SA_PASSWORD` differs from `Csub_Local_Dev_2026!`, which `appsettings.Development.json` and the test fixture hardcode | Set `MSSQL_SA_PASSWORD=Csub_Local_Dev_2026!` in `.env` for local work (or update both files to match yours) |
+| `sqlserver` container crash-loops or segfaults on a Mac | SQL Server is amd64-only; the VM is using qemu emulation | Enable VZ + Rosetta: `rdctl set --virtual-machine.use-rosetta=true` (Rancher) or the equivalent Docker Desktop toggle |
+| Every `/api` request through nginx returns 404, SPA loads fine | `WEB_API_URL` was set **with a trailing slash**, so `proxy_pass` strips the `/api/` prefix | Remove the trailing slash (`http://api:8080`, not `http://api:8080/`) |
+| api container exits at startup with an `ApiCheck:EncryptionKey` or `Jwt:Secret` error | Production fail-fast guards: the key must be 64 real hex chars and the JWT secret ≥ 32 chars, neither a placeholder | Generate real values: `openssl rand -hex 32` and `openssl rand -base64 48` |
+| Saving API-check credentials returns `500 Encryption key not configured` (local dev) | `ApiCheck:EncryptionKey` unset or not valid 64-char hex — in Development this disables encryption instead of failing startup | Set a valid hex key in `appsettings.Development.json` or the environment |
+| Admin login to the compose stack fails with the `admin123` password | The containerized api runs as **Production**; the seeder refuses weak defaults, so the admin password is whatever `ADMIN_DEFAULT_PASSWORD` you set | Use the password from your `.env` (`admin123` works only for `dotnet run` dev) |
+| `dotnet test` from inside `Api/` runs zero tests | `Api/` holds only the app project | Run `dotnet test` from the **repo root** (resolves the `.slnx`, which includes `tests/`) |
+| A single test class fails when run with `--filter`, but the full suite passes | Some analytics assertions depend on progress data created by earlier classes in the shared test DB (known order-dependence) | Run the full suite for trustworthy results; treat filtered runs as a quick dev loop only |
+| Student page says "We couldn't load the admissions checklist" in local dev | The Vite proxy targets `http://localhost:3001` and the API isn't running (or is on another port) | Start the API (`dotnet run` in `Api/`), or point `VITE_API_PROXY_TARGET` at the right port; **Try Again** refetches everything |
+| Fresh database has no checklist/steps after startup | No **active** term exists (term-scoped seeding skips rather than writing dangling rows), or `Database__Seed=false` | Activate a term in the admin UI, or check the `Database__Seed` setting |
+
 ## What's Different From the Original
 
 The REST API contract (paths, payloads, status codes) is preserved, but the

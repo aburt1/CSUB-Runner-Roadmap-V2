@@ -20,14 +20,15 @@ to get wrong:
    PostgreSQL → SQL Server port introduced).
 2. **Frontend unit tests** (`client/src/**/*.test.ts`) — **Vitest** specs running under **jsdom**
    that pin the pure logic in the Vue client: the toast store, the admin fetch wrapper
-   (`useAdminApi`), the student auth store, and the exported tag/status helpers from `useProgress`.
+   (`useAdminApi`), the student auth store, the exported tag/status helpers from `useProgress`,
+   and the `safeUrl` link-scheme guard (`utils/links.ts`) that neutralizes stored `javascript:` URLs.
    These cover the branchy, easy-to-regress logic that lives *between* the API contract and the
    rendered DOM — exactly the code the integration tests cannot see.
 
 | Suite | Tests | Framework | Runs against | Where |
 |-------|-------|-----------|--------------|-------|
 | API integration | 214 | xUnit + `Microsoft.AspNetCore.Mvc.Testing` | .NET 10 + real SQL Server (`csub_admissions_test`) | `tests/Api.IntegrationTests/` |
-| Frontend unit | 27 | Vitest + jsdom + Pinia | in-process, `fetch`/`sessionStorage` stubbed | `client/src/**/*.test.ts` |
+| Frontend unit | 31 | Vitest + jsdom + Pinia | in-process, `fetch`/`sessionStorage` stubbed | `client/src/**/*.test.ts` |
 
 ### Testing philosophy
 
