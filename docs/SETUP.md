@@ -327,8 +327,9 @@ details.
 
 ## Developer quality workflow
 
-Before pushing, run the same checks CI runs (`.github/workflows/ci.yml` builds
-and tests both halves). The frontend and backend each have their own tooling.
+Before pushing, run the same checks the (currently parked) CI workflow is set up to
+run (`.github/workflows/ci.yml.disabled` builds and tests both halves). With CI off for
+now, running these locally is how the build stays honest. The frontend and backend each have their own tooling.
 This section is the day-to-day reference; for the test *strategy* and how the
 suites are organized, see [Testing](TESTING.md).
 

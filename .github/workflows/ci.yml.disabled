@@ -1,3 +1,9 @@
+# ⚠️ PARKED / DISABLED. This file is named `ci.yml.disabled`, so GitHub Actions
+# ignores it (it only runs `*.yml` / `*.yaml` files in this directory). The pipeline
+# is intentionally not active yet. To enable it later, rename it back:
+#     git mv .github/workflows/ci.yml.disabled .github/workflows/ci.yml
+# Everything below is ready to run as-is once re-enabled.
+
 name: CI
 
 # Build, lint, and test both halves of the app on every push/PR. The backend job

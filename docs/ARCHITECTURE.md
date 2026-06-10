@@ -185,7 +185,7 @@ CSUB-Runner-Roadmap-V2/
 │       ├── ApiChecksTests.cs         # Outbound API checks
 │       └── MiscTests.cs              # Cross-cutting cases
 │
-├── .github/workflows/ci.yml         # CI: build+test API vs. SQL Server service; lint+test+build client
+├── .github/workflows/ci.yml.disabled # CI (PARKED): build+test API vs. SQL Server service; lint+test+build client
 ├── docs/                            # Documentation (this file lives here)
 │   └── screenshots/                 # public-preview / student-dashboard / admin-dashboard
 ├── docker-compose.yml               # Three containers: web, api, sqlserver
@@ -724,7 +724,7 @@ The project treats lint, format, and tests as build-time contracts on both halve
 
 **Frontend.** `client/` ships Vitest unit tests (`client/src/**/*.test.ts`), an ESLint **flat** config (`eslint.config.js`), and Prettier (`.prettierrc.json`). The `npm` scripts `test`, `lint`, and `format` run them.
 
-**CI.** `.github/workflows/ci.yml` builds and tests the API against a real **SQL Server service container** (the integration tests need real SQL behavior — no mocks), and separately lints, tests, and builds the client. A red pipeline blocks merge. The integration-test design is detailed in [TESTING.md](TESTING.md).
+**CI (currently parked).** A GitHub Actions workflow is written and ready but **intentionally disabled** for now — it lives at `.github/workflows/ci.yml.disabled` (GitHub ignores non-`.yml` files), so nothing runs on push yet. When enabled (rename it to `ci.yml`), it builds and tests the API against a real **SQL Server service container** (the integration tests need real SQL behavior — no mocks) and separately lints, tests, and builds the client. The integration-test design is detailed in [TESTING.md](TESTING.md). Until then, run the same checks locally (see [SETUP.md](SETUP.md)).
 
 ---
 

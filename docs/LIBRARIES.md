@@ -198,9 +198,10 @@ of strict **style/perf** rules fight this codebase's deliberate choices — nota
 members (`CA1707`) and the logging-performance rule (`CA1848`). Those specific rules are suppressed
 **with a written rationale** in [`.editorconfig`](../.editorconfig) rather than by relaxing the global
 gate, so the suppression is visible and reviewable instead of silent. The frontend has the equivalent
-gate via ESLint + Prettier (see *Frontend quality* below), and CI runs both. See
-[`TESTING.md`](./TESTING.md) and [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) for how these
-gates run in the pipeline.
+gate via ESLint + Prettier (see *Frontend quality* below); a CI workflow that runs both is written but
+currently parked. See
+[`TESTING.md`](./TESTING.md) and [`.github/workflows/ci.yml.disabled`](../.github/workflows/ci.yml.disabled) for how these
+gates are wired (and how to re-enable them).
 
 - **Docs:** Code analysis overview <https://learn.microsoft.com/dotnet/fundamentals/code-analysis/overview> ·
   `TreatWarningsAsErrors` <https://learn.microsoft.com/dotnet/csharp/language-reference/compiler-options/errors-warnings>
@@ -438,9 +439,9 @@ browser. The npm scripts that drive them are:
 
 These are the frontend counterpart to the .NET analyzers: a **linter** (ESLint) for correctness and
 code-smell rules and a **formatter** (Prettier) for consistent style. Together they give the client the
-same "fail the build on a problem" discipline the backend gets from `TreatWarningsAsErrors`. CI runs
-`npm run lint` and `npm run format:check` alongside `npm run test` and `npm run build`
-([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)).
+same "fail the build on a problem" discipline the backend gets from `TreatWarningsAsErrors`. The (currently
+parked) CI workflow is set up to run `npm run lint` and `npm run format:check` alongside `npm run test` and `npm run build`
+([`.github/workflows/ci.yml.disabled`](../.github/workflows/ci.yml.disabled)); until it's enabled, run them locally.
 
 The division of labour is deliberate and is what the `@vue/eslint-config-prettier` package below exists
 to keep clean: **ESLint owns logic/correctness rules**, **Prettier owns whitespace/formatting**, and the

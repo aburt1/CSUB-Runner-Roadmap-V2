@@ -1,7 +1,8 @@
 # Testing Guide
 
 This guide covers both halves of the test suite — the **xUnit API integration tests** (backend) and
-the **Vitest unit tests** (frontend) — and the **CI pipeline** that runs both on every push. For how
+the **Vitest unit tests** (frontend). A GitHub Actions CI workflow that runs both is written but
+**currently parked** (`.github/workflows/ci.yml.disabled`), so for now you run the suites locally. For how
 the pieces fit into the system, see [`ARCHITECTURE.md`](ARCHITECTURE.md); for shipping to a server,
 see [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
@@ -48,8 +49,8 @@ at the layer where the contract actually lives.**
   protect the data and error shapes the UI renders, and the frontend specs protect the logic that
   transforms them.
 
-Both layers are **fast and hermetic enough to run on every push** — that is the bar CI enforces (see
-[CI Pipeline](#ci-pipeline)).
+Both layers are **fast and hermetic enough to run on every push** — that is the bar the (currently
+parked) CI workflow is built to enforce once enabled.
 
 ---
 
