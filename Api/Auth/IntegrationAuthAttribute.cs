@@ -23,7 +23,7 @@ public sealed class IntegrationAuthAttribute : Attribute, IAsyncActionFilter
         var credential = GetIntegrationCredential(http);
         if (string.IsNullOrEmpty(credential))
         {
-            context.Result = Error(401, "Integration authentication required");
+            context.Result = AuthError.Result(401, "Integration authentication required");
             return;
         }
 
@@ -45,7 +45,7 @@ public sealed class IntegrationAuthAttribute : Attribute, IAsyncActionFilter
                 return;
             }
 
-            context.Result = Error(401, "Invalid integration credentials");
+            context.Result = AuthError.Result(401, "Invalid integration credentials");
             return;
         }
 
@@ -66,7 +66,7 @@ public sealed class IntegrationAuthAttribute : Attribute, IAsyncActionFilter
             }
         }
 
-        context.Result = Error(401, "Invalid integration credentials");
+        context.Result = AuthError.Result(401, "Invalid integration credentials");
     }
 
     private static string? GetIntegrationCredential(HttpContext http)
@@ -82,10 +82,7 @@ public sealed class IntegrationAuthAttribute : Attribute, IAsyncActionFilter
         return null;
     }
 
-    private static ObjectResult Error(int status, string message) =>
-        new(new { error = message }) { StatusCode = status };
-
-    private sealed class IntegrationClientRow
+        private sealed class IntegrationClientRow
     {
         public int id { get; set; }
         public string name { get; set; } = "";

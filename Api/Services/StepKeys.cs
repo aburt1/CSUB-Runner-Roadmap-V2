@@ -7,6 +7,10 @@ namespace Api.Services;
 // Keys are slugged titles, made unique per term with -2/-3 suffixes.
 public static class StepKeys
 {
+    // NOTE: deliberately different from StudentTags.Slugify — this one strips
+    // apostrophes/quotes BEFORE slugging ("Don't" -> "dont", not "don-t"). Both
+    // produce STORED values (step keys here, derived tags there), so they must not
+    // be unified without migrating existing data.
     private static string Slugify(string? value)
     {
         var s = (value ?? "").Trim().ToLowerInvariant();

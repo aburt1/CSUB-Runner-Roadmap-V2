@@ -254,12 +254,10 @@ each with a different job (defined in `Api/Controllers/HealthController.cs`):
 |----------|-------------|---------|---------|
 | `GET /api/health/live` | No | always `200` | liveness — is the process up at all? |
 | `GET /api/health/ready` | Yes | `200` ready, `503` when DB is down | readiness — can it actually serve requests? |
-| `GET /api/health` | Yes | `{"status":"ok","db":"connected", ...}` | legacy combined check |
 
 ```bash
 # Local dev (dotnet run)
 curl http://localhost:3001/api/health/ready   # probes the DB; 503 if it can't connect
-curl http://localhost:3001/api/health         # legacy combined check
 
 # Containerized API directly
 curl http://localhost:8080/api/health/ready

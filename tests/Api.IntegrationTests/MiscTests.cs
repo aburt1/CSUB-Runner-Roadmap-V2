@@ -4,10 +4,9 @@ using System.Text.Json;
 
 namespace Api.IntegrationTests;
 
-// Cross-cutting "misc" coverage: the health check, the global security-header
-// middleware (Helmet-equivalent), and the 404 behavior for unknown /api routes.
-// Reference: NEW Api/Program.cs + Controllers/HealthController.cs, mirroring the
-// old Express server/index.ts (helmet config + /api/health route).
+// Cross-cutting "misc" coverage: the readiness probe, the global security-header
+// middleware, and the 404 behavior for unknown /api routes.
+// Reference: Api/Program.cs + Controllers/HealthController.cs.
 [Collection("api")]
 public class MiscTests
 {
@@ -15,17 +14,17 @@ public class MiscTests
 
     public MiscTests(WebAppFixture fx) => _fx = fx;
 
-    // ---- GET /api/health ----
+    // ---- GET /api/health/ready ----
 
     [Fact]
-    public async Task Health_returns_ok_and_connected_with_iso_utc_timestamp()
+    public async Task Ready_returns_ready_and_connected_with_iso_utc_timestamp()
     {
-        var res = await _fx.Anonymous().GetAsync("/api/health");
+        var res = await _fx.Anonymous().GetAsync("/api/health/ready");
 
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
 
         var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("ok", body.GetProperty("status").GetString());
+        Assert.Equal("ready", body.GetProperty("status").GetString());
         Assert.Equal("connected", body.GetProperty("db").GetString());
 
         // Corrected contract: timestamps are ISO-8601 UTC ending in "Z".
@@ -41,10 +40,10 @@ public class MiscTests
     }
 
     [Fact]
-    public async Task Health_is_publicly_accessible_without_auth()
+    public async Task Health_probes_are_publicly_accessible_without_auth()
     {
-        // No bearer token / no integration key: the health endpoint is open.
-        var res = await _fx.Anonymous().GetAsync("/api/health");
+        // No bearer token / no integration key: the health probes are open.
+        var res = await _fx.Anonymous().GetAsync("/api/health/ready");
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
     }
 
@@ -53,7 +52,7 @@ public class MiscTests
     [Fact]
     public async Task Security_headers_present_on_response()
     {
-        var res = await _fx.Anonymous().GetAsync("/api/health");
+        var res = await _fx.Anonymous().GetAsync("/api/health/ready");
 
         var headers = res.Headers;
 

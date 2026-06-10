@@ -5,6 +5,7 @@ import 'vue3-emoji-picker/css'
 import TagEditor from './TagEditor.vue'
 import RichTextEditor from './RichTextEditor.vue'
 import ApiCheckConfig from './ApiCheckConfig.vue'
+import { parseMaybeJson } from '../../utils/json'
 
 interface AdminApi {
   get: (path: string, params?: Record<string, any>) => Promise<any>
@@ -55,15 +56,7 @@ const TAG_PRESETS = [
   'out-of-state',
 ]
 
-function parseJsonArray(value: unknown): string[] {
-  if (!value) return []
-  if (Array.isArray(value)) return value
-  try {
-    return JSON.parse(value as string)
-  } catch {
-    return []
-  }
-}
+const parseJsonArray = (value: unknown): string[] => parseMaybeJson(value, [])
 
 const iconPickerRef = ref<HTMLDivElement | null>(null)
 const title = ref(props.step?.title || '')
@@ -81,11 +74,7 @@ const isPublic = ref(props.step?.is_public === 1)
 const isOptional = ref(props.step?.is_optional === 1)
 const showAdvancedRules = ref(parseJsonArray(props.step?.excluded_tags).length > 0)
 
-const existingContact = props.step?.contact_info
-  ? typeof props.step.contact_info === 'string'
-    ? JSON.parse(props.step.contact_info)
-    : props.step.contact_info
-  : {}
+const existingContact = parseMaybeJson<Record<string, string>>(props.step?.contact_info, {})
 const contactName = ref(existingContact?.name || '')
 const contactEmail = ref(existingContact?.email || '')
 const contactPhone = ref(existingContact?.phone || '')

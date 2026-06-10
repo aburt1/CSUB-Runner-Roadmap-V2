@@ -82,9 +82,9 @@ public sealed class UsersController : ControllerBase
             return NotFound(new { error = "Admin user not found" });
 
         // Read the raw body fields, mirroring the old destructure of req.body.
-        var hasRole = TryGetProperty(body, "role", out var roleEl);
-        var hasDisplayName = TryGetProperty(body, "displayName", out var displayNameEl);
-        var hasIsActive = TryGetProperty(body, "is_active", out var isActiveEl);
+        var hasRole = Json.TryGetProperty(body, "role", out var roleEl);
+        var hasDisplayName = Json.TryGetProperty(body, "displayName", out var displayNameEl);
+        var hasIsActive = Json.TryGetProperty(body, "is_active", out var isActiveEl);
 
         var updates = new List<string>();
         var parameters = new DynamicSqlParams();
@@ -170,14 +170,6 @@ public sealed class UsersController : ControllerBase
             new { email = user.email, fields = BodyKeys(body) });
 
         return Ok(new { success = true });
-    }
-
-    private static bool TryGetProperty(JsonElement body, string name, out JsonElement value)
-    {
-        if (body.ValueKind == JsonValueKind.Object && body.TryGetProperty(name, out value))
-            return true;
-        value = default;
-        return false;
     }
 
     // Mirrors Object.keys(req.body) for the audit "fields" detail.

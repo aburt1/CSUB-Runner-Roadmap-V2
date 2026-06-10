@@ -668,7 +668,7 @@ async function runAndPoll(token) {
 
 ## Health & monitoring endpoints
 
-The API exposes three unauthenticated health endpoints from `Api/Controllers/HealthController.cs`, all mounted under `/api/health`. They are deliberately split so that an orchestrator (Docker Compose, Kubernetes, a load balancer, or an uptime monitor) can ask two *different* questions and react to them differently:
+The API exposes two unauthenticated health endpoints from `Api/Controllers/HealthController.cs`, all mounted under `/api/health`. They are deliberately split so that an orchestrator (Docker Compose, Kubernetes, a load balancer, or an uptime monitor) can ask two *different* questions and react to them differently:
 
 - **"Is the process alive?"** — a liveness probe. If this fails, the container is wedged and should be **restarted**.
 - **"Is the process ready to serve traffic?"** — a readiness probe. If this fails (e.g. SQL Server is briefly unreachable), the container should be **pulled out of rotation** but **not** killed — its dependency may recover on its own.
@@ -681,7 +681,6 @@ Conflating the two is a classic outage amplifier: if a liveness probe also check
 | `GET /api/health/ready` | Yes (`SELECT 1`) | `200` | `503` | Readiness — "stop sending me traffic if this fails" |
 
 > The DB probe runs on a dedicated connection with a **3-second** connect/command timeout and no retry, so `/api/health/ready` answers quickly (≤ ~3 s) even when the database is unreachable.
-| `GET /api/health` | Yes (`SELECT 1`) | `200` | `200` | Legacy combined check; **always** 200, DB status is in the body |
 
 All three are anonymous (no integration key, no JWT) and live behind the same `/api` rate limiter as every other route, so a monitor polling aggressively still counts against the per-IP **200 / 15 min** budget — keep probe intervals reasonable.
 
@@ -725,22 +724,6 @@ curl -i http://localhost:8080/api/health/ready
 ```
 
 Because a fresh boot serves traffic only once the DB is reachable, `/ready` is also the right gate for *startup* ordering — `docker-compose.yml` gates the `web` container on the `api` container's health (see the container HEALTHCHECKs described in [docs/DEPLOYMENT.md](DEPLOYMENT.md)).
-
-### GET /api/health (legacy)
-
-The legacy combined check, kept for backward compatibility. It probes the DB like `/ready` does, but **always returns `200`** — the database state is reported only in the body, never in the status code. Tooling that treats any non-200 as "down" will therefore never notice a DB outage through this endpoint, which is exactly why the split `/live` + `/ready` pair exists. Prefer those for new monitors.
-
-```bash
-curl http://localhost:8080/api/health
-```
-
-**Response (always 200):**
-
-```json
-{ "status": "ok", "db": "connected", "timestamp": "2026-06-09T18:30:00.0000000Z" }
-```
-
-When the DB is unreachable the status code stays `200` and only `db` flips to `"disconnected"`.
 
 > **How probes are wired in production.** The `api` and `web` containers each ship a Docker `HEALTHCHECK`, and Compose gates `web` on the `api` service reaching a healthy state. The reverse-proxy/orchestration details — which endpoint each layer hits and how nginx forwards `X-Forwarded-*` headers — live in [docs/DEPLOYMENT.md](DEPLOYMENT.md) rather than being duplicated here.
 

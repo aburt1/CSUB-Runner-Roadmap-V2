@@ -1,19 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
+import { mockFetch } from '../test/helpers'
 import { useAdminApi } from './useAdminApi'
-
-// Helper: a fetch stub that records the URL/init it was called with and returns
-// a Response built from the given status + JSON body.
-function mockFetch(status: number, body: unknown) {
-  const fn = vi.fn(
-    async () =>
-      new Response(JSON.stringify(body), {
-        status,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-  )
-  vi.stubGlobal('fetch', fn)
-  return fn
-}
 
 describe('useAdminApi', () => {
   afterEach(() => {

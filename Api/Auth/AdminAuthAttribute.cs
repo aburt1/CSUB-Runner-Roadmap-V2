@@ -22,19 +22,19 @@ public sealed class AdminAuthAttribute : Attribute, IAsyncActionFilter
 
         if (string.IsNullOrEmpty(header) || !header.StartsWith("Bearer ", StringComparison.Ordinal))
         {
-            context.Result = Error(401, "Authentication required");
+            context.Result = AuthError.Result(401, "Authentication required");
             return;
         }
 
         var principal = http.RequestServices.GetRequiredService<JwtService>().Validate(header["Bearer ".Length..]);
         if (principal is null)
         {
-            context.Result = Error(401, "Invalid or expired token");
+            context.Result = AuthError.Result(401, "Invalid or expired token");
             return;
         }
         if (principal.FindFirst("type")?.Value != "admin")
         {
-            context.Result = Error(401, "Authentication required");
+            context.Result = AuthError.Result(401, "Authentication required");
             return;
         }
 
@@ -54,7 +54,7 @@ public sealed class AdminAuthAttribute : Attribute, IAsyncActionFilter
                 "SELECT role, is_active FROM admin_users WHERE id = @adminId", new { adminId });
             if (row is null || row.is_active == 0)
             {
-                context.Result = Error(403, "Account is inactive");
+                context.Result = AuthError.Result(403, "Account is inactive");
                 return;
             }
             admin = admin with { Role = row.role }; // authorize on the CURRENT role, not the token's
@@ -62,7 +62,7 @@ public sealed class AdminAuthAttribute : Attribute, IAsyncActionFilter
 
         if (_allowedRoles.Length > 0 && !_allowedRoles.Contains(admin.Role))
         {
-            context.Result = Error(403, "Insufficient permissions");
+            context.Result = AuthError.Result(403, "Insufficient permissions");
             return;
         }
 
@@ -70,10 +70,7 @@ public sealed class AdminAuthAttribute : Attribute, IAsyncActionFilter
         await next();
     }
 
-    private static ObjectResult Error(int status, string message) =>
-        new(new { error = message }) { StatusCode = status };
-
-    private sealed class AdminRow
+        private sealed class AdminRow
     {
         public string role { get; set; } = "";
         public int is_active { get; set; }

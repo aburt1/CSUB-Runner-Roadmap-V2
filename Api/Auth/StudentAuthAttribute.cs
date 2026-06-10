@@ -16,19 +16,19 @@ public sealed class StudentAuthAttribute : Attribute, IAsyncActionFilter
 
         if (string.IsNullOrEmpty(header) || !header.StartsWith("Bearer ", StringComparison.Ordinal))
         {
-            context.Result = Error(401, "Authentication required");
+            context.Result = AuthError.Result(401, "Authentication required");
             return;
         }
 
         var principal = http.RequestServices.GetRequiredService<JwtService>().Validate(header["Bearer ".Length..]);
         if (principal is null)
         {
-            context.Result = Error(401, "Invalid or expired token");
+            context.Result = AuthError.Result(401, "Invalid or expired token");
             return;
         }
         if (principal.FindFirst("type")?.Value != "student")
         {
-            context.Result = Error(401, "Invalid token type");
+            context.Result = AuthError.Result(401, "Invalid token type");
             return;
         }
 
@@ -37,6 +37,4 @@ public sealed class StudentAuthAttribute : Attribute, IAsyncActionFilter
         await next();
     }
 
-    private static ObjectResult Error(int status, string message) =>
-        new(new { error = message }) { StatusCode = status };
-}
+    }

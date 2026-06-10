@@ -13,12 +13,12 @@ public class SmokeTests
     public SmokeTests(WebAppFixture fx) => _fx = fx;
 
     [Fact]
-    public async Task Health_reports_connected()
+    public async Task Readiness_reports_connected()
     {
-        var res = await _fx.Anonymous().GetAsync("/api/health");
+        var res = await _fx.Anonymous().GetAsync("/api/health/ready");
         res.EnsureSuccessStatusCode();
         var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("ok", body.GetProperty("status").GetString());
+        Assert.Equal("ready", body.GetProperty("status").GetString());
         Assert.Equal("connected", body.GetProperty("db").GetString());
     }
 

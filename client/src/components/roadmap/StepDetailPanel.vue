@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vu
 import DOMPurify from 'dompurify'
 import { safeUrl } from '../../utils/links'
 import type { StepWithStatus, LinkItem, ContactInfo } from '../../types/api'
+import { parseMaybeJson } from '../../utils/json'
 
 interface StatusLabelConfig {
   label: string
@@ -52,17 +53,7 @@ const panelRef = useTemplateRef<HTMLDivElement>('panelRef')
 
 // Guarded parse: these computeds run during render, so one malformed DB row must
 // degrade to "no links", not throw and take down the whole component tree.
-const links = computed<LinkItem[]>(() => {
-  try {
-    return props.step.links
-      ? typeof props.step.links === 'string'
-        ? JSON.parse(props.step.links)
-        : props.step.links
-      : []
-  } catch {
-    return []
-  }
-})
+const links = computed<LinkItem[]>(() => parseMaybeJson(props.step.links, []))
 const isHtmlContent = computed(
   () => !!props.step.guide_content && /<[a-z][\s\S]*>/i.test(props.step.guide_content),
 )
@@ -73,16 +64,7 @@ const sanitizedGuideContent = computed(() =>
 )
 
 const contact = computed<ContactInfo | null>(() => {
-  let c: ContactInfo | null = null
-  try {
-    c = props.step.contact_info
-      ? typeof props.step.contact_info === 'string'
-        ? JSON.parse(props.step.contact_info)
-        : props.step.contact_info
-      : null
-  } catch {
-    return null
-  }
+  const c = parseMaybeJson<ContactInfo | null>(props.step.contact_info, null)
   if (!c || !c.name) return null
   return c
 })

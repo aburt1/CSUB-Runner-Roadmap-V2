@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { parseMaybeJson } from '../../utils/json'
 interface AuditLog {
   id: number
   entity_type: string
@@ -35,16 +36,9 @@ const ACTION_META: Record<string, ActionMeta> = {
   student_profile_update: { label: 'Student profile updated', color: 'bg-cyan-600' },
 }
 
-function parseDetails(
+const parseDetails = (
   details: string | Record<string, any> | null | undefined,
-): Record<string, any> {
-  if (!details) return {}
-  try {
-    return typeof details === 'string' ? JSON.parse(details) : details
-  } catch {
-    return {}
-  }
-}
+): Record<string, any> => parseMaybeJson(details, {})
 
 function formatTime(ts: string): string {
   const d = new Date(ts.endsWith('Z') ? ts : ts + 'Z')

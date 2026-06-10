@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import type { Step, StepWithStatus, StepStatus, ProgressResponse, Term } from '../types/api'
+import { parseMaybeJson } from '../utils/json'
 
 const API_BASE = '/api'
 const POLL_INTERVAL = 30000 // 30 seconds
@@ -15,16 +16,10 @@ export interface ProgressMapEntry {
 // Does a step apply to a student given their tags? (ported from useProgress.ts)
 // Exported so the tag-matching rules can be unit-tested directly.
 export function stepApplies(step: Step, studentTags: string[]): boolean {
-  const requiredTags: string[] | null = step.required_tags
-    ? typeof step.required_tags === 'string'
-      ? JSON.parse(step.required_tags)
-      : step.required_tags
-    : null
-  const excludedTags: string[] | null = step.excluded_tags
-    ? typeof step.excluded_tags === 'string'
-      ? JSON.parse(step.excluded_tags)
-      : step.excluded_tags
-    : null
+  // Malformed tag JSON degrades to "no rule" — the same fallback the server's
+  // Json.SafeParse uses, so client and server stay in agreement.
+  const requiredTags = parseMaybeJson<string[] | null>(step.required_tags, null)
+  const excludedTags = parseMaybeJson<string[] | null>(step.excluded_tags, null)
   const requiredTagMode: 'all' | 'any' = step.required_tag_mode === 'all' ? 'all' : 'any'
 
   if (excludedTags && excludedTags.some((tag) => studentTags.includes(tag))) return false

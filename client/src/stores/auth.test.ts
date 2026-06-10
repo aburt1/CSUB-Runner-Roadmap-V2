@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { mockFetch } from '../test/helpers'
 import { setActivePinia, createPinia } from 'pinia'
 
 // Azure AD is "not configured" in tests, so init() skips MSAL entirely and the
@@ -14,18 +15,6 @@ vi.mock('@azure/msal-browser', () => ({
 }))
 
 import { useAuthStore } from './auth'
-
-function mockFetch(status: number, body: unknown) {
-  const fn = vi.fn(
-    async () =>
-      new Response(JSON.stringify(body), {
-        status,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-  )
-  vi.stubGlobal('fetch', fn)
-  return fn
-}
 
 describe('auth store', () => {
   beforeEach(() => {

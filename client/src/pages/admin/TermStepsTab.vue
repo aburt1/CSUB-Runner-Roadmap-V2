@@ -6,6 +6,7 @@ import TermBar from './TermBar.vue'
 import TermHeader from './TermHeader.vue'
 import CloneTermModal from './CloneTermModal.vue'
 import type { AdminApi } from '../../composables/useAdminApi'
+import { parseMaybeJson } from '../../utils/json'
 
 interface TermItem {
   id: number
@@ -262,8 +263,7 @@ const handleCloned = async (result: any) => {
   steps.value = result.steps || []
 }
 
-const parseTags = (value: string | string[]): string[] =>
-  typeof value === 'string' ? JSON.parse(value) : value
+const parseTags = (value: unknown): string[] => parseMaybeJson(value, [])
 
 // vuedraggable v-model proxy for the visible list
 const draggableSteps = computed<StepItem[]>({

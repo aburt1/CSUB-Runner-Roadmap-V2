@@ -142,7 +142,6 @@ CSUB-Runner-Roadmap-V2/
 │   │   ├── App.vue                  # Root component (router-view shell + onErrorCaptured boundary)
 │   │   ├── index.css                # Tailwind entry + global styles
 │   │   ├── shims.d.ts               # TS shims for .vue imports
-│   │   ├── assets/                  # Static assets
 │   │   ├── auth/
 │   │   │   └── msalConfig.ts        # Azure AD / MSAL SSO config (reads VITE_AZURE_AD_*)
 │   │   ├── stores/
@@ -217,7 +216,7 @@ CSUB-Runner-Roadmap-V2/
 │   ├── Program.cs                   # App entry: DI, forwarded headers, CORS, rate limiting,
 │   │                                #   security headers, schema init + seed, SPA fallback
 │   ├── Controllers/
-│   │   ├── HealthController.cs       # GET /api/health, /api/health/live, /api/health/ready
+│   │   ├── HealthController.cs       # GET /api/health/live, /api/health/ready
 │   │   ├── AuthController.cs         # Student auth (dev-login, SSO, me)
 │   │   ├── AdminAuthController.cs    # Admin auth (login, SSO, break-glass, change-password)
 │   │   ├── StepsController.cs        # Public/student step routes (/api/steps)
@@ -619,13 +618,12 @@ This is the layer underneath every flow in [Request / Data Flow](#request--data-
 
 ## Health Probes (`HealthController.cs`)
 
-`Api/Controllers/HealthController.cs` exposes three endpoints under `/api/health`, split along the standard **liveness vs. readiness** distinction so orchestrators (Docker, Kubernetes, a load balancer) can make the right call:
+`Api/Controllers/HealthController.cs` exposes two endpoints under `/api/health`, split along the standard **liveness vs. readiness** distinction so orchestrators (Docker, Kubernetes, a load balancer) can make the right call:
 
 | Endpoint | Touches DB? | Returns | Use for |
 |----------|-------------|---------|---------|
 | `GET /api/health/live` | No | always `200` `{ status: "ok", timestamp }` | **Liveness** — "is the process up?" A failure here means restart the container. It must never depend on the database, or a DB outage would needlessly kill healthy app processes. |
 | `GET /api/health/ready` | Yes (`SELECT 1`) | `200` `{ status: "ready", db: "connected" }` or `503` `{ status: "not_ready", db: "disconnected" }` | **Readiness** — "can this instance serve traffic?" A `503` pulls the instance out of the load-balancer rotation until the database is reachable again, without restarting it. |
-| `GET /api/health` | Yes (`SELECT 1`) | always `200`, reports `db: "connected" \| "disconnected"` | **Legacy** combined check, kept for the old contract. Always `200` so a probe of it never trips a restart; read the `db` field to learn DB state. |
 
 The DB probe is intentionally minimal and swallows exceptions:
 
@@ -893,7 +891,7 @@ docker compose up -d sqlserver           # SQL Server on localhost:1433
 # 2. API (port 3001)  — appsettings.Development.json sets Urls=http://localhost:3001
 cd Api
 dotnet run                               # creates DB + schema + seed on boot
-curl http://localhost:3001/api/health    # -> {"status":"ok","db":"connected", ...}
+curl http://localhost:3001/api/health/ready    # -> {"status":"ready","db":"connected", ...}
 
 # 3. Client (port 3000)
 cd client

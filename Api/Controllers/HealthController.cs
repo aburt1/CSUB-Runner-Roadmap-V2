@@ -4,7 +4,6 @@ using Microsoft.Data.SqlClient;
 namespace Api.Controllers;
 
 // Health probes:
-//   GET /api/health        — legacy combined check (always 200, reports db status)
 //   GET /api/health/live   — liveness: process is up, no dependencies (always 200)
 //   GET /api/health/ready  — readiness: probes the DB, returns 503 when it is unreachable
 // Orchestrators (k8s/compose) should use /live for liveness and /ready for readiness.
@@ -25,18 +24,6 @@ public sealed class HealthController : ControllerBase
             ConnectTimeout = 3,
         };
         _probeConnectionString = builder.ConnectionString;
-    }
-
-    [HttpGet]
-    public async Task<IActionResult> Get()
-    {
-        var connected = await DbReachableAsync();
-        return Ok(new
-        {
-            status = "ok",
-            db = connected ? "connected" : "disconnected",
-            timestamp = DateTime.UtcNow.ToString("o"),
-        });
     }
 
     [HttpGet("live")]

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { safeUrl } from '../../utils/links'
 import type { StepWithStatus, LinkItem } from '../../types/api'
+import { parseMaybeJson } from '../../utils/json'
 
 const props = defineProps<{
   step: StepWithStatus
@@ -12,13 +13,7 @@ const emit = defineEmits<{
   (e: 'viewDetails'): void
 }>()
 
-const links = computed<LinkItem[]>(() =>
-  props.step.links
-    ? typeof props.step.links === 'string'
-      ? JSON.parse(props.step.links)
-      : props.step.links
-    : [],
-)
+const links = computed<LinkItem[]>(() => parseMaybeJson(props.step.links, []))
 const primaryAction = computed<LinkItem | null>(() =>
   links.value.length > 0 ? links.value[0]! : null,
 )

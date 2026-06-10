@@ -307,7 +307,7 @@ public sealed class IntegrationsController : ControllerBase
                 {
                     integrationClientId,
                     sourceEventId,
-                    studentIdNumber = NullIfEmpty(Progress.NormalizeStudentIdNumber(item.student_id_number)),
+                    studentIdNumber = Json.NullIfEmpty(Progress.NormalizeStudentIdNumber(item.student_id_number)),
                     stepKey = StepKeys.Normalize(item.step_key ?? ""),
                     requestBody = JsonSerializer.Serialize(item, StoreOptions),
                     responseStatus = outcome.HttpStatus,
@@ -339,10 +339,10 @@ public sealed class IntegrationsController : ControllerBase
     private static object BuildFailure(CompletionItem item, string error, string? code) => new
     {
         success = false,
-        student_id_number = NullIfEmpty(Progress.NormalizeStudentIdNumber(item.student_id_number)),
+        student_id_number = Json.NullIfEmpty(Progress.NormalizeStudentIdNumber(item.student_id_number)),
         step_key = StepKeys.Normalize(item.step_key ?? ""),
-        status = NullIfEmpty(item.status),
-        source_event_id = NullIfEmpty(item.source_event_id),
+        status = Json.NullIfEmpty(item.status),
+        source_event_id = Json.NullIfEmpty(item.source_event_id),
         result = "failed",
         error,
         code,
@@ -352,10 +352,10 @@ public sealed class IntegrationsController : ControllerBase
     private static object BuildFailureWithStudent(CompletionItem item, string error, string? code, string studentId) => new
     {
         success = false,
-        student_id_number = NullIfEmpty(Progress.NormalizeStudentIdNumber(item.student_id_number)),
+        student_id_number = Json.NullIfEmpty(Progress.NormalizeStudentIdNumber(item.student_id_number)),
         step_key = StepKeys.Normalize(item.step_key ?? ""),
-        status = NullIfEmpty(item.status),
-        source_event_id = NullIfEmpty(item.source_event_id),
+        status = Json.NullIfEmpty(item.status),
+        source_event_id = Json.NullIfEmpty(item.source_event_id),
         result = "failed",
         error,
         code,
@@ -366,10 +366,10 @@ public sealed class IntegrationsController : ControllerBase
     private static object BuildFailureWithStudentStep(CompletionItem item, string error, string? code, string studentId, int stepId) => new
     {
         success = false,
-        student_id_number = NullIfEmpty(Progress.NormalizeStudentIdNumber(item.student_id_number)),
+        student_id_number = Json.NullIfEmpty(Progress.NormalizeStudentIdNumber(item.student_id_number)),
         step_key = StepKeys.Normalize(item.step_key ?? ""),
-        status = NullIfEmpty(item.status),
-        source_event_id = NullIfEmpty(item.source_event_id),
+        status = Json.NullIfEmpty(item.status),
+        source_event_id = Json.NullIfEmpty(item.source_event_id),
         result = "failed",
         error,
         code,
@@ -410,8 +410,6 @@ public sealed class IntegrationsController : ControllerBase
         var value = successProp.GetValue(body);
         return value is bool b && b;
     }
-
-    private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
     // JS parseInt(value, 10): skip leading whitespace, accept an optional sign, then
     // read leading digits. Returns null when no digits are present (NaN in JS).

@@ -239,13 +239,12 @@ by web on the internal network.
 
 ## 6. Health probes
 
-The API exposes three endpoints (see `Api/Controllers/HealthController.cs`):
+The API exposes two endpoints (see `Api/Controllers/HealthController.cs`):
 
 | Endpoint | Meaning | Use for |
 |----------|---------|---------|
 | `GET /api/health/live` | Process is up. Always `200`. Does **not** touch the DB | Liveness probe / Docker `HEALTHCHECK` |
 | `GET /api/health/ready` | Probes the database. `200 {status:"ready",db:"connected"}` when reachable, `503` when not | Readiness probe / load-balancer gating |
-| `GET /api/health` | Legacy combined check (kept for compatibility) | — |
 
 - The container `HEALTHCHECK` uses **liveness** so a brief DB blip doesn't get the
   container killed (the API also has transient-fault retry on SQL — see ARCHITECTURE.md).

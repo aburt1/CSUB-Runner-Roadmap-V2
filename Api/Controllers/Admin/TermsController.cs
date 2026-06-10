@@ -71,7 +71,7 @@ public sealed class TermsController : ControllerBase
         var newId = await _db.InsertReturningAsync<int>(
             @"INSERT INTO terms (name, start_date, end_date, is_active) VALUES (@name, @start_date, @end_date, 0);
               SELECT CAST(SCOPE_IDENTITY() AS int);",
-            new { name, start_date = NullIfEmpty(body?.Start_date), end_date = NullIfEmpty(body?.End_date) });
+            new { name, start_date = Json.NullIfEmpty(body?.Start_date), end_date = Json.NullIfEmpty(body?.End_date) });
 
         var actor = Audit.ResolveActor(HttpContext);
         await Audit.LogAsync(_db, actor, "term", newId, "term_create", new { name });
@@ -93,10 +93,10 @@ public sealed class TermsController : ControllerBase
         // preserved for the audit `fields` detail.
         var bodyKeys = CollectBodyKeys(body);
 
-        var nameProvided = TryGetProperty(body, "name", out var nameEl);
-        var startProvided = TryGetProperty(body, "start_date", out var startEl);
-        var endProvided = TryGetProperty(body, "end_date", out var endEl);
-        var isActiveProvided = TryGetProperty(body, "is_active", out var isActiveEl);
+        var nameProvided = Json.TryGetProperty(body, "name", out var nameEl);
+        var startProvided = Json.TryGetProperty(body, "start_date", out var startEl);
+        var endProvided = Json.TryGetProperty(body, "end_date", out var endEl);
+        var isActiveProvided = Json.TryGetProperty(body, "is_active", out var isActiveEl);
 
         string? name = nameProvided ? AsString(nameEl) : null;
         string? startDate = startProvided ? AsString(startEl) : null;
@@ -136,7 +136,7 @@ public sealed class TermsController : ControllerBase
         if (nameProvided) { updates.Add("name = @name"); parameters.Add("name", name); }
         if (startProvided) { updates.Add("start_date = @start_date"); parameters.Add("start_date", startDate); }
         if (endProvided) { updates.Add("end_date = @end_date"); parameters.Add("end_date", endDate); }
-        if (isActiveProvided) { updates.Add("is_active = @is_active"); parameters.Add("is_active", IsTruthy(isActiveEl) ? 1 : 0); }
+        if (isActiveProvided) { updates.Add("is_active = @is_active"); parameters.Add("is_active", Json.IsTruthy(isActiveEl) ? 1 : 0); }
 
         if (updates.Count == 0)
             return BadRequest(new { error = "No fields to update" });
@@ -185,7 +185,7 @@ public sealed class TermsController : ControllerBase
             var newTermId = await txDb.InsertReturningAsync<int>(
                 @"INSERT INTO terms (name, start_date, end_date, is_active) VALUES (@name, @start_date, @end_date, 0);
                   SELECT CAST(SCOPE_IDENTITY() AS int);",
-                new { name, start_date = NullIfEmpty(startDate), end_date = NullIfEmpty(endDate) });
+                new { name, start_date = Json.NullIfEmpty(startDate), end_date = Json.NullIfEmpty(endDate) });
 
             var clonedSteps = new List<Step>();
             foreach (var step in sourceSteps)
@@ -265,19 +265,9 @@ public sealed class TermsController : ControllerBase
     }
 
     // Mirrors the old `value || null` coalescing (JS treats "" as falsy).
-    private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
-
     // True when the request body is a JSON object containing `key`. Mirrors
     // Express's `key in req.body` / `req.body.key !== undefined` (a key present
     // with a JSON null value still counts as provided).
-    private static bool TryGetProperty(JsonElement body, string key, out JsonElement value)
-    {
-        if (body.ValueKind == JsonValueKind.Object && body.TryGetProperty(key, out value))
-            return true;
-        value = default;
-        return false;
-    }
-
     // String value of a JSON property, treating JSON null as SQL/C# null.
     private static string? AsString(JsonElement el)
     {
@@ -299,25 +289,6 @@ public sealed class TermsController : ControllerBase
     }
 
     // Mirrors `is_active ? 1 : 0` JS truthiness for the dynamic-update branch.
-    private static bool IsTruthy(JsonElement el)
-    {
-        switch (el.ValueKind)
-        {
-            case JsonValueKind.True:
-                return true;
-            case JsonValueKind.False:
-            case JsonValueKind.Null:
-            case JsonValueKind.Undefined:
-                return false;
-            case JsonValueKind.Number:
-                return el.TryGetDouble(out var d) && d != 0;
-            case JsonValueKind.String:
-                return el.GetString()!.Length > 0;
-            default:
-                return true;
-        }
-    }
-
     // Mirrors `Object.keys(req.body)` for the audit `fields` detail: every key
     // present in the request body, in order.
     private static List<string> CollectBodyKeys(JsonElement body)

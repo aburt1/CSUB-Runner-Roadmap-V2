@@ -7,6 +7,7 @@ namespace Api.Services;
 // from applicant_type / residency / major. Step visibility is filtered on these.
 public static class StudentTags
 {
+    // NOTE: deliberately different from StepKeys.Slugify (see the note there).
     private static string Slugify(string? value)
     {
         var s = (value ?? "").Trim().ToLowerInvariant();

@@ -5,6 +5,7 @@ import StepToggle from './StepToggle.vue'
 import AuditTimeline from './AuditTimeline.vue'
 import { useToastStore } from '../../stores/toast'
 import type { AdminApi } from '../../composables/useAdminApi'
+import { parseMaybeJson } from '../../utils/json'
 
 const toast = useToastStore()
 
@@ -48,15 +49,7 @@ const emit = defineEmits<{
   (e: 'progressChange'): void
 }>()
 
-function parseTags(rawTags: unknown): string[] {
-  if (!rawTags) return []
-  if (Array.isArray(rawTags)) return rawTags
-  try {
-    return JSON.parse(rawTags as string)
-  } catch {
-    return []
-  }
-}
+const parseTags = (rawTags: unknown): string[] => parseMaybeJson(rawTags, [])
 
 const PROFILE_FIELDS: ProfileField[] = [
   { key: 'emplid', label: 'Student ID #' },

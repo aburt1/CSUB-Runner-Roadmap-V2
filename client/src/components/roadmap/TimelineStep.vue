@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { safeUrl } from '../../utils/links'
 import DeadlineCountdown from './DeadlineCountdown.vue'
 import type { StepWithStatus, LinkItem } from '../../types/api'
+import { parseMaybeJson } from '../../utils/json'
 
 interface StatusConfigEntry {
   nodeClass: string
@@ -77,13 +78,7 @@ const emit = defineEmits<{
 const config = computed<StatusConfigEntry>(
   () => STATUS_CONFIG[props.step.status] ?? STATUS_CONFIG.not_started!,
 )
-const links = computed<LinkItem[]>(() =>
-  props.step.links
-    ? typeof props.step.links === 'string'
-      ? JSON.parse(props.step.links)
-      : props.step.links
-    : [],
-)
+const links = computed<LinkItem[]>(() => parseMaybeJson(props.step.links, []))
 const primaryAction = computed<LinkItem | null>(() =>
   props.step.status === 'in_progress' && links.value.length > 0 ? links.value[0]! : null,
 )

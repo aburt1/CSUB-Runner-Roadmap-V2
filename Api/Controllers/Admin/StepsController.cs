@@ -413,22 +413,7 @@ public sealed class StepsController : ControllerBase
     private static bool IsTruthy(JsonElement body, string name)
     {
         var el = GetElement(body, name);
-        if (el is null) return false;
-        switch (el.Value.ValueKind)
-        {
-            case JsonValueKind.True:
-                return true;
-            case JsonValueKind.False:
-            case JsonValueKind.Null:
-                return false;
-            case JsonValueKind.Number:
-                return el.Value.TryGetDouble(out var d) && d != 0;
-            case JsonValueKind.String:
-                var s = el.Value.GetString();
-                return !string.IsNullOrEmpty(s);
-            default:
-                return true;
-        }
+        return el is not null && Json.IsTruthy(el.Value);
     }
 
     // For create: `links ? JSON.stringify(links) : null`.
