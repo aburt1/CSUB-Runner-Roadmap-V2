@@ -1,5 +1,5 @@
-using Api.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 
 namespace Api.Controllers;
 
@@ -8,13 +8,24 @@ namespace Api.Controllers;
 //   GET /api/health/live   — liveness: process is up, no dependencies (always 200)
 //   GET /api/health/ready  — readiness: probes the DB, returns 503 when it is unreachable
 // Orchestrators (k8s/compose) should use /live for liveness and /ready for readiness.
+//
+// The DB probe deliberately bypasses Db's transient-retry layer and uses a short
+// 3-second connect/command timeout: a probe that takes ~a minute of retries and
+// full connect timeouts to report "down" defeats its purpose.
 [ApiController]
 [Route("api/health")]
 public sealed class HealthController : ControllerBase
 {
-    private readonly Db _db;
+    private readonly string _probeConnectionString;
 
-    public HealthController(Db db) => _db = db;
+    public HealthController(IConfiguration config)
+    {
+        var builder = new SqlConnectionStringBuilder(config.GetConnectionString("Default"))
+        {
+            ConnectTimeout = 3,
+        };
+        _probeConnectionString = builder.ConnectionString;
+    }
 
     [HttpGet]
     public async Task<IActionResult> Get()
@@ -43,7 +54,12 @@ public sealed class HealthController : ControllerBase
     {
         try
         {
-            await _db.QueryOneAsync<int>("SELECT 1");
+            await using var connection = new SqlConnection(_probeConnectionString);
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT 1";
+            command.CommandTimeout = 3;
+            await command.ExecuteScalarAsync();
             return true;
         }
         catch

@@ -83,3 +83,50 @@ Each wave was committed with both test suites kept green.
 
 - **#24 Metrics/OpenTelemetry** — add OTel traces/metrics if central observability is desired.
 - **#29 Image digest pinning** — pin base images by `@sha256:` digest in CI for supply-chain hardening.
+
+---
+
+# Second full audit (2026-06-10)
+
+A second full-codebase audit ran after all the waves above: 9 dimensions (backend/
+frontend security, data layer, API + frontend correctness, infra, tests, dead code,
+docs-vs-code), ~110 agents, every finding adversarially verified. **58 findings were
+confirmed; all 5 highs, all 16 mediums, and effectively all lows were fixed the same
+day** across the "Audit fixes 1–6" commits, with both suites kept green (214 backend +
+31 frontend tests). Highlights:
+
+- **Retry safety (high):** the new transient-retry layer could re-run non-idempotent
+  writes after ambiguous failures (network drop after the server committed) — silently
+  duplicating terms/audit rows. `Db.cs` now splits transient errors into *safe*
+  (definitively not applied — retried for everything) and *ambiguous* (retried for
+  reads only); `INSERT...SCOPE_IDENTITY()` moved to a write-classified
+  `InsertReturningAsync`.
+- **CSV export scale (high):** Dapper IN-list expansion hit SQL Server's 2100-parameter
+  cap at ~2k students (the export 500'd exactly when cohorts got big) — rewritten as
+  JOIN scoping with one parameter.
+- **Local bootstrap (high):** a fresh `docker compose up --build` could never create the
+  database (the api runs as Production, where AutoCreate correctly defaults off) — the
+  local compose stack now sets `Database__AutoCreate=true`, and a new
+  **`docker-compose.prod.yml`** (web+api only, external SQL Server, AutoCreate off)
+  replaces the broken DEPLOYMENT §5 instructions.
+- **Concurrency:** absent-row races fixed with `UPDLOCK, HOLDLOCK` (progress upsert,
+  api-check upsert, last-sysadmin guard now inside its transaction); atomic
+  run-claiming for student API-check runs.
+- **Frontend security:** stored `javascript:` URLs neutralized before any `href`
+  (new `safeUrl` helper + tests); RichTextEditor link injection escaped; MSAL
+  redirect falls back to the page origin; nginx now sends CSP/security headers.
+- **Hardening:** ApiCheck encryption key fail-fast guard in Production (mirrors the
+  JWT guard, resolved eagerly at boot); SSRF guard closes IPv4-mapped-IPv6/link-local
+  gaps; `appsettings.Development.json` no longer ships in the prod image; readiness
+  probe answers within ~3s instead of inheriting ~60s of retries when the DB is down.
+- **Docs:** every confirmed doc-vs-code drift corrected (compose SA password claims,
+  admin123 quick-start claim, idempotency-replay semantics, OpenAPI path, break-glass
+  described as config-gated, ARCHITECTURE tree + retry description, AUDIT.md XFO).
+- **Dead code:** unused row models, the orphan `/api/admin/students/overdue` endpoint,
+  Recharts-era chart exports, an unused JSON helper, a dead admin-tab branch, and the
+  stock Vite scaffold README removed — each verified unused before removal.
+
+**Known-remaining backlog (deliberate, non-blocking):** test-coverage gaps flagged by
+the audit (retry plumbing, encryption round-trip, readiness-503 path, batch over-limit,
+frontend error-boundary/session-expiry specs, cross-class test order-dependence),
+OpenTelemetry (#24), and image digest pinning (#29).

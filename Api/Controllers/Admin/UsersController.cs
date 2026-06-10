@@ -110,6 +110,10 @@ public sealed class UsersController : ControllerBase
         if (hasDisplayName)
         {
             var displayName = displayNameEl.ValueKind == JsonValueKind.String ? displayNameEl.GetString() : null;
+            // display_name is NOT NULL in the schema — a non-string value would reach
+            // the UPDATE as NULL and surface as a constraint-violation 500.
+            if (string.IsNullOrEmpty(displayName))
+                return BadRequest(new { error = "displayName must be a non-empty string" });
             updates.Add($"display_name = {parameters.Next(displayName)}");
         }
 
