@@ -338,46 +338,157 @@ A single page load illustrates the full path through the system. The numbered ho
    │  render personalized timeline                      │                       │
 ```
 
-The application-level flows on top of that transport:
+Every line of that diagram applies to **every** API request: nginx adds the forwarded
+headers, the API runs the same middleware pipeline in the same order, and the controller
+talks to SQL Server only through the `Db` wrapper. What differs per feature is the
+application-level flow on top — traced end-to-end below, with the files that implement
+each hop, so you can follow any one of them through the code.
 
-```
-Student loads roadmap
-  → GET /api/steps (filtered by term; optional student auth)
-  → GET /api/steps/progress (completion status + merged tags + term info)
-  → Client merges steps + progress + tag filtering (StepAppliesToStudent)
-  → Renders personalized timeline
+### Trace 1 — An anonymous visitor opens the public page
 
-Student self-completes an optional step
-  → PUT /api/steps/:stepId/status   (StudentAuth; optional steps only)
-  → Progress.ApplyAsync(...)        (UPDLOCK row lock on student_progress)
-  → Audit log entry created
-  → Student sees update on next load
+1. **Browser → nginx:** `GET /` returns the SPA shell; the Vue app boots
+   (`client/src/main.ts`) and the router shows the public page.
+2. **Client → API:** the page calls `GET /api/steps` with **no** `Authorization` header.
+   `StepsController.GetSteps` detects the missing token and falls back to the **active
+   term's** steps (`Api/Controllers/StepsController.cs`).
+3. **What comes back:** every active step of the active term — including its `is_public`
+   flag. The *client* does the public/locked split
+   (`client/src/components/PublicRoadmapPreview.vue`): steps with `is_public = 1` render
+   in full ("Get started"), the rest render as locked titles ("What's ahead").
+4. **Nothing is written.** This flow is read-only and unauthenticated by design — the
+   first steps (accept admission, activate your account) must be visible before the
+   student *can* sign in.
 
-Admin updates a student
-  → POST   /api/admin/students/:studentId/steps/:stepId/complete    (admissions+)
-  → DELETE /api/admin/students/:studentId/steps/:stepId/complete    (admissions+)
-  → Progress.ApplyAsync(...) with completed_by = "manual"
-  → Audit log entry created
+### Trace 2 — A student signs in and sees a personalized roadmap
 
-Integration pushes completions
-  → PUT  /api/integrations/v1/step-completions          (single)
-  → POST /api/integrations/v1/step-completions/batch     (up to 500)
-  → Authenticated via integration key (X-Integration-Key or Bearer)
-  → Resolves student by Student ID # (emplid) + step by (term, step_key)
-  → Same Progress.ApplyAsync() path, completed_by = "integration"
-  → Idempotent via unique (integration_client_id, source_event_id):
-    a repeated source_event_id replays the cached status + body
+1. **Sign-in:** the client obtains a token — Azure AD SSO (`client/src/stores/auth.ts`
+   posts the Microsoft ID token to `POST /api/auth/sso`) or, outside Production, the
+   dev name/email form (`POST /api/auth/dev-login`). The server finds-or-creates the
+   student row, **auto-completes the `accepted` step** for new students, and returns an
+   8-hour HS256 JWT (`{ type: "student", studentId, email }`, issued by
+   `Api/Auth/JwtService.cs`). The client keeps it in `sessionStorage` (`csub_token`).
+2. **Two fetches, one render:** `useProgress`
+   (`client/src/composables/useProgress.ts`) requests
+   - `GET /api/steps` — now term-scoped to the *student's* term, and
+   - `GET /api/steps/progress` — which returns `{ progress, tags, term }`: the student's
+     `student_progress` rows, their **merged** tags (manual + derived from profile), and
+     term metadata.
+3. **Personalization happens client-side:** `stepApplies()` filters the steps by the tag
+   rules (exclusion wins, then any/all matching), and `deriveAllStepStatuses()` walks the
+   survivors in sort order — saved progress rows keep their status, the **first required
+   step without one becomes `in_progress`** (the "current" step), everything after is
+   `not_started`, and optional steps never advance that cursor. The same rules exist
+   server-side (`StepsController.StepAppliesToStudent`) for endpoints that must enforce
+   them — the client copy exists so the timeline renders without a round trip per step.
+4. **Polling:** the client re-fetches progress every **30 seconds** while signed in, so
+   completions made elsewhere (an admin, an integration, an API check) appear without a
+   reload.
+5. **Failure paths:** a `401` during polling means the 8-hour token expired — the client
+   shows a "session expired" toast and logs out. A network failure keeps the last good
+   data on screen; the error state's **Try Again** re-runs *both* fetches.
 
-Outbound API checks (student-triggered)
-  → POST /api/roadmap/run-api-checks  (StudentAuth; 5-minute throttle)
-  → ApiCheckRunner hits each enabled step's configured external API
-    (SSRF-guarded, 5s per request, 15s total cap)
-  → Truthy response field marks the step complete (completed_by = "api_check");
-    a falsy response reverts only steps previously set by api_check
-  → GET /api/roadmap/check-status  polls the in-memory run state
-```
+### Trace 3 — An admin marks a step complete for a student
 
-**Database access.** `Db.QueryOneAsync` / `QueryAllAsync` / `ExecuteAsync` open a fresh SQL Server connection per call; `Db.TransactionAsync` runs a unit of work on a single connection/transaction (commit on success, rollback on throw). The row lock in `Progress.ApplyAsync` is the T-SQL `WITH (UPDLOCK)` hint — the SQL Server equivalent of the old Postgres `SELECT ... FOR UPDATE`. This is why the same progress-write path is safe under concurrent admin edits and integration pushes. See [The Data Layer (`Db.cs`)](#the-data-layer-dbcs) for how this layer also absorbs transient SQL faults.
+1. **UI:** in the Students tab, the admin clicks **Complete** (or **Waive**) on a step
+   (`client/src/pages/admin/StepToggle.vue`), optionally types a note, and confirms. The
+   client sends `POST /api/admin/students/{studentId}/steps/{stepId}/complete` with
+   `{ note, status }` and the admin JWT.
+2. **Authorization:** the `[AdminAuth("admissions", "admissions_editor", "sysadmin")]`
+   filter validates the JWT **and re-checks the admin row in the database** — a
+   deactivated admin is rejected here even with a valid token
+   (`Api/Auth/AdminAuthAttribute.cs`).
+3. **Validation:** `StudentsController.CompleteStep` confirms the student and step exist
+   before touching progress.
+4. **The write — `Progress.ApplyAsync`** (`Api/Services/Progress.cs`), the single choke
+   point for *every* progress change in the system. Inside one transaction it:
+   - reads the current `student_progress` row `WITH (UPDLOCK, HOLDLOCK)` — the lock
+     serializes concurrent writers, and the range lock means two simultaneous *first*
+     completions can't both insert;
+   - decides **noop** (nothing changed), **update**, **insert**, or **delete** (for
+     `not_completed`), stamping `completed_by = "manual"` and the timestamp;
+   - commits. A deadlock victim is retried automatically by the `Db` layer.
+5. **Audit:** any non-noop change writes an `audit_log` row — who (the admin's identity
+   from the JWT), what (step, student, note), when. Noops are not audited.
+6. **Response & UI:** the controller returns the resulting status; the client updates
+   the step row optimistically and refreshes the audit timeline. If the request failed,
+   the UI shows an error toast and (for tag edits) rolls the optimistic change back.
+7. **The student's view** catches up on their next 30-second poll.
+
+### Trace 4 — An external system pushes completions (inbound integration)
+
+1. **Auth:** the caller (e.g. PeopleSoft) sends `X-Integration-Key` (or
+   `Authorization: Bearer`). `[IntegrationAuth]` bcrypt-compares it against active
+   clients' `key_hash` rows and stashes the client's id + name on the request
+   (`Api/Auth/IntegrationAuthAttribute.cs`).
+2. **Endpoints:** one completion via `PUT /api/integrations/v1/step-completions`, or up
+   to **500** in a `POST .../batch` (each item processed independently; the response is
+   an array of per-item outcomes).
+3. **Idempotency first:** if the item carries a `source_event_id`, the controller looks
+   up `(integration_client_id, source_event_id)` in `integration_events`
+   (`Api/Controllers/IntegrationsController.cs`). A hit **replays the stored status and
+   body verbatim** — nothing re-executes. This is what makes "just send the batch again"
+   always safe for the caller.
+4. **Resolution:** the student is found by campus ID — `emplid`, with surrounding
+   whitespace trimmed on both sides of the comparison
+   (`Progress.ResolveStudentByIdNumberAsync`); the step by
+   `(student's term, step_key)` (`Progress.ResolveStepForStudentByKeyAsync`). Step keys
+   are stable slugs, so the same key works across cloned terms.
+5. **The same write path:** resolution success funnels into `Progress.ApplyAsync` with
+   `completed_by = "integration"` — identical locking, noop detection, and audit
+   behavior as the admin trace. There is deliberately **no second way to write
+   progress**.
+6. **Outcome storage:** the result (success *or* a resolution failure like
+   `student_not_found`) is stored against the `source_event_id` so a retry replays it.
+   Input-validation failures (`invalid_status`, `invalid_completed_at`, missing event
+   id) are *not* stored and are re-validated on retry.
+
+### Trace 5 — Outbound API checks (the app polls an external system)
+
+1. **Trigger:** when a signed-in student opens their roadmap, the client calls
+   `POST /api/roadmap/run-api-checks`. The server throttles per student (skips if a run
+   happened in the last **5 minutes**, via `students.last_api_check_at`) and atomically
+   claims a run slot so concurrent requests can't start duplicate runs
+   (`Api/Controllers/RoadmapApiChecksController.cs`).
+2. **Background run:** the request returns immediately; a background task
+   (`ApiCheckRunner.RunApiChecksForStudentAsync`) walks every **enabled** check on the
+   student's term in step order, under a **15-second total budget**:
+   - substitute the student identifier (`emplid` or email) into the configured URL;
+   - **SSRF guard:** resolve the host and reject private/internal addresses
+     (`ValidateUrlAsync`) — the app never calls into its own network;
+   - decrypt the stored credentials (AES-256-GCM) and call the external API with a
+     **5-second** per-request timeout, redirects disabled;
+   - extract the configured response field (dot/bracket path) and apply JavaScript-style
+     truthiness.
+3. **Effect:** truthy → the step is completed via `Progress.ApplyAsync` with
+   `completed_by = "api_check"`. Falsy → the step is reverted **only if** `api_check`
+   set it in the first place — a check never undoes a human's or an integration's work.
+4. **Status:** the client polls `GET /api/roadmap/check-status`, which reads the run's
+   in-memory state (running / complete, per-step results), and refreshes the roadmap
+   when the run completes. Failures of individual checks are logged server-side and
+   skipped — one slow or broken external API can't block the rest.
+
+### Which tables each flow touches
+
+| Flow | Reads | Writes |
+|------|-------|--------|
+| Public page (Trace 1) | `terms`, `steps` | — |
+| Student roadmap (Trace 2) | `students`, `steps`, `student_progress`, `terms` | `students` (created on first sign-in), `student_progress` (`accepted` auto-complete) |
+| Admin completes (Trace 3) | `admin_users` (auth re-check), `students`, `steps`, `student_progress` | `student_progress`, `audit_log` |
+| Integration push (Trace 4) | `integration_clients`, `integration_events`, `students`, `steps`, `student_progress` | `student_progress`, `integration_events`, `audit_log` |
+| API checks (Trace 5) | `step_api_checks`, `steps`, `students`, `student_progress` | `student_progress`, `students.last_api_check_at` |
+
+The pattern worth noticing: **every** write to `student_progress` — student
+self-service, admin, integration, API check — goes through `Progress.ApplyAsync`, and
+every row carries a `completed_by` attribution (`manual` / `integration` /
+`api_check` / `auto`). Human and integration changes additionally land in `audit_log`;
+API-check changes are attributed but not audit-logged. One write path, one lock
+strategy.
+
+(Students can also self-complete **optional** steps directly — `PUT
+/api/steps/{stepId}/status` — gated to optional, active, tag-applicable steps in their
+own term; required steps can only be completed by staff, integrations, or API checks.)
+
+**Database access.** `Db.QueryOneAsync` / `QueryAllAsync` / `ExecuteAsync` open a fresh SQL Server connection per call; `Db.TransactionAsync` runs a unit of work on a single connection/transaction (commit on success, rollback on throw). The row lock in `Progress.ApplyAsync` is the T-SQL `WITH (UPDLOCK, HOLDLOCK)` hint — `UPDLOCK` serializes writers on an existing row, `HOLDLOCK` range-locks the key when the row is absent. This is why the same progress-write path is safe under concurrent admin edits and integration pushes. See [The Data Layer (`Db.cs`)](#the-data-layer-dbcs) for how this layer also absorbs transient SQL faults.
 
 **Client-side resilience.** The frontend is hardened to fail gracefully (see `client/src/main.ts`, `client/src/App.vue`, `client/src/stores/toast.ts`): a global `app.config.errorHandler`, a `window` `unhandledrejection` listener, and an `onErrorCaptured` boundary in the root component all funnel into a Pinia **toast store** so an unexpected error surfaces as a dismissible notice rather than a blank screen. A student `401` response triggers logout plus a toast, so an expired session lands the user back at sign-in cleanly.
 
@@ -502,7 +613,7 @@ Write-shaped statements that return a row (`INSERT ... SELECT SCOPE_IDENTITY()`)
 
 **3. Transactions retry as a whole, not piecemeal.** When a `Db` instance represents an open transaction, individual calls run on that single connection and are **not** retried in isolation — retrying one statement inside an aborted transaction would be incorrect. Instead `TransactionAsync` wraps the entire unit of work in `RetryAsync` with **write semantics**: only safe transient errors (e.g. a deadlock victim, which the server definitively rolled back) re-run the whole closure; an ambiguous failure during commit is *not* retried, because the commit may have succeeded. A rollback that itself fails (zombied transaction after a connection drop) is swallowed so the original error keeps its transient classification. Nested `TransactionAsync` calls simply join the outer transaction (the outer commit/rollback governs), so callers can compose units of work safely.
 
-This is the layer underneath every flow in [Request / Data Flow](#request--data-flow) and the readiness probe in [Health Probes](#health-probes).
+This is the layer underneath every flow in [Request / Data Flow](#request--data-flow) and the readiness probe in [Health Probes](#health-probes-healthcontrollercs).
 
 ---
 
