@@ -1,31 +1,61 @@
 # Testing Guide
 
+This guide covers both halves of the test suite — the **xUnit API integration tests** (backend) and
+the **Vitest unit tests** (frontend) — and the **CI pipeline** that runs both on every push. For how
+the pieces fit into the system, see [`ARCHITECTURE.md`](ARCHITECTURE.md); for shipping to a server,
+see [`DEPLOYMENT.md`](DEPLOYMENT.md).
+
 ## Overview
 
-The project's automated test suite is a single **xUnit integration project** that hosts the real
-ASP.NET Core API in-process (via `WebApplicationFactory<Program>`) and runs it against a **real SQL
-Server test database** — no mocking of the database layer. Tests exercise the actual HTTP pipeline,
-authentication/authorization filters, controllers, Dapper queries, and the hand-written T-SQL, so
-they catch dialect- and contract-level bugs that mocked databases would never surface (most notably
-the kind of SQL-parameter and date-serialization bugs the PostgreSQL → SQL Server port introduced).
+The project ships **two** automated test layers, each chosen to match what that layer is most likely
+to get wrong:
 
-This is a deliberate design choice carried over from the original Node/React app, which tested its
-Express routes against a real PostgreSQL database rather than mocks. The stack changed, but the
-philosophy did not: **test the real request/response contract against real SQL.**
+1. **API integration tests** (`tests/Api.IntegrationTests/`) — a single **xUnit** project that hosts
+   the real ASP.NET Core API in-process (via `WebApplicationFactory<Program>`) and runs it against a
+   **real SQL Server test database** — no mocking of the database layer. Tests exercise the actual
+   HTTP pipeline, authentication/authorization filters, controllers, Dapper queries, and the
+   hand-written T-SQL, so they catch dialect- and contract-level bugs that mocked databases would
+   never surface (most notably the kind of SQL-parameter and date-serialization bugs the
+   PostgreSQL → SQL Server port introduced).
+2. **Frontend unit tests** (`client/src/**/*.test.ts`) — **Vitest** specs running under **jsdom**
+   that pin the pure logic in the Vue client: the toast store, the admin fetch wrapper
+   (`useAdminApi`), the student auth store, and the exported tag/status helpers from `useProgress`.
+   These cover the branchy, easy-to-regress logic that lives *between* the API contract and the
+   rendered DOM — exactly the code the integration tests cannot see.
 
-| Suite | Tests | Framework | Environment |
-|-------|-------|-----------|-------------|
-| API integration | 199 | xUnit + `Microsoft.AspNetCore.Mvc.Testing` | .NET 10 + SQL Server (`csub_admissions_test`) |
+| Suite | Tests | Framework | Runs against | Where |
+|-------|-------|-----------|--------------|-------|
+| API integration | 214 | xUnit + `Microsoft.AspNetCore.Mvc.Testing` | .NET 10 + real SQL Server (`csub_admissions_test`) | `tests/Api.IntegrationTests/` |
+| Frontend unit | 27 | Vitest + jsdom + Pinia | in-process, `fetch`/`sessionStorage` stubbed | `client/src/**/*.test.ts` |
 
-The Vue client does not currently have an automated test suite. In the original React app there was
-a small client component suite (Vitest + Testing Library, jsdom); that layer has **not** been ported
-yet. All current coverage lives in the API integration project at `tests/Api.IntegrationTests/`, and
-because those tests drive the same REST contract the Vue client consumes, they protect the parts of
-the frontend that matter most (the data and error shapes the UI renders).
+### Testing philosophy
+
+The guiding principle is consistent across both layers: **test the contract, not the implementation,
+at the layer where the contract actually lives.**
+
+- For the **API**, the contract is the HTTP request/response: status codes, JSON keys and shapes,
+  auth gates, and the exact error envelopes. So the backend tests drive the real app over real HTTP
+  against real SQL rather than unit-testing controllers in isolation. This is a deliberate choice
+  carried over from the original Node/React app, which tested its Express routes against a real
+  PostgreSQL database rather than mocks. The stack changed (Express → ASP.NET Core, PostgreSQL → SQL
+  Server), but the philosophy did not: **test the real request/response contract against real SQL.**
+  This is what caught the port's SQL-parameter and `datetime`-kind regressions.
+- For the **frontend**, the contract is the *behavior of the logic units* the components depend on:
+  "does a 401 log the student out?", "does `stepApplies` exclude a held student?", "does the admin
+  client build the right query string?". Those are deterministic functions and stores, so they are
+  unit-tested directly with `fetch` and `sessionStorage` stubbed — no browser, no running API. Full
+  end-to-end UI rendering is intentionally **not** covered here; the API integration tests already
+  protect the data and error shapes the UI renders, and the frontend specs protect the logic that
+  transforms them.
+
+Both layers are **fast and hermetic enough to run on every push** — that is the bar CI enforces (see
+[CI Pipeline](#ci-pipeline)).
 
 ---
 
 ## Running Tests
+
+### API integration tests
 
 The integration suite needs the SQL Server container running, then a single `dotnet test`. There is
 **no** separate "set up the database" step — the API builds and seeds the test database itself the
@@ -68,6 +98,34 @@ You do **not** need to create or migrate the database by hand. On startup the ap
    students with progress and tags).
 
 The test fixture simply points the app at that dedicated test database and lets startup build it.
+
+### Frontend unit tests
+
+The Vitest suite has **no external dependencies** — no database, no running API, no browser. It runs
+entirely in-process under jsdom, so it is fast and works the same on a laptop or in CI. From the
+`client/` directory:
+
+```bash
+# Install deps once (uses the lockfile)
+npm ci
+
+# Run the whole suite once and exit (this is what CI runs)
+npm run test            # => vitest run
+
+# Watch mode for local development (re-runs on file change)
+npm run test:watch      # => vitest
+
+# Run a single file
+npx vitest run src/stores/toast.test.ts
+
+# Filter by test name (substring of the describe/it titles)
+npx vitest run -t "auto-dismisses"
+```
+
+The npm scripts are defined in [`client/package.json`](../client/package.json). The same project also
+exposes `npm run lint` (ESLint), `npm run format:check` (Prettier), and `npm run build` (a `vue-tsc`
+type-check plus a production Vite bundle) — CI runs all four. See [Frontend Unit Tests
+(Vitest)](#frontend-unit-tests-vitest) below for how the suite is wired and what it covers.
 
 ---
 
@@ -192,14 +250,14 @@ credentials already attached. This is the new-stack equivalent of the old `admin
 
 ## What's Covered
 
-199 tests span every endpoint group. Each test class is ported from a specific old Express route
+214 tests span every endpoint group. Each test class is ported from a specific old Express route
 file and matched against its new ASP.NET Core controller; the file header comments in each test class
 name both sides of the port. The table gives the count per class, the endpoints covered, and the
 controller under test:
 
 | Test class | Tests | Endpoints | New controller |
 |---|---:|---|---|
-| `SmokeTests.cs` | 4 | Harness sanity: `/api/health` connected, admin login + token cache, seed presence (≥50 students, ≥22 steps), bad password 401 | — |
+| `SmokeTests.cs` | 6 | Harness sanity: `/api/health` connected, admin login + token cache, seed presence (≥50 students, ≥22 steps), bad password 401, `schema_version` recorded on startup, liveness/readiness probes respond | — |
 | `MiscTests.cs` | 6 | `/api/health` (shape + ISO-UTC timestamp, public access), Helmet-equivalent security headers (incl. on 404s), unknown-`/api` 404s | `HealthController`, `Program.cs` middleware |
 | `AuthTests.cs` | 11 | `POST /api/auth/dev-login` (create, idempotent, validation), `POST /api/auth/sso` (501 when Azure unconfigured), `GET /api/auth/me` (token-type gating, ISO-UTC `createdAt`) | `AuthController` |
 | `AdminAuthTests.cs` | 22 | `POST /api/admin/auth/login`, `GET me`, `POST change-password`, `POST sso`, `POST local-login` (break-glass) | `AdminAuthController` |
@@ -211,8 +269,10 @@ controller under test:
 | `AdminUsersTests.cs` | 21 | sysadmin-only admin-user CRUD, duplicate-email detection, role validation, last-sysadmin guard | `Admin/UsersController` |
 | `ApiChecksTests.cs` | 21 | per-step API-check config (credential masking, validation, test run; sysadmin-gated) + student-triggered runs | `Admin/ApiChecksController`, `RoadmapApiChecksController` |
 | `IntegrationsTests.cs` | 18 | `PUT /step-completions`, `POST /step-completions/batch`, `GET /step-catalog` (X-Integration-Key) | `IntegrationsController` |
+| `AdminRevocationTests.cs` | 1 | Per-request admin re-authorization: a deactivated admin's still-valid token is rejected immediately | `AdminAuth` filter |
+| `SecurityHardeningTests.cs` | 12 | Production fail-safe guards (no server/DB needed): JWT secret missing/weak-default/too-short rejected in Production (strong accepted; dev default allowed in Development) + admin-password strength checks | `JwtService`, `Seeder` |
 
-That sums to **199** `[Fact]` tests.
+That sums to **214** tests — 207 `[Fact]` tests plus 7 `[Theory]` cases (the two `SecurityHardeningTests` theories expand to 7 `[InlineData]` cases).
 
 ### Detail by area
 

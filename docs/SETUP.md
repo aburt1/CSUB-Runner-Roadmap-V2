@@ -3,6 +3,10 @@
 This guide walks through everything needed to get the CSUB Runner Roadmap (V2)
 running, whether you want the full stack in Docker, a local dev loop with hot
 reload, or just the Vue frontend on its own machine pointed at a remote backend.
+It also covers the **developer quality workflow** — the npm and `dotnet` scripts
+you run before pushing (tests, lint, format) — and the **startup flags**
+(`Database:AutoCreate`, `Database:Seed`) that control what the API does to your
+database on boot.
 
 The app is split into three pieces:
 
@@ -12,14 +16,16 @@ The app is split into three pieces:
 
 In production these run as **three separate containers**; in local development
 you typically run SQL Server in a container and the API + client as two host
-processes. Both arrangements are described below.
+processes. Both arrangements are described below. For how the pieces fit
+together at a higher level, see [Architecture](ARCHITECTURE.md); for shipping to
+a real Windows Server + SQL Server, see [Deployment](DEPLOYMENT.md).
 
 ## Prerequisites
 
 | Tool | Version | Needed for |
 |------|---------|------------|
 | **.NET SDK** | **10.0** | Building/running the ASP.NET Core API and the xUnit test project |
-| **Node.js** | **20+** (LTS) and **npm 9+** | Building/running the Vue 3 client |
+| **Node.js** | **20+** (LTS) and **npm 9+** | Building/running/testing/linting the Vue 3 client |
 | **Docker** | Rancher Desktop **or** Docker Desktop | Running SQL Server locally, and the full containerized stack |
 
 You only need .NET and Node if you intend to run the API/client directly on the
@@ -123,13 +129,88 @@ There is **no manual database setup**: on startup the API ensures the
 `csub_admissions` database exists, applies the schema (`Api/Data/schema.sql`),
 and seeds default data (admin account, break-glass local admin, integration
 client, Fall 2026 checklist, and — when not running in Production — 50 sample
-students). No `createdb`, migrations, or hand-run scripts are required.
+students). No `createdb`, migrations, or hand-run scripts are required. The
+exact boot sequence and the flags that control it are described under
+[What the API does on startup](#what-the-api-does-on-startup).
 
 > **Why two different API ports?** In local dev the API listens on **`:3001`**
 > (set via `Urls` in `appsettings.Development.json`), matching the old Express
 > server's port so the Vite proxy default just works. In containers the API
 > listens on **`:8080`** (set via `ASPNETCORE_URLS` in `Api/Dockerfile`), and
 > nginx proxies to it there.
+
+## What the API does on startup
+
+Everything the API needs from the database is created **idempotently on boot**,
+so there is no separate migration or provisioning step in development. The boot
+sequence in `Api/Program.cs` is:
+
+```
+                   ┌─────────────────────────────────────────────┐
+  dotnet run  ───► │ 1. Read ConnectionStrings:Default            │
+                   │    (SQL or Windows auth — drives ALL DB I/O) │
+                   ├─────────────────────────────────────────────┤
+                   │ 2. Database:AutoCreate?                       │
+                   │      └─ yes ► CREATE DATABASE if absent       │
+                   │      └─ no  ► assume a DBA already made it    │
+                   ├─────────────────────────────────────────────┤
+                   │ 3. Apply Api/Data/schema.sql (idempotent)    │
+                   │    and record the version in schema_version  │
+                   ├─────────────────────────────────────────────┤
+                   │ 4. Database:Seed?                             │
+                   │      └─ yes ► seed defaults (idempotent)      │
+                   │      └─ no  ► skip (a DBA seeds out-of-band)  │
+                   └─────────────────────────────────────────────┘
+```
+
+The two flags worth knowing as a developer are `Database:AutoCreate` and
+`Database:Seed`. Both follow the standard config layering — set them in
+`appsettings*.json`, or override per-process with the double-underscore env-var
+form (`Database__AutoCreate=false`).
+
+### `Database:AutoCreate` — should the app run `CREATE DATABASE`?
+
+```csharp
+// Api/Program.cs
+var autoCreateDatabase = app.Configuration.GetValue<bool?>("Database:AutoCreate")
+    ?? !app.Environment.IsProduction();
+if (autoCreateDatabase)
+    await SchemaInitializer.EnsureDatabaseAsync(connectionString);
+```
+
+| Environment | Default | Why |
+|-------------|---------|-----|
+| Development / test | **on** | Zero-setup. You don't have to pre-create `csub_admissions`; the app makes it. |
+| Production | **off** | The database is provisioned by a DBA, and the app's SQL login is *not* expected to have `CREATE DATABASE` rights — it only applies the schema into a database that already exists. |
+
+**When a developer would toggle it:** set `Database__AutoCreate=false` locally if
+you want to reproduce the production flow — i.e. point the API at a database you
+created yourself (or one a DBA handed you) and confirm the app is happy applying
+only the schema, without needing server-level create rights. Regardless of this
+flag, step 3 (apply `schema.sql`) always runs, so the tables/columns are kept in
+sync on every boot.
+
+### `Database:Seed` — should the app insert default data?
+
+```csharp
+// Api/Program.cs
+if (app.Configuration.GetValue<bool?>("Database:Seed") ?? true)
+    await Seeder.RunAsync(db, app.Configuration, app.Environment);
+```
+
+Defaults to **on** in every environment. The seeder is idempotent — it only
+inserts the default term, checklist, default admin, and integration client when
+they're missing — and it adds the 50 sample students **only when not running in
+Production**.
+
+**When a developer would toggle it:** set `Database__Seed=false` when you want a
+schema-only database with no default rows — for example when you're testing
+against data a DBA loaded out-of-band, or you want to verify a screen's
+empty-state behavior without the seeded checklist/students getting in the way.
+
+> Both flags are equally relevant to deployment. For how they're set on a real
+> Windows Server / SQL Server install (typically `AutoCreate=false`, with the
+> schema and seed applied deliberately), see [Deployment](DEPLOYMENT.md).
 
 ## Database Setup
 
@@ -154,25 +235,41 @@ Server=localhost,1433;Database=csub_admissions;User Id=sa;Password=Csub_Local_De
 
 In the `api` container the connection string instead targets the
 `sqlserver` service name (`Server=sqlserver,1433;...`), supplied via the
-`ConnectionStrings__Default` environment variable in `docker-compose.yml`.
+`ConnectionStrings__Default` environment variable in `docker-compose.yml`. The
+connection string is the single switch that drives **all** DB connectivity — SQL
+auth or Windows auth, `Encrypt=True/False`, certificate trust — so changing
+environments is a one-line change with no code edits.
 
 The database, schema, and seed data are applied automatically on first API start
-— no `createdb`, migrations, or manual scripts required.
+— no `createdb`, migrations, or manual scripts required (see
+[What the API does on startup](#what-the-api-does-on-startup)).
 
 ### Confirm it's up
 
-Once the API is running, the health endpoint reports DB connectivity:
+Once the API is running, the health endpoints report status. There are three,
+each with a different job (defined in `Api/Controllers/HealthController.cs`):
+
+| Endpoint | Touches DB? | Returns | Use for |
+|----------|-------------|---------|---------|
+| `GET /api/health/live` | No | always `200` | liveness — is the process up at all? |
+| `GET /api/health/ready` | Yes | `200` ready, `503` when DB is down | readiness — can it actually serve requests? |
+| `GET /api/health` | Yes | `{"status":"ok","db":"connected", ...}` | legacy combined check |
 
 ```bash
 # Local dev (dotnet run)
-curl http://localhost:3001/api/health   # -> {"status":"ok","db":"connected", ...}
+curl http://localhost:3001/api/health/ready   # probes the DB; 503 if it can't connect
+curl http://localhost:3001/api/health         # legacy combined check
 
 # Containerized API directly
-curl http://localhost:8080/api/health
+curl http://localhost:8080/api/health/ready
 
 # Through the web container (nginx proxy)
-curl http://localhost:3000/api/health
+curl http://localhost:3000/api/health/ready
 ```
+
+If `/api/health/ready` returns `503` but `/api/health/live` returns `200`, the
+process is fine but it can't reach SQL Server — check that the `sqlserver`
+container is healthy and that your connection string is correct.
 
 ## Running the App
 
@@ -228,12 +325,101 @@ This is the canonical "run everything" command — open
 [Quick Start](#quick-start-full-stack-in-docker) above for the per-service
 details.
 
+## Developer quality workflow
+
+Before pushing, run the same checks CI runs (`.github/workflows/ci.yml` builds
+and tests both halves). The frontend and backend each have their own tooling.
+This section is the day-to-day reference; for the test *strategy* and how the
+suites are organized, see [Testing](TESTING.md).
+
+### Frontend npm scripts (`client/`)
+
+All scripts are defined in `client/package.json`. Run them from the `client/`
+directory.
+
+| Script | Command it runs | What it does |
+|--------|-----------------|--------------|
+| `npm run dev` | `vite` | Start the Vite dev server on `:3000` with hot reload, proxying `/api` to `VITE_API_PROXY_TARGET` (default `:3001`). |
+| `npm run build` | `vue-tsc -b && vite build` | Type-check the whole project (`vue-tsc`) **then** produce the production bundle. A type error fails the build — this is the gate the `web` image build relies on. |
+| `npm run preview` | `vite preview` | Serve the already-built `dist/` locally to sanity-check a production bundle. |
+| `npm run test` | `vitest run` | Run the Vitest unit suite **once** and exit. This is the CI form. |
+| `npm run test:watch` | `vitest` | Run Vitest in watch mode — re-runs the affected tests as you edit. Use this while developing. |
+| `npm run lint` | `eslint .` | Lint with the flat ESLint config (`eslint.config.js`). ESLint owns *correctness* rules; `skip-formatting` hands *layout* to Prettier so the two don't fight. |
+| `npm run format` | `prettier --write src` | Rewrite files under `src/` to match Prettier's style (no semicolons, single quotes, 100-col, trailing commas — see `.prettierrc.json`). |
+| `npm run format:check` | `prettier --check src` | Verify formatting **without** changing files. Exits non-zero if anything is mis-formatted — this is what CI runs. |
+
+A typical pre-push loop:
+
+```bash
+cd client
+npm run lint          # correctness
+npm run format:check  # layout (use `npm run format` to auto-fix)
+npm run test          # unit tests, run-once
+npm run build         # type-check + bundle
+```
+
+**About the unit tests.** Vitest is configured in `client/vite.config.ts`: it
+picks up `src/**/*.test.ts` and runs them under **jsdom**, so stores and
+composables that touch `sessionStorage`, `fetch`, and timers behave like the
+browser. The current suite covers the Pinia stores and composables, e.g.
+`src/stores/auth.test.ts`, `src/stores/toast.test.ts`,
+`src/composables/useProgress.test.ts`, and
+`src/composables/useAdminApi.test.ts`. These run with **no API and no database**
+— they mock the network — so they're fast and safe to run anywhere.
+
+### Backend tests (`dotnet test`)
+
+The backend has an xUnit **integration** test project
+(`tests/Api.IntegrationTests`). Unlike the frontend unit tests, these spin up the
+real API in-process (via `WebApplicationFactory`, see `WebAppFixture.cs`) and
+exercise it against a **real SQL Server**, so the `sqlserver` container must be
+running first:
+
+```bash
+# 1. Start SQL Server if it isn't already
+docker compose up -d sqlserver
+
+# 2. Run the integration suite
+dotnet test                       # from the repo root, against CsubRunnerRoadmapV2.slnx
+# or:  cd Api && dotnet test      # the Api directory also resolves the test project
+```
+
+The suite covers auth, admin endpoints, integrations, API-checks, and security
+hardening (e.g. `AuthTests.cs`, `AdminUsersTests.cs`, `SecurityHardeningTests.cs`,
+`SmokeTests.cs`). The test host sets `RateLimiting:Disabled=true` so the per-IP
+login limiter doesn't trip while the suite hammers the auth endpoints. CI runs
+this exact suite against a SQL Server *service container* — see
+[Testing](TESTING.md) for the full breakdown.
+
+### Backend build quality gates
+
+The API project (`Api/Api.csproj`) turns on the .NET analyzers
+(`EnableNETAnalyzers`, `AnalysisLevel=latest`) and treats warnings as errors
+(`TreatWarningsAsErrors`). In practice that means **`dotnet build` is also your
+lint** — an analyzer warning fails the build. A handful of rules are
+intentionally suppressed in `.editorconfig` (e.g. `CA1707` because DB-shaped
+response keys use snake_case, and `CA1848` for logging), with comments
+explaining why.
+
+```bash
+cd Api
+dotnet build          # compiles + runs analyzers; warnings are errors
+```
+
 ## Running the frontend on its own (e.g. a Windows desktop)
 
 You can run **only the Vue client** on a separate machine — for example a
 Windows desktop — and point it at a backend running somewhere else. The client
 never hardcodes an API URL; it always calls relative `/api`, and Vite proxies
 those calls to whatever `VITE_API_PROXY_TARGET` points at.
+
+The decision is just *how* you run the client and *where* the backend lives:
+
+| You want… | Use | Set the backend with |
+|-----------|-----|----------------------|
+| The client from source, backend on this machine at `:3001` | **Option A**, defaults | nothing — `:3001` is the default |
+| The client from source, backend elsewhere | **Option A** | `VITE_API_PROXY_TARGET` |
+| The prebuilt client container, no Node install | **Option B** | `WEB_API_URL` |
 
 ### Option A: run the client from source with Node
 
@@ -258,11 +444,12 @@ those calls to whatever `VITE_API_PROXY_TARGET` points at.
 By default the dev server proxies `/api` to `http://localhost:3001` — i.e. it
 expects an API running locally on that machine.
 
-### Pointing at a backend that is NOT on localhost:3001
+#### Pointing at a backend that is NOT on localhost:3001
 
 Set the `VITE_API_PROXY_TARGET` environment variable **before** starting the dev
 server, giving it the scheme, host, and port of the backend you want to hit
-(for example a containerized API on `:8080`, or a remote server).
+(for example a containerized API on `:8080`, or a remote server). It must be set
+*before* `npm run dev` because Vite reads it at startup.
 
 **PowerShell:**
 
@@ -307,6 +494,11 @@ feeds the container's `API_URL`):
 WEB_API_URL=http://<host>:<port> docker compose up web
 ```
 
+> **Source-run vs. container proxy variable.** Use `VITE_API_PROXY_TARGET` when
+> you run the client from source (`npm run dev`); use `WEB_API_URL` when you run
+> the prebuilt `web` container. They do the same job — name the backend `/api`
+> is forwarded to — but apply to different run modes.
+
 ## Environment Variables
 
 Local development reads settings from `Api/appsettings.Development.json`. In
@@ -319,7 +511,9 @@ the full set with their defaults.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ConnectionStrings__Default` | Yes | SQL Server connection string |
+| `ConnectionStrings__Default` | Yes | SQL Server connection string. Drives all DB connectivity (SQL or Windows auth, `Encrypt`, cert trust). |
+| `Database__AutoCreate` | No | `CREATE DATABASE` on boot. Defaults **on** off-Production, **off** in Production. See [What the API does on startup](#what-the-api-does-on-startup). |
+| `Database__Seed` | No | Seed default data on boot (default `true`). Set `false` for a schema-only DB. |
 | `Jwt__Secret` | **Yes** | HS256 signing secret (≥ 32 chars). Compose requires it (no default); the API refuses to start in Production if it's missing, < 32 chars, or a known placeholder. |
 | `Admin__DefaultEmail` | No | First admin account email (default: `admin@csub.edu`) |
 | `Admin__DefaultPassword` | **Yes** | First admin password. Compose requires it; the seeder rejects a missing/weak/default value (e.g. `admin123`) in Production. |
@@ -330,7 +524,7 @@ the full set with their defaults.
 | `AzureAd__TenantId` | No | Azure AD tenant ID |
 | `Integration__DefaultName` | No | Seeded integration client name (default: `PeopleSoft Dev`) |
 | `Integration__DefaultKey` | No | Seeded integration API key (default: `dev-integration-key`) |
-| `ApiCheck__EncryptionKey` | No | 64-hex (32-byte) key to encrypt stored API-check credentials |
+| `RateLimiting__Disabled` | No | Turn off rate limiting (default `false`). The integration test host sets this so the per-IP login limiter doesn't trip. |
 | `Cors__Origin` | No | Allowed CORS origin (defaults to `http://localhost:3000` in dev; closed in prod unless set). Normally unnecessary because nginx keeps the client same-origin. |
 
 > **CORS is usually a no-op.** Because the `web` container's nginx proxy makes
@@ -377,7 +571,8 @@ development and demos — change or disable them for any real deployment.
 50 deterministic sample students with realistic progress data are seeded **only
 when the API is not running in Production** (i.e. local dev). In Production the
 seeder refuses to create the default admin unless `Admin__DefaultPassword` is
-explicitly set.
+explicitly set. To skip seeding entirely, set `Database__Seed=false` (see
+[`Database:Seed`](#databaseseed--should-the-app-insert-default-data)).
 
 ## Available Commands
 
@@ -386,8 +581,8 @@ explicitly set.
 | Command | Description |
 |---------|-------------|
 | `dotnet run` | Start the API (hot-build) on :3001 |
-| `dotnet build` | Compile the API without running |
-| `dotnet test` | Run the xUnit integration tests (`tests/Api.IntegrationTests`) |
+| `dotnet build` | Compile the API + run analyzers (warnings are errors) without running |
+| `dotnet test` | Run the xUnit integration tests (`tests/Api.IntegrationTests`); needs the `sqlserver` container up |
 
 `dotnet build` / `dotnet test` can also be run from the repo root against
 `CsubRunnerRoadmapV2.slnx`, which includes both the API and the test project.
@@ -400,6 +595,11 @@ explicitly set.
 | `npm run dev` | Vite dev server on :3000 (proxies `/api` to `VITE_API_PROXY_TARGET`, default :3001) |
 | `npm run build` | Type-check (`vue-tsc -b`) and build the production bundle |
 | `npm run preview` | Preview the production build locally |
+| `npm run test` | Run the Vitest unit suite once (CI form) |
+| `npm run test:watch` | Run Vitest in watch mode while developing |
+| `npm run lint` | Lint with ESLint (`eslint.config.js`) |
+| `npm run format` | Auto-format `src/` with Prettier |
+| `npm run format:check` | Verify formatting without writing (CI form) |
 
 ### Docker
 
@@ -428,4 +628,6 @@ were intentionally **dropped**:
 - The dev activity simulator — removed.
 - Dev-only mock API-check routes — removed.
 
-For the full project structure, see [Architecture](ARCHITECTURE.md).
+For the full project structure, see [Architecture](ARCHITECTURE.md). For test
+strategy and CI, see [Testing](TESTING.md). For shipping to a real server, see
+[Deployment](DEPLOYMENT.md).

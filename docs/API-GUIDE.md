@@ -19,13 +19,13 @@ In production the app runs as **three containers** that talk over an internal Do
 
 | Container | Image / build | Port (host:container) | Role |
 |-----------|---------------|-----------------------|------|
-| `web` | Vue build served by **nginx** (`client/Dockerfile`) | `3000:80` | Serves the SPA and **reverse-proxies `/api` to the `api` container** |
-| `api` | **ASP.NET Core** (`Api/Dockerfile`) | `8080:8080` | The API only; auto-creates the DB + schema + seed on startup |
-| `sqlserver` | `mcr.microsoft.com/mssql/server:2022-latest` | `1433:1433` | SQL Server 2022 |
+| `web` | Vue build served by **non-root nginx** (`client/Dockerfile`, `nginxinc/nginx-unprivileged`) | `3000:8080` | Serves the SPA and **reverse-proxies `/api` to the `api` container** |
+| `api` | **ASP.NET Core** (`Api/Dockerfile`, non-root) | `127.0.0.1:8080:8080` | The API only; applies schema + seed on startup (`CREATE DATABASE` gated to non-prod) |
+| `sqlserver` | `mcr.microsoft.com/mssql/server:2022-latest` | `127.0.0.1:1433:1433` | SQL Server 2022 (local/testing only — prod uses an external SQL Server) |
 
 Browsers (and your integration clients, if they go through the public hostname) hit **`web` on port 3000**. nginx forwards every `/api/...` request to `api:8080` over the internal network (`client/nginx.conf.template`). Because the browser only ever sees one origin (`http://localhost:3000`), **the SPA and the API are same-origin and CORS is not involved**. The `api` container also still bundles a static-file fallback (`Api/Program.cs` calls `UseStaticFiles` + `MapFallbackToFile`), so it *can* serve a SPA on its own, but in the supported topology the `web`/nginx container owns that job.
 
-If you call the API directly (skipping nginx), use the `api` container's port — e.g. `http://localhost:8080/api/integrations/v1/step-catalog`. If you call it through the front door, use `http://localhost:3000/api/...`.
+If you call the API directly (skipping nginx) for local debugging, use the `api` container's published port — e.g. `http://localhost:8080/api/integrations/v1/step-catalog`. Note that port is bound to `127.0.0.1` only (not reachable off-box), so production integration clients should always go through the `web` front door: `http://your-host/api/...`.
 
 > **Local development** runs without containers and uses different ports: the API runs on `http://localhost:3001` (`dotnet run`) and the Vite dev server runs on `http://localhost:3000` and proxies `/api` to the API. See [Running the app](#running-the-app) for the full local workflow. The client always calls a **relative** `/api` path, so no API URL is ever hardcoded — the proxy (Vite in dev, nginx in containers) decides where it lands.
 
@@ -36,9 +36,10 @@ If you call the API directly (skipping nginx), use the `api` container's port �
 1. [Authentication & Security](#authentication--security)
 2. [Inbound Integration (Push Data In)](#inbound-integration-push-data-in)
 3. [Outbound Integration (Poll External APIs)](#outbound-integration-poll-external-apis)
-4. [Configuration](#configuration)
-5. [Running the app](#running-the-app)
-6. [Error Code Reference](#error-code-reference)
+4. [Health & monitoring endpoints](#health--monitoring-endpoints)
+5. [Configuration](#configuration)
+6. [Running the app](#running-the-app)
+7. [Error Code Reference](#error-code-reference)
 
 ---
 
@@ -660,6 +661,84 @@ async function runAndPoll(token) {
 ```
 
 > The client calls these via a **relative `/api`** path (proxied by Vite in dev, by nginx in containers), so the same code works in every environment without an API base URL.
+
+---
+
+## Health & monitoring endpoints
+
+The API exposes three unauthenticated health endpoints from `Api/Controllers/HealthController.cs`, all mounted under `/api/health`. They are deliberately split so that an orchestrator (Docker Compose, Kubernetes, a load balancer, or an uptime monitor) can ask two *different* questions and react to them differently:
+
+- **"Is the process alive?"** — a liveness probe. If this fails, the container is wedged and should be **restarted**.
+- **"Is the process ready to serve traffic?"** — a readiness probe. If this fails (e.g. SQL Server is briefly unreachable), the container should be **pulled out of rotation** but **not** killed — its dependency may recover on its own.
+
+Conflating the two is a classic outage amplifier: if a liveness probe also checks the database, a transient DB blip restarts every API container at once, and the restart storm prevents recovery. Splitting them is why `/live` never touches the DB while `/ready` does.
+
+| Endpoint | Touches DB? | Status when healthy | Status when DB down | Use for |
+|----------|-------------|---------------------|---------------------|---------|
+| `GET /api/health/live` | No | `200` | `200` (unaffected) | Liveness — "restart me if this fails" |
+| `GET /api/health/ready` | Yes (`SELECT 1`) | `200` | `503` | Readiness — "stop sending me traffic if this fails" |
+| `GET /api/health` | Yes (`SELECT 1`) | `200` | `200` | Legacy combined check; **always** 200, DB status is in the body |
+
+All three are anonymous (no integration key, no JWT) and live behind the same `/api` rate limiter as every other route, so a monitor polling aggressively still counts against the per-IP **200 / 15 min** budget — keep probe intervals reasonable.
+
+### GET /api/health/live
+
+Liveness only. Returns `200` as long as the ASP.NET Core process is running and able to handle a request. It has **no dependencies** — it never opens a database connection — so it stays green even while SQL Server is down or still warming up. This is the endpoint a restart controller should watch.
+
+```bash
+curl http://localhost:8080/api/health/live
+```
+
+**Response (always 200):**
+
+```json
+{ "status": "ok", "timestamp": "2026-06-09T18:30:00.0000000Z" }
+```
+
+The `timestamp` is `DateTime.UtcNow.ToString("o")` (round-trip ISO-8601, UTC, with the trailing `Z`).
+
+### GET /api/health/ready
+
+Readiness. Probes the database by running a trivial `SELECT 1` through the same `Db` connection path the rest of the app uses (which includes the transient-fault retry described in [docs/ARCHITECTURE.md](ARCHITECTURE.md)). The status code is the signal:
+
+- **DB reachable →** `200` with `status: "ready"`.
+- **DB unreachable →** `503` with `status: "not_ready"`. The probe swallows the underlying SQL exception and reports `db: "disconnected"` rather than leaking an error.
+
+```bash
+curl -i http://localhost:8080/api/health/ready
+```
+
+**Response when ready (200):**
+
+```json
+{ "status": "ready", "db": "connected", "timestamp": "2026-06-09T18:30:00.0000000Z" }
+```
+
+**Response when not ready (503):**
+
+```json
+{ "status": "not_ready", "db": "disconnected", "timestamp": "2026-06-09T18:30:00.0000000Z" }
+```
+
+Because a fresh boot serves traffic only once the DB is reachable, `/ready` is also the right gate for *startup* ordering — `docker-compose.yml` gates the `web` container on the `api` container's health (see the container HEALTHCHECKs described in [docs/DEPLOYMENT.md](DEPLOYMENT.md)).
+
+### GET /api/health (legacy)
+
+The original combined check, kept for backward compatibility. It probes the DB like `/ready` does, but **always returns `200`** — the database state is reported only in the body, never in the status code. Tooling that treats any non-200 as "down" will therefore never notice a DB outage through this endpoint, which is exactly why the split `/live` + `/ready` pair exists. Prefer those for new monitors.
+
+```bash
+curl http://localhost:8080/api/health
+```
+
+**Response (always 200):**
+
+```json
+{ "status": "ok", "db": "connected", "timestamp": "2026-06-09T18:30:00.0000000Z" }
+```
+
+When the DB is unreachable the status code stays `200` and only `db` flips to `"disconnected"`.
+
+> **How probes are wired in production.** The `api` and `web` containers each ship a Docker `HEALTHCHECK`, and Compose gates `web` on the `api` service reaching a healthy state. The reverse-proxy/orchestration details — which endpoint each layer hits and how nginx forwards `X-Forwarded-*` headers — live in [docs/DEPLOYMENT.md](DEPLOYMENT.md) rather than being duplicated here.
 
 ---
 
