@@ -1,0 +1,58 @@
+# PRODUCTION stack: web + api ONLY — the database is an external SQL Server that a
+# DBA provisions (see docs/DEPLOYMENT.md §3). This is a standalone file, not an
+# override: it deliberately has no sqlserver service and no CREATE DATABASE rights.
+#
+#   cp .env.example .env       # fill in the secrets + PROD_CONNECTION_STRING
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Put your TLS terminator in front of web (host port 3000 by default; override with
+# WEB_PUBLISH_PORT). The api container is NOT published — it is only reachable by
+# web's nginx on the internal network, which is required for the forwarded-headers
+# trust model (docs/DEPLOYMENT.md §7).
+name: csub-runner-roadmap-v2-prod
+
+services:
+  web:
+    build:
+      context: ./client
+      # Vite inlines these at BUILD time — set them in .env before building.
+      args:
+        VITE_AZURE_AD_CLIENT_ID: "${VITE_AZURE_AD_CLIENT_ID:-}"
+        VITE_AZURE_AD_TENANT_ID: "${VITE_AZURE_AD_TENANT_ID:-}"
+        VITE_AZURE_AD_REDIRECT_URI: "${VITE_AZURE_AD_REDIRECT_URI:-}"
+        VITE_ALLOW_DEV_LOGIN: "false"
+    container_name: csub-web-prod
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_URL: "http://api:8080"
+    ports:
+      - "${WEB_PUBLISH_PORT:-3000}:8080"
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./Api
+    container_name: csub-api-prod
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # The full connection string to YOUR SQL Server (see docs/DEPLOYMENT.md §3 for
+      # the DBA provisioning script and Encrypt=True guidance). Example:
+      #   Server=SQLHOST.your.domain,1433;Database=csub_admissions;User Id=csub_app;Password=...;Encrypt=True;TrustServerCertificate=False
+      ConnectionStrings__Default: "${PROD_CONNECTION_STRING:?set PROD_CONNECTION_STRING in .env to your external SQL Server connection string}"
+      # Database__AutoCreate intentionally NOT set: it defaults to false in Production,
+      # so the api never attempts CREATE DATABASE against the DBA-owned server.
+      Jwt__Secret: "${JWT_SECRET:?set JWT_SECRET to a random 32+ character string in .env}"
+      Admin__DefaultEmail: "${ADMIN_DEFAULT_EMAIL:-admin@csub.edu}"
+      Admin__DefaultPassword: "${ADMIN_DEFAULT_PASSWORD:?set ADMIN_DEFAULT_PASSWORD in .env}"
+      ApiCheck__EncryptionKey: "${API_CHECK_ENCRYPTION_KEY:?set API_CHECK_ENCRYPTION_KEY to 64 hex chars in .env}"
+      LocalLogin__Username: "${LOCAL_LOGIN_USERNAME:-}"
+      LocalLogin__Password: "${LOCAL_LOGIN_PASSWORD:-}"
+      AzureAd__ClientId: "${AZURE_AD_CLIENT_ID:-}"
+      AzureAd__TenantId: "${AZURE_AD_TENANT_ID:-}"
+      Cors__Origin: "${CORS_ORIGIN:-}"
+      Integration__DefaultName: "${INTEGRATION_DEFAULT_NAME:-}"
+      Integration__DefaultKey: "${INTEGRATION_DEFAULT_KEY:-}"
+    # No ports: the api is internal-only behind web's nginx.
+    restart: unless-stopped

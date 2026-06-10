@@ -19,9 +19,23 @@ public sealed class Encryption
     private readonly byte[]? _key;
     private readonly bool _isConfigured;
 
-    public Encryption(IConfiguration config)
+    public Encryption(IConfiguration config, IHostEnvironment env)
     {
         var hex = config["ApiCheck:EncryptionKey"];
+
+        // Fail safe in production (same policy as JwtService): a missing, malformed,
+        // or obviously-weak key must stop the deployment, not silently disable
+        // credential encryption or encrypt with a guessable key.
+        if (env.IsProduction())
+        {
+            if (string.IsNullOrEmpty(hex) || !IsHex64(hex))
+                throw new InvalidOperationException(
+                    "ApiCheck:EncryptionKey must be a 64-character hex string (32 bytes) in Production. Generate one: openssl rand -hex 32");
+            if (IsWeakKey(hex))
+                throw new InvalidOperationException(
+                    "ApiCheck:EncryptionKey is a placeholder/weak value (repeated single character); set a real random key in Production.");
+        }
+
         if (!string.IsNullOrEmpty(hex) && IsHex64(hex))
         {
             _key = Convert.FromHexString(hex);
@@ -32,6 +46,14 @@ public sealed class Encryption
             _key = null;
             _isConfigured = false;
         }
+    }
+
+    // A 64-hex key made of one repeated character (e.g. all zeros) is a placeholder.
+    private static bool IsWeakKey(string hex)
+    {
+        for (var i = 1; i < hex.Length; i++)
+            if (char.ToLowerInvariant(hex[i]) != char.ToLowerInvariant(hex[0])) return false;
+        return true;
     }
 
     // Mirrors isEncryptionConfigured(): key present and exactly 64 hex chars.

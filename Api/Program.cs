@@ -87,6 +87,11 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
+// Resolve the fail-safe singletons eagerly so a misconfigured Jwt:Secret or
+// ApiCheck:EncryptionKey stops the deployment at startup, not on the first request.
+_ = app.Services.GetRequiredService<JwtService>();
+_ = app.Services.GetRequiredService<Api.Services.Encryption>();
+
 // Create/upgrade the schema and seed defaults on startup.
 //   - Production: the database is provisioned by a DBA and the app's login is NOT
 //     expected to have CREATE DATABASE rights — the app only applies the schema.

@@ -11,20 +11,37 @@ namespace Api.Data;
 // parameters are passed as a plain anonymous object (e.g. new { id, term_id }).
 // No repositories, no LINQ, no query builder.
 //
-// Transient faults (failover, throttling, brief network drops, deadlocks, timeouts)
-// are retried with exponential backoff so routine SQL Server events don't surface as
-// 500s. Calls already inside a transaction are not retried individually — the whole
-// transaction is retried instead, since it rolls back cleanly.
+// Transient faults are retried with exponential backoff, but retry safety depends on
+// what the statement does and when the fault happened:
+//   - Opening the connection failed: nothing was sent — always safe to retry.
+//   - READ statements: always safe to retry, whatever the error.
+//   - WRITE statements / transactions: retried ONLY for errors that guarantee the
+//     statement did not take effect (deadlock victim, throttling, request rejected).
+//     Connection drops and timeouts mid-command are AMBIGUOUS — the server may have
+//     already committed — so retrying could double-apply the write. Those surface
+//     as errors instead.
 public sealed class Db
 {
     private const int MaxAttempts = 4;
 
-    // Standard transient SQL Server error numbers (Azure SQL + on-prem failover/cluster).
-    private static readonly HashSet<int> TransientErrorNumbers =
+    // Errors that guarantee the statement/transaction did NOT take effect: the request
+    // was rejected before running (throttling/resource limits) or was rolled back
+    // (deadlock victim, in-memory OLTP validation). Safe to retry reads AND writes.
+    private static readonly HashSet<int> SafeTransientErrorNumbers =
     [
-        49920, 49919, 49918, 41839, 41325, 41305, 41302, 41301, 40613, 40501, 40197,
-        10936, 10929, 10928, 10060, 10054, 10053, 4221, 1205, 233, 121, 64, 20, -2,
+        49920, 49919, 49918, 41839, 41325, 41305, 41302, 41301, 40501,
+        10936, 10929, 10928, 1205,
     ];
+
+    // Errors that can strike mid-command and leave the outcome unknown (failover,
+    // network drop, client-side timeout — the server may have committed the work
+    // before the client saw the failure). Safe to retry only for reads.
+    private static readonly HashSet<int> AmbiguousTransientErrorNumbers =
+    [
+        40613, 40197, 10060, 10054, 10053, 4221, 233, 121, 64, 20, -2,
+    ];
+
+    private enum RetryKind { Read, Write }
 
     private readonly string _connectionString;
 
@@ -45,43 +62,48 @@ public sealed class Db
         _transaction = transaction;
     }
 
-    // Returns the first row mapped to T, or null when there are no rows.
+    // Returns the first row mapped to T, or null when there are no rows. READ semantics:
+    // do not pass INSERT/UPDATE/DELETE here (use InsertReturningAsync / ExecuteAsync),
+    // because reads are retried even after ambiguous mid-command failures.
     public async Task<T?> QueryOneAsync<T>(string sql, object? param = null)
     {
         if (_txConnection is not null)
             return await _txConnection.QueryFirstOrDefaultAsync<T>(sql, param, _transaction);
 
-        return await RetryAsync(async () =>
-        {
-            await using var connection = new SqlConnection(_connectionString);
-            return await connection.QueryFirstOrDefaultAsync<T>(sql, param);
-        });
+        return await RetryAsync(RetryKind.Read, connection =>
+            connection.QueryFirstOrDefaultAsync<T>(sql, param));
     }
 
-    // Returns every row mapped to T.
+    // Returns every row mapped to T. READ semantics (see QueryOneAsync).
     public async Task<IReadOnlyList<T>> QueryAllAsync<T>(string sql, object? param = null)
     {
         if (_txConnection is not null)
             return (await _txConnection.QueryAsync<T>(sql, param, _transaction)).AsList();
 
-        return await RetryAsync<IReadOnlyList<T>>(async () =>
-        {
-            await using var connection = new SqlConnection(_connectionString);
-            return (await connection.QueryAsync<T>(sql, param)).AsList();
-        });
+        return await RetryAsync<IReadOnlyList<T>>(RetryKind.Read, async connection =>
+            (await connection.QueryAsync<T>(sql, param)).AsList());
     }
 
     // Runs an INSERT/UPDATE/DELETE/DDL statement and returns rows affected.
+    // WRITE semantics: only definitely-not-applied transient errors are retried.
     public async Task<int> ExecuteAsync(string sql, object? param = null)
     {
         if (_txConnection is not null)
             return await _txConnection.ExecuteAsync(sql, param, _transaction);
 
-        return await RetryAsync(async () =>
-        {
-            await using var connection = new SqlConnection(_connectionString);
-            return await connection.ExecuteAsync(sql, param);
-        });
+        return await RetryAsync(RetryKind.Write, connection =>
+            connection.ExecuteAsync(sql, param));
+    }
+
+    // Runs a write that returns a row (e.g. INSERT ... SELECT SCOPE_IDENTITY()).
+    // WRITE semantics — retrying an ambiguous failure here could insert twice.
+    public async Task<T?> InsertReturningAsync<T>(string sql, object? param = null)
+    {
+        if (_txConnection is not null)
+            return await _txConnection.QueryFirstOrDefaultAsync<T>(sql, param, _transaction);
+
+        return await RetryAsync(RetryKind.Write, connection =>
+            connection.QueryFirstOrDefaultAsync<T>(sql, param));
     }
 
     // Runs `work` inside a single transaction. The Db handed to `work` routes
@@ -93,11 +115,11 @@ public sealed class Db
         if (_txConnection is not null)
             return await work(this);
 
-        // Retry the whole transaction on a transient fault (it rolls back cleanly first).
-        return await RetryAsync(async () =>
+        // WRITE semantics: the whole transaction re-runs only on errors that guarantee
+        // it did not commit (e.g. deadlock victim — rolled back by the server). An
+        // ambiguous failure during commit is NOT retried: the commit may have succeeded.
+        return await RetryAsync(RetryKind.Write, async connection =>
         {
-            await using var connection = new SqlConnection(_connectionString);
-            await connection.OpenAsync();
             await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
             try
             {
@@ -108,7 +130,12 @@ public sealed class Db
             }
             catch
             {
-                await transaction.RollbackAsync();
+                // Rollback can itself throw when the connection/transaction is already
+                // dead (zombied tx after a drop). Swallow that: the original exception
+                // is the one that matters, and masking it would also defeat the
+                // transient classification above.
+                try { await transaction.RollbackAsync(); }
+                catch { /* connection gone; server rolls back on its own */ }
                 throw;
             }
         });
@@ -118,28 +145,48 @@ public sealed class Db
     public Task TransactionAsync(Func<Db, Task> work) =>
         TransactionAsync(async db => { await work(db); return true; });
 
-    private static async Task<T> RetryAsync<T>(Func<Task<T>> operation)
+    // Opens a fresh connection and runs `operation`, retrying with exponential backoff.
+    // Open failures are always retryable (nothing was sent); after the connection is
+    // open, what is retryable depends on the operation kind (see IsRetryable).
+    private async Task<T> RetryAsync<T>(RetryKind kind, Func<SqlConnection, Task<T>> operation)
     {
         for (var attempt = 1; ; attempt++)
         {
+            var opened = false;
             try
             {
-                return await operation();
+                await using var connection = new SqlConnection(_connectionString);
+                await connection.OpenAsync();
+                opened = true;
+                return await operation(connection);
             }
-            catch (Exception ex) when (attempt < MaxAttempts && IsTransient(ex))
+            catch (Exception ex) when (attempt < MaxAttempts && IsRetryable(ex, kind, opened))
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(200 * Math.Pow(2, attempt - 1)));
             }
         }
     }
 
-    private static bool IsTransient(Exception ex)
+    private static bool IsRetryable(Exception ex, RetryKind kind, bool opened)
     {
-        if (ex is TimeoutException) return true;
+        // Failure before/while opening: no command was sent, retry on any transient error.
+        if (!opened)
+            return IsInSet(ex, SafeTransientErrorNumbers) || IsInSet(ex, AmbiguousTransientErrorNumbers) || ex is TimeoutException;
+
+        // Reads can retry everything; writes only what is guaranteed not applied.
+        return kind switch
+        {
+            RetryKind.Read => IsInSet(ex, SafeTransientErrorNumbers) || IsInSet(ex, AmbiguousTransientErrorNumbers) || ex is TimeoutException,
+            _ => IsInSet(ex, SafeTransientErrorNumbers),
+        };
+    }
+
+    private static bool IsInSet(Exception ex, HashSet<int> numbers)
+    {
         if (ex is SqlException sql)
         {
             foreach (SqlError error in sql.Errors)
-                if (TransientErrorNumbers.Contains(error.Number))
+                if (numbers.Contains(error.Number))
                     return true;
         }
         return false;

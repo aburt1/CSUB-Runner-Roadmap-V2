@@ -58,7 +58,7 @@ public sealed class UsersController : ControllerBase
         var hash = Passwords.Hash(hashSource);
         var effectiveRole = string.IsNullOrEmpty(role) ? "viewer" : role;
 
-        var newId = await _db.QueryOneAsync<int>(
+        var newId = await _db.InsertReturningAsync<int>(
             @"INSERT INTO admin_users (email, password_hash, role, display_name)
               VALUES (@email, @hash, @role, @displayName);
               SELECT CAST(SCOPE_IDENTITY() AS int);",

@@ -113,7 +113,7 @@ public sealed class StepsController : ControllerBase
         var isPublic = IsTruthy(body, "is_public") ? 1 : 0;
         var isOptional = IsTruthy(body, "is_optional") ? 1 : 0;
 
-        var newId = await _db.QueryOneAsync<int>(
+        var newId = await _db.InsertReturningAsync<int>(
             @"INSERT INTO steps (title, description, icon, sort_order, deadline, deadline_date, guide_content, links, required_tags, required_tag_mode, excluded_tags, contact_info, term_id, step_key, is_active, is_public, is_optional)
               VALUES (@title, @description, @icon, @order, @deadline, @deadline_date, @guide_content, @links, @required_tags, @required_tag_mode, @excluded_tags, @contact_info, @termId, @step_key, 1, @is_public, @is_optional);
               SELECT CAST(SCOPE_IDENTITY() AS int);",
@@ -346,7 +346,7 @@ public sealed class StepsController : ControllerBase
             title: $"{step.title} Copy",
             fallback: $"step-{step.id}-copy");
 
-        var newId = await _db.QueryOneAsync<int>(
+        var newId = await _db.InsertReturningAsync<int>(
             @"INSERT INTO steps (title, description, icon, sort_order, deadline, deadline_date, guide_content, links, required_tags, required_tag_mode, excluded_tags, contact_info, term_id, step_key, is_active, is_public, is_optional)
               VALUES (@title, @description, @icon, @order, @deadline, @deadline_date, @guide_content, @links, @required_tags, @required_tag_mode, @excluded_tags, @contact_info, @termId, @step_key, 1, @is_public, @is_optional);
               SELECT CAST(SCOPE_IDENTITY() AS int);",

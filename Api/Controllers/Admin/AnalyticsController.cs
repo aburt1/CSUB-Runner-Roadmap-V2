@@ -95,19 +95,21 @@ public sealed class AnalyticsController : ControllerBase
         var students = await _db.QueryAllAsync<ExportStudent>(
             $"SELECT id, display_name, email FROM students {studentFilter} ORDER BY display_name", new { termId });
 
-        // Get progress scoped to the relevant students and steps.
-        var studentIds = new List<string>();
-        foreach (var s in students) studentIds.Add(s.id);
-        var stepIds = new List<int>();
-        foreach (var s in steps) stepIds.Add(s.id);
-
+        // Get progress scoped to the relevant students and steps. Scoping is done with
+        // JOINs, not IN-lists: Dapper expands an IN-list to one SQL parameter per element
+        // and SQL Server caps a request at 2100 parameters, so a ~2k-student cohort would
+        // make this endpoint 500. Joins keep it at a single @termId parameter.
         var allProgress = new List<ExportProgressRow>();
-        if (studentIds.Count > 0 && stepIds.Count > 0)
+        if (students.Count > 0 && steps.Count > 0)
         {
+            var progressScope = termId.HasValue ? "AND s.term_id = @termId AND st.term_id = @termId" : "";
             allProgress = (await _db.QueryAllAsync<ExportProgressRow>(
-                @"SELECT student_id, step_id, status FROM student_progress
-                  WHERE student_id IN @studentIds AND step_id IN @stepIds",
-                new { studentIds, stepIds })).ToList();
+                $@"SELECT sp.student_id, sp.step_id, sp.status
+                   FROM student_progress sp
+                   JOIN students s ON s.id = sp.student_id
+                   JOIN steps st ON st.id = sp.step_id AND st.{QueryHelpers.ActiveStepFilter}
+                   WHERE 1 = 1 {progressScope}",
+                new { termId })).ToList();
         }
 
         var progressMap = new Dictionary<string, string>();

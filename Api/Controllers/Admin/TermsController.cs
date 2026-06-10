@@ -68,7 +68,7 @@ public sealed class TermsController : ControllerBase
 
         // INSERT and SCOPE_IDENTITY() must run on the same connection, so they go in
         // one statement (Db opens a fresh connection per call outside a transaction).
-        var newId = await _db.QueryOneAsync<int>(
+        var newId = await _db.InsertReturningAsync<int>(
             @"INSERT INTO terms (name, start_date, end_date, is_active) VALUES (@name, @start_date, @end_date, 0);
               SELECT CAST(SCOPE_IDENTITY() AS int);",
             new { name, start_date = NullIfEmpty(body?.Start_date), end_date = NullIfEmpty(body?.End_date) });
@@ -182,7 +182,7 @@ public sealed class TermsController : ControllerBase
         {
             // INSERT + SCOPE_IDENTITY() must be one batch: SCOPE_IDENTITY is scope/batch-scoped
             // and returns NULL in a separate command, even on the same transaction/connection.
-            var newTermId = await txDb.QueryOneAsync<int>(
+            var newTermId = await txDb.InsertReturningAsync<int>(
                 @"INSERT INTO terms (name, start_date, end_date, is_active) VALUES (@name, @start_date, @end_date, 0);
                   SELECT CAST(SCOPE_IDENTITY() AS int);",
                 new { name, start_date = NullIfEmpty(startDate), end_date = NullIfEmpty(endDate) });
@@ -190,7 +190,7 @@ public sealed class TermsController : ControllerBase
             var clonedSteps = new List<Step>();
             foreach (var step in sourceSteps)
             {
-                var newStepId = await txDb.QueryOneAsync<int>(
+                var newStepId = await txDb.InsertReturningAsync<int>(
                     @"INSERT INTO steps (title, description, icon, sort_order, deadline, deadline_date, guide_content, links, required_tags, required_tag_mode, excluded_tags, contact_info, term_id, step_key, is_active, is_public, is_optional)
                        VALUES (@title, @description, @icon, @sort_order, @deadline, @deadline_date, @guide_content, @links, @required_tags, @required_tag_mode, @excluded_tags, @contact_info, @term_id, @step_key, @is_active, @is_public, @is_optional);
                       SELECT CAST(SCOPE_IDENTITY() AS int);",
