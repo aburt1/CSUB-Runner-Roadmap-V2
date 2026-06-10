@@ -326,7 +326,9 @@ public sealed class IntegrationsController : ControllerBase
     // Store the outcome when a source_event_id is present, otherwise pass it through.
     private async Task<Outcome> FinalizeOutcomeAsync(int integrationClientId, CompletionItem item, Outcome outcome)
     {
-        var sourceEventId = item.source_event_id;
+        // Trim to match the idempotency LOOKUP (which trims): storing the raw value
+        // would make a padded id miss its own stored outcome and re-execute on replay.
+        var sourceEventId = (item.source_event_id ?? "").Trim();
         if (string.IsNullOrEmpty(sourceEventId))
             return outcome;
 

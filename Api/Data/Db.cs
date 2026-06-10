@@ -22,6 +22,15 @@ namespace Api.Data;
 //     as errors instead.
 public sealed class Db
 {
+    static Db()
+    {
+        // The schema uses DATETIME2 everywhere, but Dapper binds DateTime parameters as
+        // legacy 'datetime' by default (3.33ms precision, min year 1753) — comparisons
+        // against stored values can silently mismatch. Bind as datetime2 to match.
+        SqlMapper.AddTypeMap(typeof(DateTime), System.Data.DbType.DateTime2);
+        SqlMapper.AddTypeMap(typeof(DateTime?), System.Data.DbType.DateTime2);
+    }
+
     private const int MaxAttempts = 4;
 
     // Errors that guarantee the statement/transaction did NOT take effect: the request

@@ -10,7 +10,7 @@ public static class SchemaInitializer
 {
     // Bump when schema.sql changes; recorded (append-only) in dbo.schema_version so an
     // operator can see which schema versions a database has had applied.
-    public const string CurrentSchemaVersion = "2026.06.09";
+    public const string CurrentSchemaVersion = "2026.06.10";
 
     // Connects to master and creates the target database if it doesn't exist.
     // Retries to tolerate SQL Server still warming up (e.g. in docker-compose).

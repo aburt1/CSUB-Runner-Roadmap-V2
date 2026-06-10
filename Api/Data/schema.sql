@@ -119,6 +119,11 @@ CREATE TABLE dbo.student_progress (
     CONSTRAINT fk_progress_step    FOREIGN KEY (step_id)    REFERENCES dbo.steps (id)
 );
 
+-- The PK leads on student_id, so step-keyed access (analytics per-step counts, step
+-- deletes inside a transaction) would otherwise scan the table.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_student_progress_step')
+CREATE INDEX idx_student_progress_step ON dbo.student_progress (step_id);
+
 ------------------------------------------------------------------- admin_users
 IF OBJECT_ID('dbo.admin_users', 'U') IS NULL
 CREATE TABLE dbo.admin_users (

@@ -70,6 +70,27 @@ public sealed class ApiCheckRunner
     public void SetRunState(string studentId, RunState state)
     {
         _runStates[studentId] = state;
+        ScheduleCleanup(studentId, state);
+    }
+
+    // Atomically claims a run slot for the student. Returns false when a run is already
+    // in flight — a separate Get-then-Set at the call site would let two concurrent
+    // requests both see "not running" and both start background runs.
+    public bool TryBeginRun(string studentId, RunState state)
+    {
+        while (true)
+        {
+            if (_runStates.TryGetValue(studentId, out var current))
+            {
+                if (current.status == "running") return false;
+                if (_runStates.TryUpdate(studentId, state, current)) { ScheduleCleanup(studentId, state); return true; }
+            }
+            else if (_runStates.TryAdd(studentId, state)) { ScheduleCleanup(studentId, state); return true; }
+        }
+    }
+
+    private void ScheduleCleanup(string studentId, RunState state)
+    {
         // Clean up after 2 minutes for completed runs, 5 minutes otherwise (safety net).
         var ttl = state.status == "complete" ? 120_000 : 300_000;
         _ = Task.Delay(ttl).ContinueWith(_delayTask =>

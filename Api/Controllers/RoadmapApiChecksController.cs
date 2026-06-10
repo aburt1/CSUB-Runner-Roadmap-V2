@@ -45,18 +45,16 @@ public sealed class RoadmapApiChecksController : ControllerBase
                     return Ok(new { status = "skipped" });
             }
 
-            // Guard against concurrent runs for the same student.
-            var currentRun = _runner.GetRunState(student.id);
-            if (currentRun.status == "running")
-                return Ok(new { status = "started" });
-
-            // Start background check run.
-            _runner.SetRunState(student.id, new ApiCheckRunner.RunState
+            // Atomically claim the run slot — a get-then-set here would let two
+            // concurrent requests both start background runs for the same student.
+            var claimed = _runner.TryBeginRun(student.id, new ApiCheckRunner.RunState
             {
                 status = "running",
                 checkedSteps = new List<ApiCheckRunner.CheckedStep>(),
                 startedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             });
+            if (!claimed)
+                return Ok(new { status = "started" });
 
             var studentForCheck = new ApiCheckRunner.StudentForCheck
             {

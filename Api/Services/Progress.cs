@@ -73,14 +73,16 @@ public static class Progress
         if (invalid)
             return new ProgressChangeResult { Error = "completed_at must be a valid ISO timestamp" };
 
-        // Read-modify-write in ONE transaction so the UPDLOCK on the SELECT holds until
-        // the write commits (otherwise each call opens its own connection and the lock
-        // is released immediately, allowing a lost update or a duplicate-key 500).
+        // Read-modify-write in ONE transaction. UPDLOCK serializes writers on an existing
+        // row; HOLDLOCK additionally takes a key-range lock when the row is ABSENT, so two
+        // concurrent first-completions can't both pass the existence check and race to a
+        // duplicate-key 500 — the second blocks (or deadlocks as victim, which Db retries)
+        // and then sees the committed row and takes the UPDATE path.
         return await db.TransactionAsync(async tx =>
         {
             var current = await tx.QueryOneAsync<CurrentProgress>(
                 @"SELECT student_id, step_id, completed_at, status, note, completed_by
-                  FROM student_progress WITH (UPDLOCK)
+                  FROM student_progress WITH (UPDLOCK, HOLDLOCK)
                   WHERE student_id = @studentId AND step_id = @stepId",
                 new { studentId = input.StudentId, stepId = input.StepId });
 

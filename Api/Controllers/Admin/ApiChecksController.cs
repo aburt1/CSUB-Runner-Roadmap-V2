@@ -149,6 +149,13 @@ public sealed class ApiChecksController : ControllerBase
             // Upsert on step_id (the old ON CONFLICT (step_id) DO UPDATE).
             await _db.TransactionAsync(async tx =>
             {
+                // Serialize concurrent upserts of the same step: HOLDLOCK range-locks the
+                // key even when the row is absent, so two PUTs can't both take the INSERT
+                // branch and trip uq_step_api_checks_step with a duplicate-key 500.
+                await tx.QueryOneAsync<int?>(
+                    "SELECT 1 FROM step_api_checks WITH (UPDLOCK, HOLDLOCK) WHERE step_id = @stepId",
+                    new { stepId = id });
+
                 var parameters = new
                 {
                     stepId = id,

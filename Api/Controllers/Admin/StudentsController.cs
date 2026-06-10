@@ -408,8 +408,9 @@ public sealed class StudentsController : ControllerBase
         var limitRaw = Request.Query["limit"].ToString();
         var offsetRaw = Request.Query["offset"].ToString();
 
-        var lim = Math.Min((int.TryParse(limitRaw, out var l) && l != 0) ? l : 50, 200);
-        var off = (int.TryParse(offsetRaw, out var o) && o != 0) ? o : 0;
+        // Clamp to sane bounds: a negative limit/offset reaches OFFSET/FETCH and 500s.
+        var lim = Math.Clamp((int.TryParse(limitRaw, out var l) && l > 0) ? l : 50, 1, 200);
+        var off = Math.Max((int.TryParse(offsetRaw, out var o) && o > 0) ? o : 0, 0);
 
         var where = new List<string>();
         var parameters = new Dictionary<string, object?>();

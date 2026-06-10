@@ -89,6 +89,12 @@ public sealed class UsersController : ControllerBase
         var updates = new List<string>();
         var parameters = new DynamicSqlParams();
 
+        // The "last active sysadmin" guards run INSIDE the update transaction below —
+        // a standalone COUNT-then-UPDATE is a check-then-act race (two concurrent
+        // demotions could each see "one other sysadmin" and both proceed).
+        var guardDemote = false;
+        var guardDeactivate = false;
+
         if (hasRole)
         {
             var role = roleEl.ValueKind == JsonValueKind.String ? roleEl.GetString() : null;
@@ -96,15 +102,8 @@ public sealed class UsersController : ControllerBase
             if (role is null || !validRoles.Contains(role))
                 return BadRequest(new { error = $"role must be one of: {string.Join(", ", validRoles)}" });
 
-            // Prevent demoting the last active sysadmin
             if (role != "sysadmin" && user.role == "sysadmin")
-            {
-                var sysadminCount = await _db.QueryOneAsync<int>(
-                    "SELECT COUNT(*) as count FROM admin_users WHERE role = @role AND is_active = 1 AND id != @id",
-                    new { role = "sysadmin", id });
-                if (sysadminCount == 0)
-                    return Conflict(new { error = "Cannot demote the last active sysadmin" });
-            }
+                guardDemote = true;
             updates.Add($"role = {parameters.Next(role)}");
         }
 
@@ -125,15 +124,8 @@ public sealed class UsersController : ControllerBase
             if (!isActive && int.TryParse(ctx.Id, out var ctxId) && id == ctxId)
                 return Conflict(new { error = "Cannot deactivate your own account" });
 
-            // Prevent deactivating the last active sysadmin
             if (!isActive && user.role == "sysadmin")
-            {
-                var sysadminCount = await _db.QueryOneAsync<int>(
-                    "SELECT COUNT(*) as count FROM admin_users WHERE role = @role AND is_active = 1 AND id != @id",
-                    new { role = "sysadmin", id });
-                if (sysadminCount == 0)
-                    return Conflict(new { error = "Cannot deactivate the last active sysadmin" });
-            }
+                guardDeactivate = true;
             updates.Add($"is_active = {parameters.Next(isActive ? 1 : 0)}");
         }
 
@@ -141,9 +133,33 @@ public sealed class UsersController : ControllerBase
             return BadRequest(new { error = "No fields to update" });
 
         var idParam = parameters.Next(id);
-        await _db.ExecuteAsync(
-            $"UPDATE admin_users SET {string.Join(", ", updates)} WHERE id = {idParam}",
-            parameters.ToObject());
+        var updateSql = $"UPDATE admin_users SET {string.Join(", ", updates)} WHERE id = {idParam}";
+        var paramObject = parameters.ToObject();
+
+        // Guard + UPDATE atomically: UPDLOCK/HOLDLOCK on the count serializes concurrent
+        // demote/deactivate attempts so the last active sysadmin can never be removed.
+        var guardFailed = await _db.TransactionAsync(async tx =>
+        {
+            if (guardDemote || guardDeactivate)
+            {
+                var sysadminCount = await tx.QueryOneAsync<int>(
+                    @"SELECT COUNT(*) as count FROM admin_users WITH (UPDLOCK, HOLDLOCK)
+                      WHERE role = @role AND is_active = 1 AND id != @id",
+                    new { role = "sysadmin", id });
+                if (sysadminCount == 0)
+                    return true;
+            }
+            await tx.ExecuteAsync(updateSql, paramObject);
+            return false;
+        });
+
+        if (guardFailed)
+            return Conflict(new
+            {
+                error = guardDemote
+                    ? "Cannot demote the last active sysadmin"
+                    : "Cannot deactivate the last active sysadmin",
+            });
 
         var actor = Audit.ResolveActor(HttpContext);
         await Audit.LogAsync(_db, actor, "admin_user", id, "admin_update",

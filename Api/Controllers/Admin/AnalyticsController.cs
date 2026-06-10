@@ -632,6 +632,18 @@ public sealed class AnalyticsController : ControllerBase
     private async Task<FilterQuerySet> BuildFilterAsync(
         string filterType, int termId, string? filterValue, int perPage, int offset, int totalActiveSteps)
     {
+        // Filters that bind filter_value against typed columns must validate it up
+        // front: a non-numeric step id or a non-date would otherwise fail the SQL
+        // conversion at execution time and surface as a 500 instead of a 400.
+        switch (filterType)
+        {
+            case "step_completed" or "step_not_completed" or "deadline_risk"
+                when !int.TryParse(filterValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out _):
+                throw new InvalidFilterException("filter_value must be a step id");
+            case "trend_date" when !DateTime.TryParse(filterValue, CultureInfo.InvariantCulture, DateTimeStyles.None, out _):
+                throw new InvalidFilterException("filter_value must be a date");
+        }
+
         switch (filterType)
         {
             case "step_completed":
@@ -954,11 +966,12 @@ public sealed class AnalyticsController : ControllerBase
 
     // ─── Helpers / DTOs ──────────────────────────────────────
 
-    // parseInt(x, 10) || fallback: NaN or 0 both fall back to the default.
+    // parseInt(x, 10) || fallback: NaN or 0 both fall back to the default. Clamped to
+    // 1..3650 — a negative or huge value would overflow DATEADD/int negation and 500.
     private static int ParseDaysDefault(string? raw, int fallback)
     {
-        if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) && v != 0)
-            return v;
+        if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) && v > 0)
+            return Math.Min(v, 3650);
         return fallback;
     }
 

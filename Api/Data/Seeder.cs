@@ -16,13 +16,16 @@ public static class Seeder
         await EnsureDefaultTermAsync(db);
         var termId = await ActiveTermIdAsync(db);
 
-        await SeedChecklistAsync(db, termId);
+        // Terms exist but none is active (e.g. an admin deactivated them all): skip the
+        // term-scoped seeds rather than writing rows with a dangling term_id of 0.
+        if (termId > 0)
+            await SeedChecklistAsync(db, termId);
         await StepKeys.EnsureAllAsync(db);
 
         await SeedDefaultAdminAsync(db, config, isProduction);
         await SeedDefaultIntegrationClientAsync(db, config, isProduction);
 
-        if (!isProduction)
+        if (!isProduction && termId > 0)
             await SeedSampleStudentsAsync(db, termId);
     }
 
