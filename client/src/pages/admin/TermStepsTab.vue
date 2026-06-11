@@ -7,6 +7,10 @@ import TermHeader from './TermHeader.vue'
 import CloneTermModal from './CloneTermModal.vue'
 import type { AdminApi } from '../../composables/useAdminApi'
 import { parseMaybeJson } from '../../utils/json'
+import { useToastStore } from '../../stores/toast'
+import type { StepSavePayload } from '../../types/api'
+
+const toast = useToastStore()
 
 interface TermItem {
   id: number
@@ -85,6 +89,7 @@ const fetchSteps = async () => {
     steps.value = data
   } catch {
     steps.value = []
+    toast.error('Could not load steps. Please try again.')
   } finally {
     loading.value = false
   }
@@ -98,7 +103,7 @@ watch(
   { immediate: true },
 )
 
-const handleSaveStep = async (data: any) => {
+const handleSaveStep = async (data: StepSavePayload) => {
   try {
     if (editingStep.value?.id) {
       await props.api.put(`/steps/${editingStep.value.id}`, data)
@@ -108,8 +113,9 @@ const handleSaveStep = async (data: any) => {
     editingStep.value = null
     await fetchSteps()
     await refreshTerms()
-  } catch (err: any) {
-    alert(err.message || 'Failed to save step.')
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Could not save the step. Please try again.'
+    toast.error(msg)
   }
 }
 
@@ -120,7 +126,7 @@ const handleDeleteStep = async (id: number) => {
     await fetchSteps()
     await refreshTerms()
   } catch {
-    // ignore
+    toast.error('Could not deactivate that step. Please try again.')
   }
 }
 
@@ -130,7 +136,7 @@ const handleRestoreStep = async (id: number) => {
     await fetchSteps()
     await refreshTerms()
   } catch {
-    // ignore
+    toast.error('Could not restore that step. Please try again.')
   }
 }
 
@@ -140,25 +146,36 @@ const handleDuplicateStep = async (id: number) => {
     await fetchSteps()
     await refreshTerms()
   } catch {
-    // ignore
+    toast.error('Could not duplicate that step. Please try again.')
   }
 }
 
-const moveStep = async (index: number, direction: number) => {
-  const sorted = [...steps.value].sort((a, b) => a.sort_order - b.sort_order)
-  const swapIndex = index + direction
-  if (swapIndex < 0 || swapIndex >= sorted.length) return
+// Move a step up or down by one position within the visible (sorted) list.
+// The arrows pass the step's id so we look it up and its neighbor in the
+// same visibleSteps array — avoids the bug where a visible-list index pointed
+// at the wrong element in the full step array when inactive steps were hidden.
+const moveStep = async (stepId: number, direction: number) => {
+  const visible = visibleSteps.value
+  const idx = visible.findIndex((s) => s.id === stepId)
+  if (idx === -1) return
+  const swapIdx = idx + direction
+  if (swapIdx < 0 || swapIdx >= visible.length) return
 
-  const order = sorted.map((step) => ({ id: step.id, sort_order: step.sort_order }))
-  const tempOrder = order[index]!.sort_order
-  order[index]!.sort_order = order[swapIndex]!.sort_order
-  order[swapIndex]!.sort_order = tempOrder
+  const a = visible[idx]!
+  const b = visible[swapIdx]!
+  const order = steps.value.map((s) => ({ id: s.id, sort_order: s.sort_order }))
+  const aEntry = order.find((e) => e.id === a.id)
+  const bEntry = order.find((e) => e.id === b.id)
+  if (!aEntry || !bEntry) return
+  const tmp = aEntry.sort_order
+  aEntry.sort_order = bEntry.sort_order
+  bEntry.sort_order = tmp
 
   try {
     await props.api.put('/steps/reorder', { order })
     await fetchSteps()
   } catch {
-    // ignore
+    toast.error('Could not reorder steps. Please try again.')
   }
 }
 
@@ -214,7 +231,7 @@ const handleBulkAction = async (isActive: number) => {
     await fetchSteps()
     await refreshTerms()
   } catch {
-    // ignore
+    toast.error('Could not update the selected steps. Please try again.')
   }
 }
 
@@ -227,12 +244,16 @@ const handleCreateTerm = async () => {
     const data = await refreshTerms(result.id)
     const createdTerm = data.find((term) => term.id === result.id)
     if (createdTerm) emit('selectTerm', createdTerm.id)
-  } catch (err: any) {
-    alert(err.message || 'Failed to create term.')
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Could not create the term. Please try again.'
+    toast.error(msg)
   }
 }
 
-const handleSaveTerm = async (termId: number, data: any) => {
+const handleSaveTerm = async (
+  termId: number,
+  data: Partial<{ name: string; start_date: string; end_date: string; is_active: number }>,
+) => {
   await props.api.put(`/terms/${termId}`, data)
   const refreshed = await refreshTerms(termId)
   const term = refreshed.find((item) => item.id === termId)
@@ -240,10 +261,6 @@ const handleSaveTerm = async (termId: number, data: any) => {
 }
 
 const handleDeleteTerm = async (term: TermItem) => {
-  if ((term.student_count ?? 0) > 0) {
-    alert('This term still has students assigned and cannot be deleted.')
-    return
-  }
   if (!confirm(`Delete ${term.name}? All steps in this term will be removed.`)) return
 
   try {
@@ -251,16 +268,25 @@ const handleDeleteTerm = async (term: TermItem) => {
     const refreshed = await refreshTerms()
     const nextTerm = refreshed.find((item) => item.is_active) || refreshed[0] || null
     emit('selectTerm', nextTerm?.id || null)
-  } catch (err: any) {
-    alert(err.message || 'Failed to delete term.')
+  } catch (err) {
+    // Surface the server's 409 message verbatim (e.g. "Cannot delete a term that
+    // still has students assigned") or fall back to the standard voice.
+    const msg = err instanceof Error ? err.message : 'Could not delete the term. Please try again.'
+    toast.error(msg)
   }
 }
 
-const handleCloned = async (result: any) => {
+// handleCloned receives the CloneTermModal result: term has full TermItem shape,
+// steps is the modal's minimal Step (id, title, description, icon) — we re-fetch
+// from server to get the full StepItem shape including is_active and sort_order.
+const handleCloned = async (result: {
+  term: TermItem
+  steps: { id: number; title: string; description: string | null; icon: string | null }[]
+}) => {
   const refreshed = await refreshTerms(result.term.id)
   const term = refreshed.find((item) => item.id === result.term.id)
   emit('selectTerm', term?.id || result.term.id)
-  steps.value = result.steps || []
+  await fetchSteps()
 }
 
 const parseTags = (value: unknown): string[] => parseMaybeJson(value, [])
@@ -284,8 +310,8 @@ const draggableSteps = computed<StepItem[]>({
     <TermHeader
       :term="selectedTerm"
       :can-edit="canEdit"
-      @save="handleSaveTerm"
-      @delete="handleDeleteTerm"
+      :on-save="handleSaveTerm"
+      :on-delete="handleDeleteTerm"
     />
 
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
@@ -420,7 +446,7 @@ const draggableSteps = computed<StepItem[]>({
 
                   <div class="flex flex-col gap-0.5">
                     <button
-                      @click="moveStep(index, -1)"
+                      @click="moveStep(step.id, -1)"
                       :disabled="index === 0"
                       class="text-xs text-csub-gray hover:text-csub-blue disabled:opacity-30 transition-colors"
                       title="Move up"
@@ -428,7 +454,7 @@ const draggableSteps = computed<StepItem[]>({
                       {{ '▲' }}
                     </button>
                     <button
-                      @click="moveStep(index, 1)"
+                      @click="moveStep(step.id, 1)"
                       :disabled="index === visibleSteps.length - 1"
                       class="text-xs text-csub-gray hover:text-csub-blue disabled:opacity-30 transition-colors"
                       title="Move down"

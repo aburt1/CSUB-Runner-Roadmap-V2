@@ -4,19 +4,10 @@ import { Bar } from 'vue-chartjs'
 import type { ChartData, ChartOptions, Plugin } from 'chart.js'
 import './registerCharts'
 import { AXIS_COLOR, AXIS_FONT_SIZE, GRID_COLOR, BAR_RADIUS, PROGRESS_COLORS } from './chartTheme'
-
-interface BucketItem {
-  bucket: string
-  student_count: number
-}
-
-interface DrillDownPayload {
-  filterType: string
-  filterValue: any
-}
+import type { DrillDownPayload, ProgressBucket } from './types'
 
 const props = defineProps<{
-  data: BucketItem[] | null
+  data: ProgressBucket[] | null
   onDrillDown?: (payload: DrillDownPayload) => void
 }>()
 

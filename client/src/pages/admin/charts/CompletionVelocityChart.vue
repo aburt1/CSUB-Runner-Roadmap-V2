@@ -5,15 +5,11 @@ import type { ChartData, ChartOptions } from 'chart.js'
 import './registerCharts'
 import type { AdminApi } from '../../../composables/useAdminApi'
 import { AXIS_COLOR, AXIS_FONT_SIZE, GRID_COLOR, BAR_RADIUS, VELOCITY_COLORS } from './chartTheme'
+import type { DrillDownPayload } from './types'
 
 interface VelocityItem {
   bucket: string
   student_count: number
-}
-
-interface DrillDownPayload {
-  filterType: string
-  filterValue: any
 }
 
 const props = defineProps<{

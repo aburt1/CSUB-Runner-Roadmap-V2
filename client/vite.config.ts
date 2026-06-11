@@ -6,6 +6,8 @@ import vue from '@vitejs/plugin-vue'
 // pointing at a backend running elsewhere:
 //   VITE_API_PROXY_TARGET=http://localhost:8080 npm run dev   (or a remote host)
 // Defaults to the local `dotnet run` port (3001).
+// NOTE: this reads process.env (Node) BEFORE Vite loads .env files, so setting
+// VITE_API_PROXY_TARGET in client/.env silently has no effect — it must be in the shell.
 const apiTarget = process.env.VITE_API_PROXY_TARGET || 'http://localhost:3001'
 
 // Vitest reads the `test` field from this file. We keep `defineConfig` from Vite

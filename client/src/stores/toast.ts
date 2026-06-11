@@ -11,6 +11,9 @@ export interface Toast {
 
 // Lightweight transient-notification store. Used by the global error handlers and by
 // any component that needs to surface a success/failure to the user.
+//
+// Error message voice convention: "Could not <verb> <object>. Please try again."
+// Sentence case, period at the end. Never expose raw backend error strings.
 export const useToastStore = defineStore('toast', () => {
   const toasts = ref<Toast[]>([])
   let nextId = 1

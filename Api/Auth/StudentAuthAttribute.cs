@@ -36,5 +36,4 @@ public sealed class StudentAuthAttribute : Attribute, IAsyncActionFilter
         http.Items["studentEmail"] = principal.FindFirst("email")?.Value;
         await next();
     }
-
-    }
+}

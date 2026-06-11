@@ -23,7 +23,9 @@ const handleSubmit = async () => {
       sessionStorage.setItem('csub_admin_user', JSON.stringify(data.user))
       router.push('/admin')
     } else {
-      error.value = data.error || 'Invalid credentials.'
+      // Fallback is byte-identical to the backend contract string (no trailing period)
+      // so the form never flickers between two near-identical messages.
+      error.value = data.error || 'Invalid credentials'
     }
   } catch {
     error.value = 'Cannot connect to server.'

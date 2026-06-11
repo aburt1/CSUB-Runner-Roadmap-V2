@@ -3,6 +3,10 @@ import { ref, onMounted } from 'vue'
 import { isAzureAdConfigured, msalInstance, loginRequest } from '../../auth/msalConfig'
 import { BrowserAuthError } from '@azure/msal-browser'
 
+// NOTE: kept in sync with stores/auth.ts ssoLogin — admin and student sessions
+// are deliberately separate (different API endpoints, different token keys), so
+// the popup/redirect logic is duplicated rather than shared.
+
 interface AdminUser {
   id: number
   email: string
@@ -62,8 +66,10 @@ onMounted(async () => {
       await handleSsoResponse(redirectResponse.idToken)
       return // Redirect login succeeded
     }
-  } catch (err: any) {
-    error.value = err.message || 'SSO initialization failed'
+  } catch (err) {
+    // Log the raw MSAL error for diagnostics; show a fixed, user-friendly string.
+    console.error('[admin sso] MSAL init/redirect failed', err)
+    error.value = 'SSO initialization failed. Please try again or contact IT.'
   }
   msalInitialized.value = true
 })
@@ -77,13 +83,21 @@ const handleSsoLogin = async () => {
     let response
     try {
       response = await msalInstance.loginPopup(loginRequest)
-    } catch (err: any) {
+    } catch (err) {
       if (
         err instanceof BrowserAuthError &&
         ['popup_window_error', 'empty_window_error', 'popup_timeout'].includes(err.errorCode)
       ) {
         redirecting = true
-        await msalInstance.loginRedirect(loginRequest)
+        try {
+          await msalInstance.loginRedirect(loginRequest)
+        } catch (redirectErr) {
+          // The redirect never happened — reset the flag so the finally block can
+          // clear the spinner instead of leaving "Signing in..." stuck forever.
+          // Mirror of stores/auth.ts ssoLogin redirect guard.
+          redirecting = false
+          throw redirectErr
+        }
         return
       }
       throw err
@@ -91,11 +105,15 @@ const handleSsoLogin = async () => {
     if (response?.idToken) {
       await handleSsoResponse(response.idToken)
     }
-  } catch (err: any) {
-    if (err.errorCode === 'user_cancelled') {
+  } catch (err) {
+    // Log the raw MSAL error for diagnostics; never show AADSTS/technical strings
+    // on an unauthenticated screen.
+    console.error('[admin sso] login failed', err)
+    const authErr = err as { errorCode?: string }
+    if (authErr.errorCode === 'user_cancelled') {
       error.value = ''
     } else {
-      error.value = err.message || 'SSO login failed'
+      error.value = 'SSO login failed. Please try again or contact IT.'
     }
   } finally {
     if (!redirecting) ssoLoading.value = false
@@ -116,7 +134,9 @@ const handlePasswordLogin = async () => {
     if (res.ok && data.token) {
       emit('login', data.token, data.user)
     } else {
-      error.value = data.error || 'Invalid credentials.'
+      // Fallback is byte-identical to the backend contract string so the admin
+      // never sees two near-identical messages alternating between requests.
+      error.value = data.error || 'Invalid credentials'
     }
   } catch {
     error.value = 'Cannot connect to server.'

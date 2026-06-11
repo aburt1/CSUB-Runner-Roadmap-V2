@@ -24,6 +24,8 @@ public static class Progress
         if (string.IsNullOrEmpty(normalized))
             return new StudentResolution { ErrorCode = "invalid_student_id_number", Error = "student_id_number is required" };
 
+        // trim-only compare ports the old server; case-insensitivity comes from the
+        // server's CI collation, and emplid_norm guarantees no case-variant duplicates exist.
         var rows = await db.QueryAllAsync<ResolvedStudent>(
             @"SELECT id, display_name, email, emplid, term_id
               FROM students
@@ -64,6 +66,8 @@ public static class Progress
     // Wrap the call in db.TransactionAsync when several changes must be atomic.
     public static async Task<ProgressChangeResult> ApplyAsync(Db db, ProgressChangeInput input)
     {
+        // callers validate status; anything else (including null) means 'completed' —
+        // the default action, matching the old progress.ts.
         var nextStatus = input.Status == "waived" ? "waived"
             : input.Status == "not_completed" ? "not_completed"
             : "completed";
@@ -100,10 +104,12 @@ public static class Progress
             if (current is not null)
             {
                 var nextCompletedAt = explicitCompletedAt ?? current.completed_at ?? DateTime.UtcNow;
+                // completed_at omitted by the caller means 'keep the stored value' —
+                // only an explicit value can differ.
                 var sameCompletedAt = input.CompletedAt is null || current.completed_at == explicitCompletedAt;
 
                 if (current.status == nextStatus
-                    && (current.note ?? null) == normalizedNote
+                    && current.note == normalizedNote
                     && sameCompletedAt
                     && (string.IsNullOrEmpty(current.completed_by) ? "manual" : current.completed_by) == normalizedCompletedBy)
                 {

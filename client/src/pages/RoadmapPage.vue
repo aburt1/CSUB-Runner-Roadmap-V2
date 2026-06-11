@@ -2,6 +2,7 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '../stores/auth'
+import { useToastStore } from '../stores/toast'
 import { useProgress } from '../composables/useProgress'
 import ProgressSummary from '../components/roadmap/ProgressSummary.vue'
 import CurrentStepCallout from '../components/roadmap/CurrentStepCallout.vue'
@@ -17,6 +18,7 @@ import type { StepWithStatus } from '../types/api'
 type ViewMode = 'timeline' | 'list'
 
 const auth = useAuthStore()
+const toast = useToastStore()
 const { user, token } = storeToRefs(auth)
 const { logout } = auth
 
@@ -121,15 +123,11 @@ const filteredSteps = computed<StepWithStatus[]>(() => {
   return steps.value.filter((s) => s.status !== 'completed' && s.status !== 'waived')
 })
 
-const selectedStepList = computed<StepWithStatus[]>(() => {
-  if (!selectedStep.value) return []
-  return filteredSteps.value
-})
-
+// selectedStepList was `filteredSteps` when a step was selected, or [] when none.
+// The only consumers are selectedStepIndex, StepDetailPanel total-steps and nav —
+// they all want filteredSteps; the "no selection" guard is handled at the use sites.
 const selectedStepIndex = computed(() =>
-  selectedStep.value
-    ? selectedStepList.value.findIndex((s) => s.id === selectedStep.value!.id)
-    : -1,
+  selectedStep.value ? filteredSteps.value.findIndex((s) => s.id === selectedStep.value!.id) : -1,
 )
 
 const currentStepNumber = computed(() =>
@@ -165,7 +163,7 @@ async function handleOptionalStepStatusChange(step: StepWithStatus, status: stri
       }
     }
   } catch {
-    // ignore for now
+    toast.error('Could not update that step. Please try again.')
   } finally {
     updatingOptionalStepId.value = null
   }
@@ -173,9 +171,8 @@ async function handleOptionalStepStatusChange(step: StepWithStatus, status: stri
 
 function handleNavigate(direction: 'prev' | 'next') {
   if (!selectedStep.value) return
-  const idx = selectedStepList.value.findIndex((s) => s.id === selectedStep.value!.id)
-  const next =
-    direction === 'next' ? selectedStepList.value[idx + 1] : selectedStepList.value[idx - 1]
+  const idx = filteredSteps.value.findIndex((s) => s.id === selectedStep.value!.id)
+  const next = direction === 'next' ? filteredSteps.value[idx + 1] : filteredSteps.value[idx - 1]
   if (next) selectedStep.value = next
 }
 </script>
@@ -414,10 +411,10 @@ function handleNavigate(direction: 'prev' | 'next') {
         v-if="selectedStep"
         :step="selectedStep"
         :step-number="selectedStepIndex + 1"
-        :total-steps="selectedStepList.length"
+        :total-steps="filteredSteps.length"
         :completed-at="completedDates[selectedStep.id]"
         :has-prev="selectedStepIndex > 0"
-        :has-next="selectedStepIndex < selectedStepList.length - 1"
+        :has-next="selectedStepIndex < filteredSteps.length - 1"
         :on-optional-step-status-change="
           selectedStep.is_optional === 1
             ? (status: string) => handleOptionalStepStatusChange(selectedStep!, status)

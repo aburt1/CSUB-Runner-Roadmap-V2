@@ -9,10 +9,16 @@ interface DrillDownStudent {
   completion_pct: number
 }
 
+interface DrillDownResponse {
+  students: DrillDownStudent[]
+  title: string
+  total: number
+}
+
 const props = defineProps<{
   open: boolean
   filterType?: string
-  filterValue?: any
+  filterValue?: string | number
   termId: number | null
   api: AdminApi
 }>()
@@ -37,14 +43,14 @@ watch(
     page.value = 1
     loading.value = true
     props.api
-      .get('/analytics/students', {
+      .get<DrillDownResponse>('/analytics/students', {
         term_id: props.termId,
         filter_type: props.filterType,
         filter_value: props.filterValue,
         page: 1,
         per_page: 50,
       })
-      .then((data: any) => {
+      .then((data) => {
         students.value = data.students
         title.value = data.title
         total.value = data.total
@@ -61,7 +67,7 @@ const loadMore = async () => {
   const nextPage = page.value + 1
   loadingMore.value = true
   try {
-    const data: any = await props.api.get('/analytics/students', {
+    const data = await props.api.get<DrillDownResponse>('/analytics/students', {
       term_id: props.termId,
       filter_type: props.filterType,
       filter_value: props.filterValue,

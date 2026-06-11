@@ -4,19 +4,10 @@ import { Line } from 'vue-chartjs'
 import type { ChartData, ChartOptions } from 'chart.js'
 import './registerCharts'
 import { CSUB_BLUE, CSUB_GOLD, AXIS_COLOR, AXIS_FONT_SIZE, GRID_COLOR } from './chartTheme'
-
-interface TrendItem {
-  date: string
-  completions: number
-}
-
-interface DrillDownPayload {
-  filterType: string
-  filterValue: any
-}
+import type { DrillDownPayload, TrendPoint } from './types'
 
 const props = defineProps<{
-  data: TrendItem[] | null
+  data: TrendPoint[] | null
   onDrillDown?: (payload: DrillDownPayload) => void
 }>()
 

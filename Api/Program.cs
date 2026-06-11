@@ -145,6 +145,9 @@ app.Use(async (context, next) =>
 app.UseForwardedHeaders();
 
 // Security headers — the Helmet-equivalent set from the old server.
+// A second, SPA-specific CSP lives in client/nginx.conf.template (it additionally
+// allows connect-src login.microsoftonline.com for MSAL) — keep the two in sync.
+// Consequently the single-process wwwroot fallback below works only without Azure SSO.
 app.Use(async (context, next) =>
 {
     var headers = context.Response.Headers;

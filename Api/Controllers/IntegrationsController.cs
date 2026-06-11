@@ -117,7 +117,7 @@ public sealed class IntegrationsController : ControllerBase
         {
             // Mirror JS `parseInt(x, 10)`: parse the leading integer, then treat 0/NaN as
             // falsy so the old `req.query.term_id && !termId` guard returns 400.
-            var parsed = ParseIntPrefix(rawTermId);
+            var parsed = JsParse.LeadingInt(rawTermId);
             if (parsed is null || parsed.Value == 0)
                 return BadRequest(new { error = "term_id must be a valid number" });
             termId = parsed.Value;
@@ -127,7 +127,7 @@ public sealed class IntegrationsController : ControllerBase
         if (termId is not null)
         {
             rows = await _db.QueryAllAsync<CatalogRow>(
-                @"SELECT s.term_id, t.name AS term_name, s.step_key, s.title, COALESCE(s.is_active, 1) AS is_active
+                @"SELECT s.term_id, t.name as term_name, s.step_key, s.title, COALESCE(s.is_active, 1) as is_active
                   FROM steps s
                   JOIN terms t ON t.id = s.term_id
                   WHERE s.term_id = @termId
@@ -137,7 +137,7 @@ public sealed class IntegrationsController : ControllerBase
         else
         {
             rows = await _db.QueryAllAsync<CatalogRow>(
-                @"SELECT s.term_id, t.name AS term_name, s.step_key, s.title, COALESCE(s.is_active, 1) AS is_active
+                @"SELECT s.term_id, t.name as term_name, s.step_key, s.title, COALESCE(s.is_active, 1) as is_active
                   FROM steps s
                   JOIN terms t ON t.id = s.term_id
                   ORDER BY t.created_at DESC, s.sort_order, s.id");
@@ -166,6 +166,9 @@ public sealed class IntegrationsController : ControllerBase
         if (storedEvent is not null)
             return storedEvent;
 
+        // Validation failures (bad status / bad completed_at) are deliberately NOT recorded in
+        // integration_events — the caller can retry the same source_event_id with a corrected
+        // payload; resolution failures ARE recorded so a replay returns the original outcome.
         if (item.status != "completed" && item.status != "waived" && item.status != "not_completed")
         {
             return new Outcome
@@ -409,32 +412,6 @@ public sealed class IntegrationsController : ControllerBase
             return false;
         var value = successProp.GetValue(body);
         return value is bool b && b;
-    }
-
-    // JS parseInt(value, 10): skip leading whitespace, accept an optional sign, then
-    // read leading digits. Returns null when no digits are present (NaN in JS).
-    private static int? ParseIntPrefix(string value)
-    {
-        var s = value.TrimStart();
-        var index = 0;
-        var sign = 1;
-        if (index < s.Length && (s[index] == '+' || s[index] == '-'))
-        {
-            if (s[index] == '-') sign = -1;
-            index++;
-        }
-
-        var start = index;
-        while (index < s.Length && s[index] >= '0' && s[index] <= '9')
-            index++;
-
-        if (index == start)
-            return null;
-
-        if (!int.TryParse(s.AsSpan(start, index - start), out var digits))
-            return null;
-
-        return sign * digits;
     }
 
     private sealed class StoredEventRow

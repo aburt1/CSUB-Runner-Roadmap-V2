@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { errorMessage } from '../../utils/errors'
 
 interface Term {
   id: number
@@ -20,6 +21,8 @@ interface TermForm {
 interface Props {
   term: Term | null
   canEdit: boolean
+  // NOTE: callback props (not emits) are used here so the parent can await the
+  // save/delete operations and show a saving spinner during the async request.
   onSave: (termId: number, data: Partial<TermForm & { is_active: number }>) => Promise<void>
   onDelete: (term: Term) => void
 }
@@ -53,8 +56,8 @@ const handleSubmit = async () => {
   try {
     await props.onSave(props.term.id, form.value)
     editing.value = false
-  } catch (err: any) {
-    error.value = err.message || 'Failed to save term'
+  } catch (err) {
+    error.value = errorMessage(err, 'Could not save the term. Please try again.')
   } finally {
     saving.value = false
   }

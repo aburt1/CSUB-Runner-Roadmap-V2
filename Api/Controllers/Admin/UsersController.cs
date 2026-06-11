@@ -87,7 +87,8 @@ public sealed class UsersController : ControllerBase
         var hasIsActive = Json.TryGetProperty(body, "is_active", out var isActiveEl);
 
         var updates = new List<string>();
-        var parameters = new DynamicSqlParams();
+        // Dapper accepts IDictionary<string, object?> directly — no wrapper needed.
+        var parameters = new Dictionary<string, object?>();
 
         // The "last active sysadmin" guards run INSIDE the update transaction below —
         // a standalone COUNT-then-UPDATE is a check-then-act race (two concurrent
@@ -104,7 +105,8 @@ public sealed class UsersController : ControllerBase
 
             if (role != "sysadmin" && user.role == "sysadmin")
                 guardDemote = true;
-            updates.Add($"role = {parameters.Next(role)}");
+            updates.Add("role = @role");
+            parameters["role"] = role;
         }
 
         if (hasDisplayName)
@@ -114,7 +116,8 @@ public sealed class UsersController : ControllerBase
             // the UPDATE as NULL and surface as a constraint-violation 500.
             if (string.IsNullOrEmpty(displayName))
                 return BadRequest(new { error = "displayName must be a non-empty string" });
-            updates.Add($"display_name = {parameters.Next(displayName)}");
+            updates.Add("display_name = @display_name");
+            parameters["display_name"] = displayName;
         }
 
         if (hasIsActive)
@@ -130,15 +133,16 @@ public sealed class UsersController : ControllerBase
 
             if (!isActive && user.role == "sysadmin")
                 guardDeactivate = true;
-            updates.Add($"is_active = {parameters.Next(isActive ? 1 : 0)}");
+            updates.Add("is_active = @is_active");
+            parameters["is_active"] = isActive ? 1 : 0;
         }
 
         if (updates.Count == 0)
             return BadRequest(new { error = "No fields to update" });
 
-        var idParam = parameters.Next(id);
-        var updateSql = $"UPDATE admin_users SET {string.Join(", ", updates)} WHERE id = {idParam}";
-        var paramObject = parameters.ToObject();
+        parameters["id"] = id;
+        var updateSql = $"UPDATE admin_users SET {string.Join(", ", updates)} WHERE id = @id";
+        var paramObject = parameters;
 
         // Guard + UPDATE atomically: UPDLOCK/HOLDLOCK on the count serializes concurrent
         // demote/deactivate attempts so the last active sysadmin can never be removed.
@@ -182,24 +186,6 @@ public sealed class UsersController : ControllerBase
                 keys.Add(prop.Name);
         }
         return keys;
-    }
-
-    // Builds @p0, @p1, ... placeholders + a matching parameter bag, mirroring the
-    // old paramBuilder() positional approach for the partial UPDATE.
-    private sealed class DynamicSqlParams
-    {
-        private readonly Dictionary<string, object?> _values = new();
-        private int _index;
-
-        public string Next(object? value)
-        {
-            var name = "p" + _index;
-            _values[name] = value;
-            _index++;
-            return "@" + name;
-        }
-
-        public Dictionary<string, object?> ToObject() => _values;
     }
 
     public sealed record CreateUserRequest(string? Email, string? Role, string? DisplayName);

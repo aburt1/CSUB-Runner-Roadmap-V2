@@ -1,13 +1,7 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { parseMaybeJson } from '../../utils/json'
-interface AuditLog {
-  id: number
-  entity_type: string
-  action: string
-  changed_by: string
-  created_at: string
-  details: string | Record<string, any>
-}
+import type { AuditLog } from '../../types/api'
 
 interface ActionMeta {
   label: string
@@ -37,8 +31,8 @@ const ACTION_META: Record<string, ActionMeta> = {
 }
 
 const parseDetails = (
-  details: string | Record<string, any> | null | undefined,
-): Record<string, any> => parseMaybeJson(details, {})
+  details: string | Record<string, unknown> | null | undefined,
+): Record<string, unknown> => parseMaybeJson(details, {})
 
 function formatTime(ts: string): string {
   const d = new Date(ts.endsWith('Z') ? ts : ts + 'Z')
@@ -67,7 +61,7 @@ function formatArray(value: unknown): string {
   return value.join(', ')
 }
 
-function getSummary(log: AuditLog, details: Record<string, any>): string {
+function getSummary(log: AuditLog, details: Record<string, unknown>): string {
   const fallback = ACTION_META[log.action]?.label || log.action.replace(/_/g, ' ')
 
   switch (log.action) {
@@ -99,26 +93,31 @@ function getSummary(log: AuditLog, details: Record<string, any>): string {
   }
 }
 
-function getDetailRows(_log: AuditLog, details: Record<string, any>): [string, string][] {
+function str(v: unknown): string {
+  return String(v ?? '')
+}
+
+function getDetailRows(_log: AuditLog, details: Record<string, unknown>): [string, string][] {
   const rows: [string, string][] = []
 
-  if (details.studentName) rows.push(['Student', details.studentName])
-  if (details.emplid) rows.push(['Student ID #', details.emplid])
-  if (details.student_id_number) rows.push(['Student ID #', details.student_id_number])
-  if (details.stepTitle) rows.push(['Step', details.stepTitle])
-  if (details.step_key) rows.push(['Step Key', details.step_key])
-  if (details.title && !details.stepTitle) rows.push(['Title', details.title])
-  if (details.name) rows.push(['Term', details.name])
-  if (details.email) rows.push(['Email', details.email])
-  if (details.role) rows.push(['Role', details.role])
-  if (details.displayName) rows.push(['Display Name', details.displayName])
-  if (details.note) rows.push(['Note', details.note])
+  if (details.studentName) rows.push(['Student', str(details.studentName)])
+  if (details.emplid) rows.push(['Student ID #', str(details.emplid)])
+  if (details.student_id_number) rows.push(['Student ID #', str(details.student_id_number)])
+  if (details.stepTitle) rows.push(['Step', str(details.stepTitle)])
+  if (details.step_key) rows.push(['Step Key', str(details.step_key)])
+  if (details.title && !details.stepTitle) rows.push(['Title', str(details.title)])
+  if (details.name) rows.push(['Term', str(details.name)])
+  if (details.email) rows.push(['Email', str(details.email)])
+  if (details.role) rows.push(['Role', str(details.role)])
+  if (details.displayName) rows.push(['Display Name', str(details.displayName)])
+  if (details.note) rows.push(['Note', str(details.note)])
   if (details.oldTags || details.newTags) {
     rows.push(['Tags', `${formatArray(details.oldTags)} -> ${formatArray(details.newTags)}`])
   }
-  if (details.fields?.length) rows.push(['Fields', details.fields.join(', ')])
-  if (details.duplicatedFrom) rows.push(['Duplicated From', `Step ${details.duplicatedFrom}`])
-  if (details.clonedFrom) rows.push(['Cloned From', `Term ${details.clonedFrom}`])
+  const fields = details.fields
+  if (Array.isArray(fields) && fields.length) rows.push(['Fields', fields.join(', ')])
+  if (details.duplicatedFrom) rows.push(['Duplicated From', `Step ${str(details.duplicatedFrom)}`])
+  if (details.clonedFrom) rows.push(['Cloned From', `Term ${str(details.clonedFrom)}`])
   if (details.stepCount !== undefined) rows.push(['Step Count', String(details.stepCount)])
   if (details.deletedStepCount !== undefined)
     rows.push(['Deleted Steps', String(details.deletedStepCount)])
@@ -127,9 +126,29 @@ function getDetailRows(_log: AuditLog, details: Record<string, any>): [string, s
   return rows
 }
 
-defineProps<{
+interface LogRow {
+  log: AuditLog
+  summary: string
+  detailRows: [string, string][]
+}
+
+const props = defineProps<{
   logs: AuditLog[]
 }>()
+
+// Pre-compute parsed details once per log to avoid calling parseDetails + getDetailRows
+// multiple times per render cycle (getSummary and getDetailRows are called separately in
+// the template, but share the same parsed object now via this computed).
+const rows = computed<LogRow[]>(() =>
+  props.logs.map((log) => {
+    const details = parseDetails(log.details)
+    return {
+      log,
+      summary: getSummary(log, details),
+      detailRows: getDetailRows(log, details),
+    }
+  }),
+)
 </script>
 
 <template>
@@ -138,7 +157,8 @@ defineProps<{
   </p>
 
   <div v-else class="space-y-3">
-    <template v-for="log in logs" :key="log.id">
+    <!-- rows is pre-computed so parseDetails is called once per log, not 3x per render -->
+    <template v-for="{ log, summary, detailRows } in rows" :key="log.id">
       <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
         <div class="flex gap-3 items-start">
           <div
@@ -147,7 +167,7 @@ defineProps<{
           <div class="flex-1 min-w-0">
             <div class="flex flex-wrap items-center gap-2 mb-1.5">
               <p class="font-body text-sm font-semibold text-csub-blue-dark">
-                {{ getSummary(log, parseDetails(log.details)) }}
+                {{ summary }}
               </p>
               <span
                 class="text-[10px] uppercase tracking-wider font-display font-bold text-csub-blue-dark bg-csub-blue/10 px-2 py-0.5 rounded-full"
@@ -168,12 +188,9 @@ defineProps<{
               <span>{{ formatTime(log.created_at) }}</span>
             </div>
 
-            <div
-              v-if="getDetailRows(log, parseDetails(log.details)).length > 0"
-              class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2"
-            >
+            <div v-if="detailRows.length > 0" class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
               <div
-                v-for="[label, value] in getDetailRows(log, parseDetails(log.details))"
+                v-for="[label, value] in detailRows"
                 :key="`${log.id}-${label}`"
                 class="bg-gray-50 rounded-lg px-3 py-2"
               >

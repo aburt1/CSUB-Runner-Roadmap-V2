@@ -1,17 +1,13 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { AdminApi } from '../../../composables/useAdminApi'
+import type { DrillDownPayload } from './types'
 
 interface RiskStep {
   id: number
   title: string
   deadline_date: string
   at_risk_count: number
-}
-
-interface DrillDownPayload {
-  filterType: string
-  filterValue: any
 }
 
 const props = defineProps<{

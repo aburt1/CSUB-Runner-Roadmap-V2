@@ -6,7 +6,9 @@ import type { Step, StepWithStatus, StepStatus, ProgressResponse, Term } from '.
 import { parseMaybeJson } from '../utils/json'
 
 const API_BASE = '/api'
-const POLL_INTERVAL = 30000 // 30 seconds
+// 30 seconds: long enough to avoid hammering the server, short enough that a
+// step completed by an admin on behalf of a student becomes visible promptly.
+const POLL_INTERVAL = 30000
 
 export interface ProgressMapEntry {
   status: StepStatus
@@ -89,11 +91,16 @@ export function useProgress() {
         const map = new Map<number, ProgressMapEntry>()
         for (const p of data.progress) {
           map.set(p.step_id, {
+            // NULL status from legacy rows defaults to 'completed' — the original
+            // app only stored a row when a step was done, so no status = done.
             status: (p.status || 'completed') as StepStatus,
             completed_at: p.completed_at,
           })
         }
         progressMap.value = map
+        // completedDates duplicates the completed_at values from progressMap.
+        // It exists so the timeline/list components can read dates without
+        // unpacking the Map — a map lookup every render is equivalent but noisier.
         completedDates.value = Object.fromEntries(
           data.progress.map((p) => [p.step_id, p.completed_at]),
         )

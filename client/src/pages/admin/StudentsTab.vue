@@ -3,6 +3,10 @@ import { ref, computed, watch } from 'vue'
 import SummaryStats from './SummaryStats.vue'
 import StudentDetail from './StudentDetail.vue'
 import type { AdminApi } from '../../composables/useAdminApi'
+import { useToastStore } from '../../stores/toast'
+import { getInitials } from '../../utils/initials'
+
+const toast = useToastStore()
 
 interface Step {
   id: number
@@ -70,29 +74,27 @@ watch(
   { immediate: true },
 )
 
-const fetchStudents = async (overrides: Record<string, any> = {}) => {
+const fetchStudents = async () => {
   loading.value = true
   try {
-    const p = overrides.page ?? page.value
-    const s = overrides.sort ?? sortBy.value
-    const q = overrides.search ?? search.value
-    const od = overrides.overdueOnly ?? overdueOnly.value
-
-    let url = `/students?page=${p}&per_page=${PER_PAGE}&sort=${s}`
-    if (q.trim()) url += `&search=${encodeURIComponent(q)}`
+    let url = `/students?page=${page.value}&per_page=${PER_PAGE}&sort=${sortBy.value}`
+    if (search.value.trim()) url += `&search=${encodeURIComponent(search.value)}`
     if (props.termId) url += `&term_id=${props.termId}`
-    if (od) url += `&overdue_only=1`
+    if (overdueOnly.value) url += `&overdue_only=1`
 
-    const data: any = await props.api.get(url)
+    const data = await props.api.get<{ students: StudentListItem[]; total: number }>(url)
     students.value = data.students
     totalStudents.value = data.total
   } catch {
-    // ignore
+    toast.error('Could not load students. Please try again.')
   } finally {
     loading.value = false
   }
 }
 
+// Single trigger path: all four watched refs drive fetchStudents via the watcher.
+// Handlers only mutate the refs; the watcher fetches. Search is Enter-triggered
+// and unwatched, so handleSearch fetches directly after resetting the page.
 watch(
   () => [page.value, sortBy.value, overdueOnly.value, props.termId] as const,
   () => {
@@ -102,36 +104,24 @@ watch(
 )
 
 const handleSearch = () => {
-  page.value = 1
-  fetchStudents({ page: 1 })
+  // Reset to page 1; if already on page 1 the watcher won't fire, so fetch directly.
+  if (page.value === 1) fetchStudents()
+  else page.value = 1
 }
 const handleSearchClear = () => {
   search.value = ''
-  page.value = 1
-  fetchStudents({ page: 1, search: '' })
+  if (page.value === 1) fetchStudents()
+  else page.value = 1
 }
 const handleSortChange = (newSort: string) => {
   sortBy.value = newSort
   page.value = 1
-  fetchStudents({ page: 1, sort: newSort })
 }
 const handleOverdueToggle = () => {
-  const next = !overdueOnly.value
-  overdueOnly.value = next
+  overdueOnly.value = !overdueOnly.value
   page.value = 1
-  fetchStudents({ page: 1, overdueOnly: next })
 }
 const refreshStudents = () => fetchStudents()
-
-const getInitials = (name: string | undefined): string => {
-  if (!name) return '?'
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
-}
 
 const totalPages = computed(() => Math.ceil(totalStudents.value / PER_PAGE))
 const rangeStart = computed(() => (page.value - 1) * PER_PAGE + 1)

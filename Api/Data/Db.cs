@@ -32,6 +32,8 @@ public sealed class Db
     }
 
     private const int MaxAttempts = 4;
+    // 200/400/800ms — ~1.4s worst case, well under the client request timeout.
+    private const int BaseRetryDelayMs = 200;
 
     // Errors that guarantee the statement/transaction did NOT take effect: the request
     // was rejected before running (throttling/resource limits) or was rolled back
@@ -171,7 +173,7 @@ public sealed class Db
             }
             catch (Exception ex) when (attempt < MaxAttempts && IsRetryable(ex, kind, opened))
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(200 * Math.Pow(2, attempt - 1)));
+                await Task.Delay(TimeSpan.FromMilliseconds(BaseRetryDelayMs * Math.Pow(2, attempt - 1)));
             }
         }
     }
@@ -179,10 +181,13 @@ public sealed class Db
     private static bool IsRetryable(Exception ex, RetryKind kind, bool opened)
     {
         // Failure before/while opening: no command was sent, retry on any transient error.
+        // TimeoutException covers connection-pool exhaustion (SqlConnection.OpenAsync can
+        // throw it directly when the pool wait times out, before any command is sent).
         if (!opened)
             return IsInSet(ex, SafeTransientErrorNumbers) || IsInSet(ex, AmbiguousTransientErrorNumbers) || ex is TimeoutException;
 
-        // Reads can retry everything; writes only what is guaranteed not applied.
+        // Reads can retry everything (including pool timeouts on the open path).
+        // Writes only retry errors guaranteed not to have taken effect.
         return kind switch
         {
             RetryKind.Read => IsInSet(ex, SafeTransientErrorNumbers) || IsInSet(ex, AmbiguousTransientErrorNumbers) || ex is TimeoutException,

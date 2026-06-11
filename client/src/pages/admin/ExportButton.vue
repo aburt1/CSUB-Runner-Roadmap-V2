@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { AdminApi } from '../../composables/useAdminApi'
+import { useToastStore } from '../../stores/toast'
 
 const props = defineProps<{
   api: AdminApi
   termId: number | null
 }>()
 
+const toast = useToastStore()
 const loading = ref(false)
 
 const handleExport = async () => {
@@ -24,7 +26,7 @@ const handleExport = async () => {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   } catch {
-    alert('Failed to export. Please try again.')
+    toast.error('Could not export data. Please try again.')
   } finally {
     loading.value = false
   }

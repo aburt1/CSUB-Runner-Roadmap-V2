@@ -22,4 +22,11 @@ describe('parseMaybeJson', () => {
     expect(parseMaybeJson('not json', [])).toEqual([])
     expect(parseMaybeJson('{broken', null)).toBeNull()
   })
+
+  it('returns the fallback for JSON null — mirrors server Json.SafeParse', () => {
+    // JSON.parse('null') === null; without the ?? fallback this would return null
+    // typed as T (e.g. array), causing a mid-render crash on .length access.
+    expect(parseMaybeJson('null', [])).toEqual([])
+    expect(parseMaybeJson('null', {})).toEqual({})
+  })
 })

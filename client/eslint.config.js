@@ -19,21 +19,12 @@ export default defineConfigWithVueTs(
   {
     name: 'app/rule-tweaks',
     rules: {
-      // Analytics drill-downs and Chart.js payloads are intentionally dynamically
-      // shaped (ported as-is from the original app). Track `any` as debt to tighten
-      // later, but don't block the build on it — vue-tsc is the real type gate.
-      '@typescript-eslint/no-explicit-any': 'warn',
+      // All `any` uses have been replaced with typed interfaces or `unknown`.
+      // Promoting to 'error' so new `any` doesn't slip in unnoticed.
+      '@typescript-eslint/no-explicit-any': 'error',
       // Single-word component names (Celebration) are unambiguous here and won't
       // collide with HTML elements; the convention isn't worth renaming for.
       'vue/multi-word-component-names': 'off',
-    },
-  },
-  {
-    // Build-tool configs are Node modules, not app code.
-    name: 'app/tooling-configs',
-    files: ['*.config.{js,cjs,ts}'],
-    rules: {
-      '@typescript-eslint/no-require-imports': 'off',
     },
   },
 )

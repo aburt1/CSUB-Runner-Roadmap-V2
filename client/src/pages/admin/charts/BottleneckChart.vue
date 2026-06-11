@@ -10,23 +10,7 @@ import {
   BAR_RADIUS,
   getCompletionColor,
 } from './chartTheme'
-
-interface StepData {
-  id: number
-  title: string
-  completion_pct: number
-  completed_count: number
-}
-
-interface BottleneckData {
-  steps: StepData[]
-  totalStudents: number
-}
-
-interface DrillDownPayload {
-  filterType: string
-  filterValue: any
-}
+import type { DrillDownPayload, BottleneckData } from './types'
 
 const props = defineProps<{
   data: BottleneckData | null

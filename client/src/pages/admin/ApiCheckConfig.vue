@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import type { AdminApi } from '../../composables/useAdminApi'
+import { errorMessage } from '../../utils/errors'
 
-interface AdminApi {
-  get: (path: string, params?: Record<string, any>) => Promise<any>
-  post: (path: string, body?: any) => Promise<any>
-  put: (path: string, body?: any) => Promise<any>
-  del: (path: string, body?: any) => Promise<any>
-  raw: (path: string, options?: any) => Promise<Response>
-}
+// Sentinel the server returns/accepts for "unchanged stored credentials".
+// Hoisted to a const so a typo can't silently corrupt stored credentials.
+const MASKED_CREDENTIALS = '••••••••'
 
 interface HeaderEntry {
   key: string
@@ -29,7 +27,7 @@ interface ApiCheckConfigData {
 interface TestResultData {
   error?: string
   statusCode?: number
-  extractedValue?: any
+  extractedValue?: unknown
   wouldMarkComplete?: boolean
   responseBody?: string
 }
@@ -67,7 +65,7 @@ const label = 'block font-body text-xs font-semibold text-csub-blue-dark mb-1'
 
 const fetchConfig = async () => {
   try {
-    const data: ApiCheckConfigData = await props.api.get(`/steps/${props.stepId}/api-check`)
+    const data = await props.api.get<ApiCheckConfigData>(`/steps/${props.stepId}/api-check`)
     config.value = data
     if (data.configured) {
       enabled.value = data.is_enabled
@@ -76,12 +74,12 @@ const fetchConfig = async () => {
       authType.value = data.auth_type || 'none'
       studentParamSource.value = data.student_param_source || 'emplid'
       responseFieldPath.value = data.response_field_path || ''
-      if (data.auth_credentials === '••••••••') {
+      if (data.auth_credentials === MASKED_CREDENTIALS) {
         if (data.auth_type === 'basic') {
-          username.value = '••••••••'
-          password.value = '••••••••'
+          username.value = MASKED_CREDENTIALS
+          password.value = MASKED_CREDENTIALS
         } else if (data.auth_type === 'bearer') {
-          bearerToken.value = '••••••••'
+          bearerToken.value = MASKED_CREDENTIALS
         }
       }
       if (Array.isArray(data.headers)) {
@@ -111,11 +109,11 @@ const handleSave = async () => {
   try {
     let authCredentials: string | null = null
     if (authType.value === 'basic') {
-      const usernameMasked = username.value === '••••••••'
-      const passwordMasked = password.value === '••••••••'
+      const usernameMasked = username.value === MASKED_CREDENTIALS
+      const passwordMasked = password.value === MASKED_CREDENTIALS
       if (usernameMasked && passwordMasked) {
         // Untouched — the server keeps the stored credentials.
-        authCredentials = '••••••••'
+        authCredentials = MASKED_CREDENTIALS
       } else if (usernameMasked || passwordMasked) {
         // A half-edited pair would store the literal mask as the real value,
         // silently corrupting the saved credentials.
@@ -125,10 +123,10 @@ const handleSave = async () => {
         authCredentials = JSON.stringify({ username: username.value, password: password.value })
       }
     } else if (authType.value === 'bearer') {
-      if (bearerToken.value !== '••••••••') {
+      if (bearerToken.value !== MASKED_CREDENTIALS) {
         authCredentials = JSON.stringify({ token: bearerToken.value })
       } else {
-        authCredentials = '••••••••'
+        authCredentials = MASKED_CREDENTIALS
       }
     }
 
@@ -142,12 +140,14 @@ const handleSave = async () => {
       student_param_source: studentParamSource.value,
       response_field_path: responseFieldPath.value,
     })
+    // Inline confirmation — shown next to the form being edited rather than as a
+    // floating toast, so the admin can immediately see which config was saved.
     success.value = 'API check saved'
     setTimeout(() => {
       success.value = null
     }, 3000)
-  } catch (err: any) {
-    error.value = err.message
+  } catch (err) {
+    error.value = errorMessage(err, 'Could not save the API check. Please try again.')
   } finally {
     saving.value = false
   }
@@ -163,12 +163,13 @@ const handleDelete = async () => {
     authType.value = 'none'
     headers.value = []
     expanded.value = false
+    // Inline confirmation — shown next to the form being edited.
     success.value = 'API check removed'
     setTimeout(() => {
       success.value = null
     }, 3000)
-  } catch (err: any) {
-    error.value = err.message
+  } catch (err) {
+    error.value = errorMessage(err, 'Could not remove the API check. Please try again.')
   }
 }
 
@@ -177,12 +178,12 @@ const handleTest = async () => {
   testLoading.value = true
   testResult.value = null
   try {
-    const result = await props.api.post(`/steps/${props.stepId}/api-check/test`, {
+    const result = await props.api.post<TestResultData>(`/steps/${props.stepId}/api-check/test`, {
       testStudentId: testStudentId.value,
     })
     testResult.value = result
-  } catch (err: any) {
-    testResult.value = { error: err.message }
+  } catch (err) {
+    testResult.value = { error: errorMessage(err, 'Test failed') }
   } finally {
     testLoading.value = false
   }

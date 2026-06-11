@@ -21,6 +21,11 @@ public sealed class ApiCheckRunner
     // target (SSRF bypass); a redirect is treated as a non-success response.
     private static readonly HttpClient Http = new(new SocketsHttpHandler { AllowAutoRedirect = false });
 
+    // 5s per request keeps one slow upstream from eating most of the 15s run budget
+    // (same values as the old Node runner).
+    private const int PerRequestTimeoutMs = 5_000;
+    private const int RunBudgetMs = 15_000;
+
     private readonly Db _db;
     private readonly Encryption _encryption;
     private readonly ILogger<ApiCheckRunner> _logger;
@@ -91,7 +96,9 @@ public sealed class ApiCheckRunner
 
     private void ScheduleCleanup(string studentId, RunState state)
     {
-        // Clean up after 2 minutes for completed runs, 5 minutes otherwise (safety net).
+        // 2 min keeps results around long enough for the client to poll; 5 min is the
+        // safety net that releases a 'running' claim if the background task died without
+        // SetRunState (and matches the 5-min run throttle).
         var ttl = state.status == "complete" ? 120_000 : 300_000;
         _ = Task.Delay(ttl).ContinueWith(_delayTask =>
         {
@@ -358,7 +365,7 @@ public sealed class ApiCheckRunner
             ApplyAuthHeaders(request, checkConfig.auth_type, credentials);
             ApplyCustomHeaders(request, checkConfig.headers);
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(5000));
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(PerRequestTimeoutMs));
             using var response = await Http.SendAsync(request, cts.Token);
             var responseBody = await response.Content.ReadAsStringAsync(cts.Token);
 
@@ -366,6 +373,8 @@ public sealed class ApiCheckRunner
             try
             {
                 using var doc = JsonDocument.Parse(responseBody);
+                // Clone() detaches the element from the JsonDocument — `extracted` is read
+                // after `doc` is disposed; an uncloned element would throw ObjectDisposedException.
                 extracted = ExtractFieldValue(doc.RootElement.Clone(), checkConfig.response_field_path);
             }
             catch
@@ -401,12 +410,10 @@ public sealed class ApiCheckRunner
 
     public async Task<List<CheckedStep>> RunApiChecksForStudentAsync(StudentForCheck student)
     {
-        var checks = await _db.QueryAllAsync<StepApiCheckWithSort>(
-            @"SELECT sac.id, sac.step_id, sac.is_enabled, sac.http_method, sac.url,
+        var checks = await _db.QueryAllAsync<StepApiCheckToRun>(
+            @"SELECT sac.step_id, sac.http_method, sac.url,
                      sac.auth_type, sac.auth_credentials, sac.headers,
-                     sac.student_param_name, sac.student_param_source, sac.response_field_path,
-                     sac.created_at, sac.updated_at,
-                     s.id AS s_id, s.sort_order AS sort_order
+                     sac.student_param_name, sac.student_param_source, sac.response_field_path
               FROM step_api_checks sac
               JOIN steps s ON s.id = sac.step_id
               WHERE sac.is_enabled = 1
@@ -416,12 +423,12 @@ public sealed class ApiCheckRunner
             new { termId = student.term_id });
 
         var checkedSteps = new List<CheckedStep>();
-        var startedAt = Stopwatch();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
 
         foreach (var check in checks)
         {
             // 15-second total cap.
-            if (Stopwatch() - startedAt > 15_000)
+            if (sw.ElapsedMilliseconds > RunBudgetMs)
             {
                 _logger.LogWarning("API check run hit the 15s cap, stopping early");
                 break;
@@ -474,12 +481,13 @@ public sealed class ApiCheckRunner
                     ApplyAuthHeaders(request, check.auth_type, credentials);
                     ApplyCustomHeaders(request, check.headers);
 
-                    using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(5000));
+                    using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(PerRequestTimeoutMs));
                     using var response = await Http.SendAsync(request, cts.Token);
                     try
                     {
                         var body = await response.Content.ReadAsStringAsync(cts.Token);
                         using var doc = JsonDocument.Parse(body);
+                        // Clone() — see TestApiCheckAsync; same reason: extracted outlives doc.
                         extracted = ExtractFieldValue(doc.RootElement.Clone(), check.response_field_path);
                     }
                     catch
@@ -497,6 +505,10 @@ public sealed class ApiCheckRunner
                         "SELECT status FROM student_progress WHERE student_id = @studentId AND step_id = @stepId",
                         new { studentId = student.id, stepId = check.step_id });
 
+                    // existing rows normally never have status 'not_completed' (ApplyAsync
+                    // deletes them) — this also tolerates legacy rows from the old Node app.
+                    // 'completed'/'waived' rows are left alone so an API check never clobbers
+                    // a manual waive.
                     if (existing is null || existing.status == "not_completed")
                     {
                         await Progress.ApplyAsync(_db, new Progress.ProgressChangeInput
@@ -543,13 +555,9 @@ public sealed class ApiCheckRunner
         return checkedSteps;
     }
 
-    private static long Stopwatch() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-    private sealed class StepApiCheckWithSort
+    private sealed class StepApiCheckToRun
     {
-        public int id { get; set; }
         public int step_id { get; set; }
-        public bool is_enabled { get; set; }
         public string http_method { get; set; } = "GET";
         public string url { get; set; } = "";
         public string? auth_type { get; set; }
@@ -558,10 +566,6 @@ public sealed class ApiCheckRunner
         public string student_param_name { get; set; } = "studentId";
         public string student_param_source { get; set; } = "emplid";
         public string response_field_path { get; set; } = "";
-        public DateTime created_at { get; set; }
-        public DateTime updated_at { get; set; }
-        public int s_id { get; set; }
-        public int sort_order { get; set; }
     }
 
     private sealed class ProgressStatusRow

@@ -4,25 +4,10 @@ import { Bar } from 'vue-chartjs'
 import type { ChartData, ChartOptions } from 'chart.js'
 import './registerCharts'
 import { CSUB_BLUE, CSUB_GOLD, AXIS_COLOR, AXIS_FONT_SIZE, GRID_COLOR } from './chartTheme'
-
-interface StepData {
-  id: number
-  title: string
-  completed_count: number
-}
-
-interface CompletionData {
-  steps: StepData[]
-  totalStudents: number
-}
-
-interface DrillDownPayload {
-  filterType: string
-  filterValue: any
-}
+import type { DrillDownPayload, StepCompletionData } from './types'
 
 const props = defineProps<{
-  data: CompletionData | null
+  data: StepCompletionData | null
   onDrillDown?: (payload: DrillDownPayload) => void
 }>()
 

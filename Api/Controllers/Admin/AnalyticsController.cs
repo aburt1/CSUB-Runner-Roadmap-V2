@@ -14,6 +14,15 @@ namespace Api.Controllers.Admin;
 //
 // Boring on purpose: hand-written T-SQL inline, snake_case anonymous response
 // objects that mirror the old res.json(...) keys verbatim, manual validation.
+//
+// 'Done' deliberately differs per metric (port parity with the old analytics.ts):
+//   - Completion/cohort/trend metrics count status IN ('completed','waived') —
+//     waiving a step counts as finishing it for progress tracking purposes.
+//   - Velocity and stalled count status = 'completed' only — waiving is not
+//     activity so it should not mask that a student is stalled or inflate speed.
+//   - Stats counts any student_progress row because NOT-completed rows are
+//     deleted by Progress.ApplyAsync; a row existing means it was completed.
+// See the one-line pointer comments at each divergent subquery.
 [ApiController]
 [Route("api/admin")]
 [AdminAuth]
@@ -45,24 +54,25 @@ public sealed class AnalyticsController : ControllerBase
 
         // Postgres AVG over integer counts yields numeric; SQL Server AVG over int
         // truncates, so cast the count to float to keep the fractional average.
+        // Stats counts any student_progress row (see class header comment on the three 'done' tiers).
         string avgQuery = termId.HasValue
             ? $@"SELECT COALESCE(AVG(CAST(pc.completed AS float)), 0) as avg_completed
-                 FROM students s
+                 FROM students st
                  LEFT JOIN (
                    SELECT student_id, COUNT(*) as completed
                    FROM student_progress sp
-                   JOIN steps st ON st.id = sp.step_id AND st.{QueryHelpers.ActiveStepFilter} AND st.term_id = @termId
+                   JOIN steps s ON s.id = sp.step_id AND s.{QueryHelpers.ActiveStepFilter} AND s.term_id = @termId
                    GROUP BY student_id
-                 ) pc ON pc.student_id = s.id
-                 WHERE s.term_id = @termId"
+                 ) pc ON pc.student_id = st.id
+                 WHERE st.term_id = @termId"
             : $@"SELECT COALESCE(AVG(CAST(pc.completed AS float)), 0) as avg_completed
-                 FROM students s
+                 FROM students st
                  LEFT JOIN (
                    SELECT student_id, COUNT(*) as completed
                    FROM student_progress sp
-                   JOIN steps st ON st.id = sp.step_id AND st.{QueryHelpers.ActiveStepFilter}
+                   JOIN steps s ON s.id = sp.step_id AND s.{QueryHelpers.ActiveStepFilter}
                    GROUP BY student_id
-                 ) pc ON pc.student_id = s.id";
+                 ) pc ON pc.student_id = st.id";
 
         var avgCompleted = await _db.QueryOneAsync<double>(avgQuery, new { termId });
 
@@ -116,6 +126,7 @@ public sealed class AnalyticsController : ControllerBase
         foreach (var p in allProgress)
         {
             var key = $"{p.student_id}:{p.step_id}";
+            // NULL/empty status is legacy data and means completed (schema default — see schema.sql student_progress.status).
             progressMap[key] = string.IsNullOrEmpty(p.status) ? "completed" : p.status;
         }
 
@@ -221,6 +232,8 @@ public sealed class AnalyticsController : ControllerBase
         var termId = QueryHelpers.ParseTermId(Request);
         var days = ParseDaysDefault(Request.Query["days"], 30);
 
+        // deliberately no is_active filter: completions on since-deactivated steps remain part of the
+        // historical trend (ported from analytics.ts; BuildTrendDateFilter must stay in sync).
         var termFilter = termId.HasValue
             ? "JOIN steps st ON st.id = sp.step_id AND st.term_id = @termId AND COALESCE(st.is_optional, 0) = 0"
             : "JOIN steps st ON st.id = sp.step_id AND COALESCE(st.is_optional, 0) = 0";
@@ -288,8 +301,8 @@ public sealed class AnalyticsController : ControllerBase
     public async Task<IActionResult> CohortSummary()
     {
         var termId = QueryHelpers.ParseTermId(Request);
-        var studentFilter = termId.HasValue ? "WHERE s.term_id = @termId" : "";
-        var stepFilter = termId.HasValue ? "AND st.term_id = @termId" : "";
+        var studentFilter = termId.HasValue ? "WHERE st.term_id = @termId" : "";
+        var stepFilter = termId.HasValue ? "AND s.term_id = @termId" : "";
 
         int totalActiveSteps;
         if (termId.HasValue)
@@ -304,35 +317,36 @@ public sealed class AnalyticsController : ControllerBase
 
         var divisor = totalActiveSteps > 0 ? totalActiveSteps : 1;
 
+        // the bucket labels happen to sort alphabetically in range order — keep that property if renaming buckets.
         var rows = await _db.QueryAllAsync<CohortBucketRow>(
             $@"SELECT
                 CASE
                   WHEN COALESCE(pc.done, 0) = 0 THEN '0%'
-                  WHEN CAST(COALESCE(pc.done, 0) AS float) / {divisor} <= 0.25 THEN '1-25%'
-                  WHEN CAST(COALESCE(pc.done, 0) AS float) / {divisor} <= 0.50 THEN '26-50%'
-                  WHEN CAST(COALESCE(pc.done, 0) AS float) / {divisor} <= 0.75 THEN '51-75%'
+                  WHEN CAST(COALESCE(pc.done, 0) AS float) / @divisor <= 0.25 THEN '1-25%'
+                  WHEN CAST(COALESCE(pc.done, 0) AS float) / @divisor <= 0.50 THEN '26-50%'
+                  WHEN CAST(COALESCE(pc.done, 0) AS float) / @divisor <= 0.75 THEN '51-75%'
                   ELSE '76-100%'
                 END as bucket,
                 COUNT(*) as student_count
-               FROM students s
+               FROM students st
                LEFT JOIN (
                  SELECT student_id, COUNT(*) as done
                  FROM student_progress sp
-                 JOIN steps st ON st.id = sp.step_id AND st.{QueryHelpers.ActiveStepFilter} {stepFilter}
+                 JOIN steps s ON s.id = sp.step_id AND s.{QueryHelpers.ActiveStepFilter} {stepFilter}
                  WHERE sp.status IN ('completed', 'waived')
                  GROUP BY student_id
-               ) pc ON pc.student_id = s.id
+               ) pc ON pc.student_id = st.id
                {studentFilter}
                GROUP BY
                 CASE
                   WHEN COALESCE(pc.done, 0) = 0 THEN '0%'
-                  WHEN CAST(COALESCE(pc.done, 0) AS float) / {divisor} <= 0.25 THEN '1-25%'
-                  WHEN CAST(COALESCE(pc.done, 0) AS float) / {divisor} <= 0.50 THEN '26-50%'
-                  WHEN CAST(COALESCE(pc.done, 0) AS float) / {divisor} <= 0.75 THEN '51-75%'
+                  WHEN CAST(COALESCE(pc.done, 0) AS float) / @divisor <= 0.25 THEN '1-25%'
+                  WHEN CAST(COALESCE(pc.done, 0) AS float) / @divisor <= 0.50 THEN '26-50%'
+                  WHEN CAST(COALESCE(pc.done, 0) AS float) / @divisor <= 0.75 THEN '51-75%'
                   ELSE '76-100%'
                 END
                ORDER BY bucket",
-            new { termId });
+            new { termId, divisor });
 
         var outRows = new List<object>();
         foreach (var r in rows)
@@ -349,16 +363,17 @@ public sealed class AnalyticsController : ControllerBase
         var days = ParseDaysDefault(Request.Query["days"], 14);
         var termFilter = termId.HasValue ? "AND s.term_id = @termId" : "";
 
+        // deadline_date stores 'YYYY-MM-DD' text (ported from CURRENT_DATE::text comparisons); TRY_CAST tolerates legacy free-text values.
         var steps = await _db.QueryAllAsync<DeadlineRiskStep>(
             $@"SELECT s.id, s.title, s.deadline_date,
                 COUNT(DISTINCT st.id) as total_students,
-                COUNT(DISTINCT CASE WHEN sp.status IS NULL OR sp.status != 'completed' THEN st.id END) as at_risk_count
+                COUNT(DISTINCT CASE WHEN sp.status IS NULL OR sp.status NOT IN ('completed', 'waived') THEN st.id END) as at_risk_count
                FROM steps s
                JOIN students st ON st.term_id = s.term_id
                LEFT JOIN student_progress sp ON sp.step_id = s.id AND sp.student_id = st.id
                WHERE s.is_active = 1 AND s.deadline_date IS NOT NULL
-                 AND CAST(s.deadline_date AS date) <= CAST(DATEADD(day, @days, SYSUTCDATETIME()) AS date)
-                 AND CAST(s.deadline_date AS date) > CAST(SYSUTCDATETIME() AS date) {termFilter}
+                 AND TRY_CAST(s.deadline_date AS date) <= CAST(DATEADD(day, @days, SYSUTCDATETIME()) AS date)
+                 AND TRY_CAST(s.deadline_date AS date) > CAST(SYSUTCDATETIME() AS date) {termFilter}
                GROUP BY s.id, s.title, s.deadline_date
                ORDER BY s.deadline_date ASC",
             new { termId, days });
@@ -372,17 +387,18 @@ public sealed class AnalyticsController : ControllerBase
                 students = await _db.QueryAllAsync<DeadlineRiskStudent>(
                     @"SELECT st.id, st.display_name, st.email
                       FROM students st
-                      LEFT JOIN student_progress sp ON sp.step_id = @stepId AND sp.student_id = st.id
-                      WHERE st.term_id = @termId AND (sp.status IS NULL OR sp.status != 'completed')",
+                      LEFT JOIN student_progress sp ON sp.step_id = @stepId AND sp.student_id = st.id AND sp.status IN ('completed', 'waived')
+                      WHERE st.term_id = @termId AND sp.student_id IS NULL",
                     new { stepId = step.id, termId });
             }
             else
             {
+                // scoped to the step's own term so the student list matches the aggregate count above.
                 students = await _db.QueryAllAsync<DeadlineRiskStudent>(
                     @"SELECT st.id, st.display_name, st.email
                       FROM students st
-                      LEFT JOIN student_progress sp ON sp.step_id = @stepId AND sp.student_id = st.id
-                      WHERE sp.status IS NULL OR sp.status != 'completed'",
+                      LEFT JOIN student_progress sp ON sp.step_id = @stepId AND sp.student_id = st.id AND sp.status IN ('completed', 'waived')
+                      WHERE st.term_id = (SELECT term_id FROM steps WHERE id = @stepId) AND sp.student_id IS NULL",
                     new { stepId = step.id });
             }
 
@@ -412,6 +428,7 @@ public sealed class AnalyticsController : ControllerBase
         var days = ParseDaysDefault(Request.Query["days"], 7);
         var termFilter = termId.HasValue ? "WHERE st.term_id = @termId" : "";
 
+        // status = 'completed' only (see class header comment on the three 'done' tiers).
         var students = await _db.QueryAllAsync<StalledStudentRow>(
             $@"SELECT st.id, st.display_name, st.email,
                 MAX(sp.completed_at) as last_completion_date,
@@ -425,11 +442,12 @@ public sealed class AnalyticsController : ControllerBase
                ORDER BY COALESCE(MAX(sp.completed_at), st.created_at) ASC",
             new { termId, days });
 
-        var totalSteps = await _db.QueryOneAsync<int>(
-            termId.HasValue
-                ? $"SELECT COUNT(*) as count FROM steps WHERE {QueryHelpers.ActiveStepFilter} AND term_id = @termId"
-                : $"SELECT COUNT(*) as count FROM steps WHERE {QueryHelpers.ActiveStepFilter}",
-            new { termId });
+        int totalSteps;
+        if (termId.HasValue)
+            totalSteps = await QueryHelpers.CountActiveStepsAsync(_db, termId.Value);
+        else
+            totalSteps = await _db.QueryOneAsync<int>(
+                $"SELECT COUNT(*) as count FROM steps WHERE {QueryHelpers.ActiveStepFilter}");
 
         var outRows = new List<object>();
         foreach (var s in students)
@@ -472,9 +490,6 @@ public sealed class AnalyticsController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
 
-        if (filterSet is null)
-            return BadRequest(new { error = "Invalid filter_type" });
-
         var studentsResult = await _db.QueryAllAsync<DrilldownStudent>(filterSet.StudentQuery, filterSet.Params);
         var total = await _db.QueryOneAsync<int>(filterSet.CountQuery, filterSet.CountParams);
 
@@ -485,6 +500,7 @@ public sealed class AnalyticsController : ControllerBase
         var completionMap = new Dictionary<string, int>();
         if (studentIds.Count > 0)
         {
+            // IN-list is safe here: studentIds is one page, capped at per_page <= 100 by ParsePagination — far below the 2100-parameter limit (cf. the export comment above).
             var completions = await _db.QueryAllAsync<CompletionCountRow>(
                 @"SELECT student_id, COUNT(*) as done
                   FROM student_progress
@@ -529,36 +545,40 @@ public sealed class AnalyticsController : ControllerBase
     {
         var termId = QueryHelpers.ParseTermId(Request);
 
-        var totalSteps = await _db.QueryOneAsync<int>(
-            termId.HasValue
-                ? $"SELECT COUNT(*) as count FROM steps WHERE {QueryHelpers.ActiveStepFilter} AND term_id = @termId"
-                : $"SELECT COUNT(*) as count FROM steps WHERE {QueryHelpers.ActiveStepFilter}",
-            new { termId });
+        int totalSteps;
+        if (termId.HasValue)
+            totalSteps = await QueryHelpers.CountActiveStepsAsync(_db, termId.Value);
+        else
+            totalSteps = await _db.QueryOneAsync<int>(
+                $"SELECT COUNT(*) as count FROM steps WHERE {QueryHelpers.ActiveStepFilter}");
 
         var divisor = totalSteps > 0 ? totalSteps : 1;
 
+        // fixed well-known cohort tags (ported from the old analytics route); matched as substrings of the JSON tags text
+        // — exact-token matching is deliberately not attempted here, so keep tag names non-overlapping.
         var tags = new[] { "freshman", "transfer", "first-gen", "honors", "athlete", "eop", "veteran", "out-of-state" };
         var result = new List<CohortComparisonItem>();
 
-        var termFilter = termId.HasValue ? "AND s.term_id = @termId" : "";
+        var termFilter = termId.HasValue ? "AND st.term_id = @termId" : "";
 
         foreach (var tag in tags)
         {
             var tagPattern = $"%{tag}%";
 
+            // status = 'completed' only (see class header comment on the three 'done' tiers).
             var cohort = await _db.QueryOneAsync<CohortComparisonRow>(
-                $@"SELECT COUNT(DISTINCT s.id) as student_count,
-                    ROUND(AVG(CAST(COALESCE(pc.done, 0) AS float) / {divisor}) * 100, 0) as avg_completion_pct
-                   FROM students s
+                $@"SELECT COUNT(DISTINCT st.id) as student_count,
+                    ROUND(AVG(CAST(COALESCE(pc.done, 0) AS float) / @divisor) * 100, 0) as avg_completion_pct
+                   FROM students st
                    LEFT JOIN (
                      SELECT student_id, COUNT(*) as done
                      FROM student_progress sp
-                     JOIN steps st ON st.id = sp.step_id AND st.{QueryHelpers.ActiveStepFilter}
+                     JOIN steps s ON s.id = sp.step_id AND s.{QueryHelpers.ActiveStepFilter}
                      WHERE sp.status = 'completed'
                      GROUP BY student_id
-                   ) pc ON pc.student_id = s.id
-                   WHERE s.tags LIKE @tagPattern {termFilter}",
-                new { tagPattern, termId });
+                   ) pc ON pc.student_id = st.id
+                   WHERE st.tags LIKE @tagPattern {termFilter}",
+                new { tagPattern, termId, divisor });
 
             if (cohort is not null && cohort.student_count > 0)
             {
@@ -589,6 +609,9 @@ public sealed class AnalyticsController : ControllerBase
     {
         var termId = QueryHelpers.ParseTermId(Request);
 
+        // seconds/86400, not DATEDIFF(day): day counts midnight boundaries, not elapsed 24h periods — same rule as the old Node code.
+        // (see BuildStalledFilter and BuildVelocityBucketFilter for the same idiom)
+        // status = 'completed' only (see class header comment on the three 'done' tiers).
         var students = await _db.QueryAllAsync<VelocityRow>(
             $@"SELECT st.id,
                 DATEDIFF(second, MIN(sp.completed_at), MAX(sp.completed_at)) / 86400 as days_elapsed
@@ -644,12 +667,17 @@ public sealed class AnalyticsController : ControllerBase
                 throw new InvalidFilterException("filter_value must be a date");
         }
 
+        // Parse the already-validated step id once; builders bind the typed int (not the raw string) against INT columns.
+        int stepId = 0;
+        if (filterType is "step_completed" or "step_not_completed" or "deadline_risk")
+            stepId = int.Parse(filterValue!, NumberStyles.Integer, CultureInfo.InvariantCulture);
+
         switch (filterType)
         {
             case "step_completed":
-                return await BuildStepCompletedFilter(termId, filterValue, perPage, offset);
+                return await BuildStepCompletedFilter(termId, stepId, perPage, offset);
             case "step_not_completed":
-                return await BuildStepNotCompletedFilter(termId, filterValue, perPage, offset);
+                return await BuildStepNotCompletedFilter(termId, stepId, perPage, offset);
             case "cohort_bucket":
                 return BuildCohortBucketFilter(termId, filterValue, perPage, offset, totalActiveSteps);
             case "tag":
@@ -657,75 +685,64 @@ public sealed class AnalyticsController : ControllerBase
             case "stalled":
                 return BuildStalledFilter(termId, filterValue, perPage, offset);
             case "deadline_risk":
-                return await BuildDeadlineRiskFilter(termId, filterValue, perPage, offset);
+                return await BuildDeadlineRiskFilter(termId, stepId, perPage, offset);
             case "velocity_bucket":
                 return BuildVelocityBucketFilter(termId, filterValue, perPage, offset);
             case "trend_date":
                 return BuildTrendDateFilter(termId, filterValue, perPage, offset);
             default:
-                return null!;
+                throw new InvalidFilterException("Invalid filter_type");
         }
     }
 
-    private async Task<FilterQuerySet> BuildStepCompletedFilter(int termId, string? filterValue, int perPage, int offset)
+    private async Task<FilterQuerySet> BuildStepCompletedFilter(int termId, int stepId, int perPage, int offset)
     {
-        var title = await _db.QueryOneAsync<string>("SELECT title FROM steps WHERE id = @id", new { id = filterValue });
+        var title = await _db.QueryOneAsync<string>("SELECT title FROM steps WHERE id = @stepId", new { stepId });
         return new FilterQuerySet
         {
             Title = $"Students who completed {(string.IsNullOrEmpty(title) ? "this step" : title)}",
-            Params = new { filterValue, termId, perPage, offset },
-            CountParams = new { filterValue, termId },
+            Params = new { stepId, termId, perPage, offset },
+            CountParams = new { stepId, termId },
             StudentQuery = @"
                 SELECT st.id, st.display_name, st.email, st.emplid
                 FROM students st
-                JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @filterValue AND sp.status IN ('completed', 'waived')
+                JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @stepId AND sp.status IN ('completed', 'waived')
                 WHERE st.term_id = @termId
                 ORDER BY st.display_name
                 OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
             CountQuery = @"
                 SELECT COUNT(*) as count FROM students st
-                JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @filterValue AND sp.status IN ('completed', 'waived')
+                JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @stepId AND sp.status IN ('completed', 'waived')
                 WHERE st.term_id = @termId",
         };
     }
 
-    private async Task<FilterQuerySet> BuildStepNotCompletedFilter(int termId, string? filterValue, int perPage, int offset)
+    private async Task<FilterQuerySet> BuildStepNotCompletedFilter(int termId, int stepId, int perPage, int offset)
     {
-        var title = await _db.QueryOneAsync<string>("SELECT title FROM steps WHERE id = @id", new { id = filterValue });
+        var title = await _db.QueryOneAsync<string>("SELECT title FROM steps WHERE id = @stepId", new { stepId });
         return new FilterQuerySet
         {
             Title = $"Students who haven't completed {(string.IsNullOrEmpty(title) ? "this step" : title)}",
-            Params = new { filterValue, termId, perPage, offset },
-            CountParams = new { filterValue, termId },
+            Params = new { stepId, termId, perPage, offset },
+            CountParams = new { stepId, termId },
             StudentQuery = @"
                 SELECT st.id, st.display_name, st.email, st.emplid
                 FROM students st
-                LEFT JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @filterValue AND sp.status IN ('completed', 'waived')
+                LEFT JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @stepId AND sp.status IN ('completed', 'waived')
                 WHERE st.term_id = @termId AND sp.student_id IS NULL
                 ORDER BY st.display_name
                 OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
             CountQuery = @"
                 SELECT COUNT(*) as count FROM students st
-                LEFT JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @filterValue AND sp.status IN ('completed', 'waived')
+                LEFT JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @stepId AND sp.status IN ('completed', 'waived')
                 WHERE st.term_id = @termId AND sp.student_id IS NULL",
         };
     }
 
     private FilterQuerySet BuildCohortBucketFilter(int termId, string? filterValue, int perPage, int offset, int totalActiveSteps)
     {
-        // bucket -> (lo, hi); '0%' has a special HAVING.
-        double lo, hi;
-        switch (filterValue)
-        {
-            case "0%": lo = 0; hi = 0; break;
-            case "1-25%": lo = 0; hi = 0.25; break;
-            case "26-50%": lo = 0.251; hi = 0.50; break;
-            case "51-75%": lo = 0.501; hi = 0.75; break;
-            case "76-100%": lo = 0.751; hi = 1.0; break;
-            default:
-                throw new InvalidFilterException("Invalid cohort_bucket value");
-        }
-
+        // '0%' uses a dedicated HAVING = 0; handle it first so the lo/hi switch below
+        // never assigns dead values for the '0%' case.
         if (filterValue == "0%")
         {
             const string bucketCondition = "HAVING COALESCE(SUM(CASE WHEN sp.status IN ('completed', 'waived') THEN 1 ELSE 0 END), 0) = 0";
@@ -757,14 +774,28 @@ public sealed class AnalyticsController : ControllerBase
             };
         }
 
+        // lo is the strict lower bound (> @lo); hi is the inclusive upper bound (<= @hi).
+        // These match the CohortSummary CASE upper bounds so each drilldown bucket covers
+        // exactly the students counted in the corresponding summary row.
+        double lo, hi;
+        switch (filterValue)
+        {
+            case "1-25%":  lo = 0;    hi = 0.25; break;
+            case "26-50%": lo = 0.25; hi = 0.50; break;
+            case "51-75%": lo = 0.50; hi = 0.75; break;
+            case "76-100%": lo = 0.75; hi = 1.0; break;
+            default:
+                throw new InvalidFilterException("Invalid cohort_bucket value");
+        }
+
         var divisor = totalActiveSteps > 0 ? totalActiveSteps : 1;
-        var rangeCondition = $@"HAVING (CAST(SUM(CASE WHEN sp.status IN ('completed', 'waived') THEN 1 ELSE 0 END) AS float) / {divisor}) > @lo
-                 AND (CAST(SUM(CASE WHEN sp.status IN ('completed', 'waived') THEN 1 ELSE 0 END) AS float) / {divisor}) <= @hi";
+        var rangeCondition = @"HAVING (CAST(SUM(CASE WHEN sp.status IN ('completed', 'waived') THEN 1 ELSE 0 END) AS float) / @divisor) > @lo
+                 AND (CAST(SUM(CASE WHEN sp.status IN ('completed', 'waived') THEN 1 ELSE 0 END) AS float) / @divisor) <= @hi";
         return new FilterQuerySet
         {
             Title = $"Students at {filterValue} completion",
-            Params = new { termId, lo, hi, perPage, offset },
-            CountParams = new { termId, lo, hi },
+            Params = new { termId, lo, hi, divisor, perPage, offset },
+            CountParams = new { termId, lo, hi, divisor },
             StudentQuery = $@"
                 SELECT st.id, st.display_name, st.email, st.emplid
                 FROM students st
@@ -825,6 +856,7 @@ public sealed class AnalyticsController : ControllerBase
                 throw new InvalidFilterException("Invalid stalled value");
         }
 
+        // seconds/86400, not DATEDIFF(day): see CompletionVelocity comment for why.
         return new FilterQuerySet
         {
             Title = $"Students stalled {filterValue}",
@@ -867,24 +899,24 @@ public sealed class AnalyticsController : ControllerBase
         };
     }
 
-    private async Task<FilterQuerySet> BuildDeadlineRiskFilter(int termId, string? filterValue, int perPage, int offset)
+    private async Task<FilterQuerySet> BuildDeadlineRiskFilter(int termId, int stepId, int perPage, int offset)
     {
-        var title = await _db.QueryOneAsync<string>("SELECT title FROM steps WHERE id = @id", new { id = filterValue });
+        var title = await _db.QueryOneAsync<string>("SELECT title FROM steps WHERE id = @stepId", new { stepId });
         return new FilterQuerySet
         {
             Title = $"At-risk students for {(string.IsNullOrEmpty(title) ? "this step" : title)}",
-            Params = new { filterValue, termId, perPage, offset },
-            CountParams = new { filterValue, termId },
+            Params = new { stepId, termId, perPage, offset },
+            CountParams = new { stepId, termId },
             StudentQuery = @"
                 SELECT st.id, st.display_name, st.email, st.emplid
                 FROM students st
-                LEFT JOIN student_progress sp ON sp.step_id = @filterValue AND sp.student_id = st.id AND sp.status IN ('completed', 'waived')
+                LEFT JOIN student_progress sp ON sp.step_id = @stepId AND sp.student_id = st.id AND sp.status IN ('completed', 'waived')
                 WHERE st.term_id = @termId AND sp.student_id IS NULL
                 ORDER BY st.display_name
                 OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
             CountQuery = @"
                 SELECT COUNT(*) as count FROM students st
-                LEFT JOIN student_progress sp ON sp.step_id = @filterValue AND sp.student_id = st.id AND sp.status IN ('completed', 'waived')
+                LEFT JOIN student_progress sp ON sp.step_id = @stepId AND sp.student_id = st.id AND sp.status IN ('completed', 'waived')
                 WHERE st.term_id = @termId AND sp.student_id IS NULL",
         };
     }
@@ -903,6 +935,7 @@ public sealed class AnalyticsController : ControllerBase
                 throw new InvalidFilterException("Invalid velocity_bucket value");
         }
 
+        // seconds/86400, not DATEDIFF(day): see CompletionVelocity comment for why.
         return new FilterQuerySet
         {
             Title = $"Students completing in {filterValue}",

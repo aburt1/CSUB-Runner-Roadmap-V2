@@ -70,7 +70,7 @@ public sealed class AdminAuthAttribute : Attribute, IAsyncActionFilter
         await next();
     }
 
-        private sealed class AdminRow
+    private sealed class AdminRow
     {
         public string role { get; set; } = "";
         public int is_active { get; set; }

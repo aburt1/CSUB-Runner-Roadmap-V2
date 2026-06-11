@@ -1,19 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import EmojiPicker from 'vue3-emoji-picker'
+import type { EmojiExt } from 'vue3-emoji-picker'
 import 'vue3-emoji-picker/css'
 import TagEditor from './TagEditor.vue'
 import RichTextEditor from './RichTextEditor.vue'
 import ApiCheckConfig from './ApiCheckConfig.vue'
 import { parseMaybeJson } from '../../utils/json'
-
-interface AdminApi {
-  get: (path: string, params?: Record<string, any>) => Promise<any>
-  post: (path: string, body?: any) => Promise<any>
-  put: (path: string, body?: any) => Promise<any>
-  del: (path: string, body?: any) => Promise<any>
-  raw: (path: string, options?: any) => Promise<Response>
-}
+import type { AdminApi } from '../../composables/useAdminApi'
+import type { StepSavePayload } from '../../types/api'
 
 interface StepData {
   id?: number
@@ -41,7 +36,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'save', data: Record<string, any>): void
+  (e: 'save', data: StepSavePayload): void
   (e: 'cancel'): void
 }>()
 
@@ -140,7 +135,7 @@ const addTagTo = (target: 'required' | 'excluded', tag: string) => {
   }
 }
 
-const onEmojiSelect = (emoji: any) => {
+const onEmojiSelect = (emoji: EmojiExt) => {
   icon.value = emoji.i
   showEmojiPicker.value = false
 }
@@ -164,7 +159,7 @@ const handleSubmit = () => {
     guide_content: guideContent.value || null,
     links: null,
     required_tags: requiredTags.value.length > 0 ? requiredTags.value : null,
-    required_tag_mode: requiredTagMode.value,
+    required_tag_mode: requiredTagMode.value as 'any' | 'all',
     excluded_tags: excludedTags.value.length > 0 ? excludedTags.value : null,
     sort_order: sortOrder.value !== '' ? parseInt(String(sortOrder.value), 10) : undefined,
     contact_info: contactInfo,

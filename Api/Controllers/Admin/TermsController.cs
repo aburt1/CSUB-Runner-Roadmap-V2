@@ -264,10 +264,6 @@ public sealed class TermsController : ControllerBase
         return Ok(new { success = true });
     }
 
-    // Mirrors the old `value || null` coalescing (JS treats "" as falsy).
-    // True when the request body is a JSON object containing `key`. Mirrors
-    // Express's `key in req.body` / `req.body.key !== undefined` (a key present
-    // with a JSON null value still counts as provided).
     // String value of a JSON property, treating JSON null as SQL/C# null.
     private static string? AsString(JsonElement el)
     {
@@ -288,7 +284,6 @@ public sealed class TermsController : ControllerBase
         return false;
     }
 
-    // Mirrors `is_active ? 1 : 0` JS truthiness for the dynamic-update branch.
     // Mirrors `Object.keys(req.body)` for the audit `fields` detail: every key
     // present in the request body, in order.
     private static List<string> CollectBodyKeys(JsonElement body)

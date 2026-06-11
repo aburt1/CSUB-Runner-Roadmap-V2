@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Mvc;
 namespace Api.Controllers;
 
 // Student roadmap steps, ported from server/routes/steps.ts.
-// Mirrors that route file 1:1 so the two diff cleanly.
 [ApiController]
 [Route("api/steps")]
 public sealed class StepsController : ControllerBase
@@ -64,43 +63,34 @@ public sealed class StepsController : ControllerBase
     public async Task<IActionResult> GetSteps()
     {
         var studentId = GetOptionalStudentId();
-        IReadOnlyList<Step> steps;
 
+        // Resolve which term to filter by: the student's assigned term (if any),
+        // otherwise the active term, otherwise null (return all student-visible steps).
+        int? termId;
         if (studentId is not null)
         {
             var student = await _db.QueryOneAsync<StudentTermRow>(
                 "SELECT term_id FROM students WHERE id = @studentId",
                 new { studentId });
-
-            if (student?.term_id is not null)
-            {
-                steps = await _db.QueryAllAsync<Step>(
-                    "SELECT * FROM steps WHERE (is_active = 1 OR is_active IS NULL) AND term_id = @termId ORDER BY sort_order",
-                    new { termId = student.term_id });
-            }
-            else
-            {
-                var activeTerm = await _db.QueryOneAsync<int?>(
-                    "SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
-                steps = activeTerm is not null
-                    ? await _db.QueryAllAsync<Step>(
-                        "SELECT * FROM steps WHERE (is_active = 1 OR is_active IS NULL) AND term_id = @termId ORDER BY sort_order",
-                        new { termId = activeTerm })
-                    : await _db.QueryAllAsync<Step>(
-                        "SELECT * FROM steps WHERE (is_active = 1 OR is_active IS NULL) ORDER BY sort_order");
-            }
+            termId = student?.term_id;
         }
         else
         {
-            var activeTerm = await _db.QueryOneAsync<int?>(
-                "SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
-            steps = activeTerm is not null
-                ? await _db.QueryAllAsync<Step>(
-                    "SELECT * FROM steps WHERE (is_active = 1 OR is_active IS NULL) AND term_id = @termId ORDER BY sort_order",
-                    new { termId = activeTerm })
-                : await _db.QueryAllAsync<Step>(
-                    "SELECT * FROM steps WHERE (is_active = 1 OR is_active IS NULL) ORDER BY sort_order");
+            termId = null;
         }
+
+        if (termId is null)
+        {
+            termId = await _db.QueryOneAsync<int?>(
+                "SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
+        }
+
+        IReadOnlyList<Step> steps = termId is not null
+            ? await _db.QueryAllAsync<Step>(
+                $"SELECT * FROM steps WHERE {QueryHelpers.StudentVisibleStepFilter} AND term_id = @termId ORDER BY sort_order",
+                new { termId })
+            : await _db.QueryAllAsync<Step>(
+                $"SELECT * FROM steps WHERE {QueryHelpers.StudentVisibleStepFilter} ORDER BY sort_order");
 
         return Ok(steps);
     }
@@ -189,15 +179,12 @@ public sealed class StepsController : ControllerBase
         if (progressChange.Error is not null)
             return BadRequest(new { error = progressChange.Error });
 
-        // The old code sets req.studentUser here so the audit actor resolves to the
-        // student. Our StudentAuth filter already stashed studentEmail on HttpContext,
-        // which Audit.ResolveActor uses.
         if (progressChange.Result != "noop")
         {
             await Audit.LogAsync(
                 _db,
-                // Match the old app: the actor for a student self-update is the
-                // student's display name (falling back to email).
+                // Deliberately NOT Audit.ResolveActor (which would yield the token email):
+                // the old app logs the student's display name, falling back to email.
                 !string.IsNullOrEmpty(student.display_name) ? student.display_name! : (student.email ?? "system"),
                 "student_progress",
                 student.id,

@@ -30,11 +30,19 @@ export function useAdminApi(token: string | null, onAuthError?: () => void): Adm
     const headers: Record<string, string> = { Authorization: `Bearer ${token}`, ...extraHeaders }
     if (body !== undefined) headers['Content-Type'] = 'application/json'
 
-    const res = await fetch(`${API_BASE}${path}`, {
-      method,
-      headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    })
+    // Normalize network-level rejections (TypeError: "Failed to fetch" / "Load failed" /
+    // "NetworkError...") to a consistent message.  Without this, consumers rendering
+    // err.message would show browser-engine-specific text on the admin UI.
+    let res: Response
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        method,
+        headers,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      })
+    } catch {
+      throw new Error('Cannot connect to server.')
+    }
 
     if (res.status === 401) {
       // Fire the auth handler even in raw mode (CSV export etc.) — an expired

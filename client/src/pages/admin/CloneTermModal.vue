@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import type { AdminApi } from '../../composables/useAdminApi'
+import { errorMessage } from '../../utils/errors'
 
 interface Term {
   id: number
@@ -67,8 +68,8 @@ watch(
         steps.value = data
         selectedStepIds.value = new Set(data.map((step) => step.id))
       })
-      .catch((err: any) => {
-        error.value = err.message || 'Failed to load steps'
+      .catch((err) => {
+        error.value = errorMessage(err, 'Could not load steps. Please try again.')
       })
       .finally(() => {
         loadingSteps.value = false
@@ -110,8 +111,8 @@ const handleSubmit = async () => {
     })
     emit('cloned', result)
     emit('close')
-  } catch (err: any) {
-    error.value = err.message || 'Failed to clone term'
+  } catch (err) {
+    error.value = errorMessage(err, 'Could not clone the term. Please try again.')
   } finally {
     saving.value = false
   }

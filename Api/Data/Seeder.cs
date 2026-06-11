@@ -39,6 +39,8 @@ public static class Seeder
         }
     }
 
+    // ORDER BY id (oldest active) mirrors the old init.ts; the runtime endpoints pick the
+    // newest active term (ORDER BY id DESC) — only differs if more than one term is active.
     private static Task<int> ActiveTermIdAsync(Db db) =>
         db.QueryOneAsync<int>("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id");
 
@@ -120,7 +122,10 @@ public static class Seeder
         var defaultKey = config["Integration:DefaultKey"];
         if (count > 0 || (isProduction && string.IsNullOrEmpty(defaultKey))) return;
 
-        var name = config["Integration:DefaultName"] ?? "PeopleSoft Dev";
+        // Use IsNullOrEmpty consistent with the rest of the app (compose passes unset vars
+        // as empty strings, not null, so ?? alone would seed a client with name "").
+        var name = config["Integration:DefaultName"];
+        if (string.IsNullOrEmpty(name)) name = "PeopleSoft Dev";
         var key = defaultKey ?? "dev-integration-key";
 
         await db.ExecuteAsync(

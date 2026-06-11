@@ -115,14 +115,14 @@ public sealed class StepsController : ControllerBase
 
         var newId = await _db.InsertReturningAsync<int>(
             @"INSERT INTO steps (title, description, icon, sort_order, deadline, deadline_date, guide_content, links, required_tags, required_tag_mode, excluded_tags, contact_info, term_id, step_key, is_active, is_public, is_optional)
-              VALUES (@title, @description, @icon, @order, @deadline, @deadline_date, @guide_content, @links, @required_tags, @required_tag_mode, @excluded_tags, @contact_info, @termId, @step_key, 1, @is_public, @is_optional);
+              VALUES (@title, @description, @icon, @sort_order, @deadline, @deadline_date, @guide_content, @links, @required_tags, @required_tag_mode, @excluded_tags, @contact_info, @term_id, @step_key, 1, @is_public, @is_optional);
               SELECT CAST(SCOPE_IDENTITY() AS int);",
             new
             {
                 title,
                 description,
                 icon,
-                order,
+                sort_order = order,
                 deadline,
                 deadline_date = deadlineDate,
                 guide_content = guideContent,
@@ -131,7 +131,7 @@ public sealed class StepsController : ControllerBase
                 required_tag_mode = requiredTagMode,
                 excluded_tags = excludedTags,
                 contact_info = contactInfo,
-                termId = termId.Value,
+                term_id = termId.Value,
                 step_key = nextStepKey,
                 is_public = isPublic,
                 is_optional = isOptional,
@@ -227,7 +227,8 @@ public sealed class StepsController : ControllerBase
         };
 
         var setClauses = new List<string>();
-        var parameters = new DynamicSqlParams();
+        // Dapper accepts IDictionary<string, object?> directly — no wrapper needed.
+        var parameters = new Dictionary<string, object?>();
 
         foreach (var field in fields)
         {
@@ -284,9 +285,9 @@ public sealed class StepsController : ControllerBase
         if (setClauses.Count == 0)
             return BadRequest(new { error = "No fields to update" });
 
-        parameters.Add("id", id);
+        parameters["id"] = id;
         var sql = $"UPDATE steps SET {string.Join(", ", setClauses)} WHERE id = @id";
-        await _db.ExecuteAsync(sql, parameters.ToDynamicParameters());
+        await _db.ExecuteAsync(sql, parameters);
 
         // Detect restore vs regular update: body.is_active === 1 && step.is_active === 0.
         // The JS `=== 1` is a strict number compare, so a string "1" does NOT match.
@@ -316,6 +317,8 @@ public sealed class StepsController : ControllerBase
     [AdminAuth("admissions_editor", "sysadmin")]
     public async Task<IActionResult> Delete(int id)
     {
+        // No 404 on purpose: the old API treats delete as idempotent; the title lookup
+        // is only for the audit entry.
         var step = await _db.QueryOneAsync<TitleRow>("SELECT title FROM steps WHERE id = @id", new { id });
         await _db.ExecuteAsync("UPDATE steps SET is_active = 0 WHERE id = @id", new { id });
 
@@ -348,14 +351,14 @@ public sealed class StepsController : ControllerBase
 
         var newId = await _db.InsertReturningAsync<int>(
             @"INSERT INTO steps (title, description, icon, sort_order, deadline, deadline_date, guide_content, links, required_tags, required_tag_mode, excluded_tags, contact_info, term_id, step_key, is_active, is_public, is_optional)
-              VALUES (@title, @description, @icon, @order, @deadline, @deadline_date, @guide_content, @links, @required_tags, @required_tag_mode, @excluded_tags, @contact_info, @termId, @step_key, 1, @is_public, @is_optional);
+              VALUES (@title, @description, @icon, @sort_order, @deadline, @deadline_date, @guide_content, @links, @required_tags, @required_tag_mode, @excluded_tags, @contact_info, @term_id, @step_key, 1, @is_public, @is_optional);
               SELECT CAST(SCOPE_IDENTITY() AS int);",
             new
             {
                 title = step.title + " (Copy)",
                 description = step.description,
                 icon = step.icon,
-                order = newOrder,
+                sort_order = newOrder,
                 deadline = step.deadline,
                 deadline_date = step.deadline_date,
                 guide_content = step.guide_content,
@@ -364,7 +367,7 @@ public sealed class StepsController : ControllerBase
                 required_tag_mode = step.required_tag_mode ?? "any",
                 excluded_tags = step.excluded_tags,
                 contact_info = step.contact_info,
-                termId = step.term_id,
+                term_id = step.term_id,
                 step_key = duplicatedStepKey,
                 is_public = step.is_public ?? 0,
                 is_optional = step.is_optional ?? 0,
@@ -479,29 +482,8 @@ public sealed class StepsController : ControllerBase
         {
             var s = el.GetString();
             if (string.IsNullOrEmpty(s)) return null;
-            return ParseLeadingInt(s);
+            return JsParse.LeadingInt(s);
         }
-        return null;
-    }
-
-    // Mimic JS parseInt: read an optional sign + leading digits, ignore trailing junk.
-    private static int? ParseLeadingInt(string s)
-    {
-        var trimmed = s.TrimStart();
-        var i = 0;
-        var sign = 1;
-        if (i < trimmed.Length && (trimmed[i] == '+' || trimmed[i] == '-'))
-        {
-            if (trimmed[i] == '-') sign = -1;
-            i++;
-        }
-        var start = i;
-        while (i < trimmed.Length && char.IsDigit(trimmed[i]))
-            i++;
-        if (i == start) return null; // no digits -> NaN
-        var digits = trimmed.Substring(start, i - start);
-        if (long.TryParse(digits, out var value))
-            return (int)(sign * value);
         return null;
     }
 
@@ -525,21 +507,5 @@ public sealed class StepsController : ControllerBase
     private sealed class TitleRow
     {
         public string? title { get; set; }
-    }
-
-    // Tiny ordered param bag so the dynamic UPDATE binds named params cleanly.
-    private sealed class DynamicSqlParams
-    {
-        private readonly Dictionary<string, object?> _values = new();
-
-        public void Add(string name, object? value) => _values[name] = value;
-
-        public Dapper.DynamicParameters ToDynamicParameters()
-        {
-            var p = new Dapper.DynamicParameters();
-            foreach (var kvp in _values)
-                p.Add(kvp.Key, kvp.Value);
-            return p;
-        }
     }
 }

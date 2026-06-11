@@ -32,7 +32,7 @@ public sealed class IntegrationAuthAttribute : Attribute, IAsyncActionFilter
         if (!string.IsNullOrEmpty(clientName))
         {
             var client = await db.QueryOneAsync<IntegrationClientRow>(
-                @"SELECT id, name, key_hash, is_active
+                @"SELECT id, name, key_hash
                   FROM integration_clients
                   WHERE name = @clientName AND is_active = 1",
                 new { clientName });
@@ -51,7 +51,7 @@ public sealed class IntegrationAuthAttribute : Attribute, IAsyncActionFilter
 
         // Fallback: iterate all active clients (backward compat, limited to prevent DoS).
         var clients = await db.QueryAllAsync<IntegrationClientRow>(
-            @"SELECT TOP 10 id, name, key_hash, is_active
+            @"SELECT TOP 10 id, name, key_hash
               FROM integration_clients
               WHERE is_active = 1");
 
@@ -82,11 +82,10 @@ public sealed class IntegrationAuthAttribute : Attribute, IAsyncActionFilter
         return null;
     }
 
-        private sealed class IntegrationClientRow
+    private sealed class IntegrationClientRow
     {
         public int id { get; set; }
         public string name { get; set; } = "";
         public string key_hash { get; set; } = "";
-        public int is_active { get; set; }
     }
 }

@@ -1,5 +1,25 @@
 /** Shared client-side types matching the API response shapes. */
 
+// The exact payload StepForm builds and sends to PUT /steps/:id or POST /steps.
+// Naming the shape here lets vue-tsc verify the parent handler matches the child emit.
+export interface StepSavePayload {
+  title: string
+  icon: string | null
+  description: string | null
+  deadline: string | null
+  deadline_date: string | null
+  guide_content: string | null
+  links: null
+  required_tags: string[] | null
+  required_tag_mode: 'any' | 'all'
+  excluded_tags: string[] | null
+  sort_order?: number
+  contact_info: { name: string | null; email: string | null; phone: string | null } | null
+  term_id: number | null
+  is_public: 0 | 1
+  is_optional: 0 | 1
+}
+
 export interface LinkItem {
   url: string
   label: string
@@ -64,4 +84,14 @@ export interface ProgressResponse {
   progress: ProgressEntry[]
   tags: string[]
   term: Term | null
+}
+
+// Audit log entry as returned by GET /audit
+export interface AuditLog {
+  id: number
+  entity_type: string
+  action: string
+  changed_by: string
+  created_at: string
+  details: string | Record<string, unknown>
 }

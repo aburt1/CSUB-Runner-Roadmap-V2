@@ -5,15 +5,11 @@ import type { ChartData, ChartOptions } from 'chart.js'
 import './registerCharts'
 import type { AdminApi } from '../../../composables/useAdminApi'
 import { CSUB_BLUE, AXIS_COLOR, AXIS_FONT_SIZE, GRID_COLOR, BAR_RADIUS } from './chartTheme'
+import type { DrillDownPayload } from './types'
 
 interface CohortItem {
   tag: string
   avg_completion_pct: number
-}
-
-interface DrillDownPayload {
-  filterType: string
-  filterValue: any
 }
 
 const props = defineProps<{

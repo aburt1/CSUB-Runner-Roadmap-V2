@@ -41,6 +41,9 @@ CREATE TABLE dbo.students (
     major              NVARCHAR(128) NULL,
     residency          NVARCHAR(64)  NULL,
     admit_term         NVARCHAR(64)  NULL,
+    -- no FK to terms on purpose: mirrors the old schema; terms are deleted via the guarded
+    -- admin flow (TermsController.Delete blocks when students are assigned and removes the
+    -- term's steps/progress itself).
     term_id            INT           NULL,
     last_synced_at     DATETIME2     NULL,
     last_api_check_at  DATETIME2     NULL,
@@ -88,6 +91,9 @@ CREATE TABLE dbo.steps (
     required_tag_mode NVARCHAR(16)  NULL DEFAULT 'any',
     excluded_tags     NVARCHAR(MAX) NULL,            -- JSON array
     contact_info      NVARCHAR(MAX) NULL,            -- JSON object
+    -- no FK to terms on purpose: mirrors the old schema; terms are deleted via the guarded
+    -- admin flow (TermsController.Delete blocks when students are assigned and removes the
+    -- term's steps/progress itself).
     term_id           INT           NULL,
     step_key          NVARCHAR(128) NULL,
     is_public         INT           NULL DEFAULT 0,

@@ -2,15 +2,10 @@
 import { ref, computed, onMounted } from 'vue'
 import type { AdminApi } from '../../composables/useAdminApi'
 import AuditTimeline from './AuditTimeline.vue'
+import type { AuditLog } from '../../types/api'
+import { useToastStore } from '../../stores/toast'
 
-interface AuditLog {
-  id: number
-  entity_type: string
-  action: string
-  changed_by: string
-  created_at: string
-  details: string | Record<string, any>
-}
+const toast = useToastStore()
 
 interface StudentResult {
   id: number
@@ -102,7 +97,7 @@ const fetchLogs = async (filters: FetchFilters = {}, off = 0, append = false) =>
     total.value = data.total
     offset.value = off + LIMIT
   } catch {
-    // ignore
+    toast.error('Could not load audit log. Please try again.')
   } finally {
     loading.value = false
   }

@@ -2,6 +2,11 @@
 import { ref, onMounted } from 'vue'
 import type { AdminApi } from '../../composables/useAdminApi'
 import { ROLES, ROLE_OPTIONS, ROLE_COLORS_LIGHT } from './roleConfig'
+import { useToastStore } from '../../stores/toast'
+import { errorMessage } from '../../utils/errors'
+import { getInitials } from '../../utils/initials'
+
+const toast = useToastStore()
 
 interface User {
   id: number
@@ -34,7 +39,9 @@ const loadUsers = () => {
     .then((data) => {
       users.value = data
     })
-    .catch(() => {})
+    .catch(() => {
+      toast.error('Could not load users. Please try again.')
+    })
 }
 
 onMounted(() => {
@@ -66,8 +73,8 @@ const handleSubmit = async () => {
     }
     resetForm()
     loadUsers()
-  } catch (err: any) {
-    error.value = err.message
+  } catch (err) {
+    error.value = errorMessage(err, 'Could not save user. Please try again.')
   } finally {
     saving.value = false
   }
@@ -83,18 +90,10 @@ const toggleActive = async (user: User) => {
   try {
     await props.api.put(`/users/${user.id}`, { is_active: user.is_active ? 0 : 1 })
     loadUsers()
-  } catch (err: any) {
-    error.value = err.message
+  } catch (err) {
+    error.value = errorMessage(err, 'Could not update user. Please try again.')
   }
 }
-
-const initials = (displayName: string) =>
-  displayName
-    ?.split(' ')
-    .map((n) => n[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
 </script>
 
 <template>
@@ -193,7 +192,7 @@ const initials = (displayName: string) =>
           <div
             class="w-10 h-10 rounded-full bg-csub-blue/10 flex items-center justify-center font-display text-sm font-bold text-csub-blue-dark"
           >
-            {{ initials(user.display_name) }}
+            {{ getInitials(user.display_name) }}
           </div>
           <div>
             <p class="font-body text-sm font-semibold text-gray-900">{{ user.display_name }}</p>

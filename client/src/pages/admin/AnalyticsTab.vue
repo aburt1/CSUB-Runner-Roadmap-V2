@@ -12,26 +12,28 @@ import CohortComparisonChart from './charts/CohortComparisonChart.vue'
 import CompletionVelocityChart from './charts/CompletionVelocityChart.vue'
 import ExportButton from './ExportButton.vue'
 import StudentDrillDown from './StudentDrillDown.vue'
-
-interface DrillDownState {
-  filterType: string
-  filterValue: any
-}
+import type {
+  DrillDownPayload,
+  StepCompletionData,
+  TrendPoint,
+  BottleneckData,
+  ProgressBucket,
+} from './charts/types'
 
 const props = defineProps<{
   api: AdminApi
   termId: number | null
 }>()
 
-const stepCompletion = ref<any>(null)
-const trend = ref<any>(null)
-const bottlenecks = ref<any>(null)
-const cohort = ref<any>(null)
+const stepCompletion = ref<StepCompletionData | null>(null)
+const trend = ref<TrendPoint[] | null>(null)
+const bottlenecks = ref<BottleneckData | null>(null)
+const cohort = ref<ProgressBucket[] | null>(null)
 const trendDays = ref(30)
 const loading = ref(true)
-const drillDown = ref<DrillDownState | null>(null)
+const drillDown = ref<DrillDownPayload | null>(null)
 
-function setDrillDown(payload: DrillDownState) {
+function setDrillDown(payload: DrillDownPayload) {
   drillDown.value = payload
 }
 
@@ -46,10 +48,10 @@ watch(
     loading.value = true
     const q = `term_id=${props.termId}`
     Promise.all([
-      props.api.get(`/analytics/step-completion?${q}`),
-      props.api.get(`/analytics/completion-trend?${q}&days=${trendDays.value}`),
-      props.api.get(`/analytics/bottlenecks?${q}`),
-      props.api.get(`/analytics/cohort-summary?${q}`),
+      props.api.get<StepCompletionData>(`/analytics/step-completion?${q}`),
+      props.api.get<TrendPoint[]>(`/analytics/completion-trend?${q}&days=${trendDays.value}`),
+      props.api.get<BottleneckData>(`/analytics/bottlenecks?${q}`),
+      props.api.get<ProgressBucket[]>(`/analytics/cohort-summary?${q}`),
     ])
       .then(([sc, tr, bn, co]) => {
         stepCompletion.value = sc
@@ -176,7 +178,7 @@ watch(
 
     <StudentDrillDown
       :open="!!drillDown"
-      :onClose="() => (drillDown = null)"
+      @close="drillDown = null"
       :filterType="drillDown?.filterType"
       :filterValue="drillDown?.filterValue"
       :termId="termId"

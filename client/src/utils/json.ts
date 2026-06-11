@@ -5,7 +5,10 @@ export function parseMaybeJson<T>(value: unknown, fallback: T): T {
   if (value === null || value === undefined || value === '') return fallback
   if (typeof value !== 'string') return value as T
   try {
-    return JSON.parse(value) as T
+    // Nullish coalesce: JSON.parse('null') === null, which should return the
+    // fallback (not null typed as T) — same behaviour as the server's Json.SafeParse.
+    // Using ?? preserves legitimate false/0 parsed values.
+    return (JSON.parse(value) as T) ?? fallback
   } catch {
     return fallback
   }

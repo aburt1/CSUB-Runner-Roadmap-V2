@@ -9,6 +9,9 @@ namespace Api.Controllers.Admin;
 
 // Admin configuration for per-step API checks, ported from server/routes/apiChecks.ts.
 // Mounted under /api/admin and gated to sysadmin only.
+//
+// Actions catch locally so the log line names the operation; the global handler in
+// Program.cs would log it generically.
 [ApiController]
 [Route("api/admin")]
 [AdminAuth("sysadmin")]

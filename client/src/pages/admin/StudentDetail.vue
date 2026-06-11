@@ -6,6 +6,8 @@ import AuditTimeline from './AuditTimeline.vue'
 import { useToastStore } from '../../stores/toast'
 import type { AdminApi } from '../../composables/useAdminApi'
 import { parseMaybeJson } from '../../utils/json'
+import type { AuditLog } from '../../types/api'
+import { getInitials } from '../../utils/initials'
 
 const toast = useToastStore()
 
@@ -26,6 +28,34 @@ interface ProgressInfo {
   completed_at: string | null
   status: string
   note: string | null
+}
+
+interface StudentProfile {
+  emplid?: string
+  preferred_name?: string
+  phone?: string
+  applicant_type?: string
+  major?: string
+  residency?: string
+  admit_term?: string
+  created_at?: string
+  last_synced_at?: string
+  tags?: string | string[]
+  [key: string]: unknown
+}
+
+interface StudentProgressItem {
+  step_id: number
+  completed_at: string | null
+  status: string | null
+  note?: string | null
+}
+
+interface StudentProgressResponse {
+  progress: StudentProgressItem[]
+  manualTags?: string[]
+  derivedTags?: string[]
+  student?: StudentProfile
 }
 
 interface ProfileField {
@@ -83,8 +113,8 @@ const canEdit = computed(
 const progress = ref<Map<number, ProgressInfo>>(new Map())
 const studentTags = ref<string[]>([])
 const derivedTags = ref<string[]>([])
-const auditLogs = ref<any[]>([])
-const studentProfile = ref<Record<string, any> | null>(null)
+const auditLogs = ref<AuditLog[]>([])
+const studentProfile = ref<StudentProfile | null>(null)
 
 watch(
   () => [props.student, props.api] as const,
@@ -93,8 +123,8 @@ watch(
     if (!student) return
 
     props.api
-      .get(`/students/${student.id}/progress`)
-      .then((data: any) => {
+      .get<StudentProgressResponse>(`/students/${student.id}/progress`)
+      .then((data) => {
         // Stale-response guard: the admin may have switched students while this
         // request was in flight — rendering it now would show student A's progress
         // under student B's name.
@@ -112,11 +142,13 @@ watch(
         derivedTags.value = data.derivedTags || []
         studentProfile.value = data.student || null
       })
-      .catch(() => {})
+      .catch(() => {
+        toast.error('Could not load student progress. Please try again.')
+      })
 
     props.api
-      .get(`/audit?studentId=${student.id}&limit=20`)
-      .then((data: any) => {
+      .get<{ logs: AuditLog[] }>(`/audit?studentId=${student.id}&limit=20`)
+      .then((data) => {
         if (props.student?.id !== student.id) return
         auditLogs.value = data.logs
       })
@@ -127,8 +159,8 @@ watch(
 
 const refreshAudit = () => {
   props.api
-    .get(`/audit?studentId=${props.student!.id}&limit=20`)
-    .then((data: any) => {
+    .get<{ logs: AuditLog[] }>(`/audit?studentId=${props.student!.id}&limit=20`)
+    .then((data) => {
       auditLogs.value = data.logs
     })
     .catch(() => {})
@@ -202,14 +234,7 @@ const pct = computed(() =>
         <div
           class="w-12 h-12 rounded-full bg-csub-blue flex items-center justify-center text-white font-display font-bold text-lg flex-shrink-0"
         >
-          {{
-            student.display_name
-              ?.split(' ')
-              .map((n) => n[0])
-              .join('')
-              .slice(0, 2)
-              .toUpperCase()
-          }}
+          {{ getInitials(student.display_name) }}
         </div>
         <div class="flex-1 min-w-0">
           <h2 class="font-display text-lg font-bold text-csub-blue-dark uppercase tracking-wide">

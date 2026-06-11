@@ -521,8 +521,8 @@ the full set with their defaults.
 | `LocalLogin__Password` | No | Break-glass local admin password (no compose default). |
 | `AzureAd__ClientId` | No | Azure AD application client ID (omit to disable SSO; endpoints return 501) |
 | `AzureAd__TenantId` | No | Azure AD tenant ID |
-| `Integration__DefaultName` | No | Seeded integration client name (default: `PeopleSoft Dev`) |
-| `Integration__DefaultKey` | No | Seeded integration API key (default: `dev-integration-key`) |
+| `Integration__DefaultName` | No | Seeded integration client name. No default in either compose stack — in Production the client is only seeded when `Integration__DefaultKey` is explicitly set (both name and key, per `.env.example`). The `PeopleSoft Dev` default applies only to local `dotnet run` (Development). |
+| `Integration__DefaultKey` | No | Seeded integration API key. No default in either compose stack — in Production the client is only seeded when this is explicitly set (both name and key, per `.env.example`). The `dev-integration-key` default applies only to local `dotnet run` (Development). |
 | `RateLimiting__Disabled` | No | Turn off rate limiting (default `false`). The integration test host sets this so the per-IP login limiter doesn't trip. |
 | `Cors__Origin` | No | Allowed CORS origin (defaults to `http://localhost:3000` in dev; closed in prod unless set). Normally unnecessary because nginx keeps the client same-origin. |
 
@@ -531,10 +531,7 @@ the full set with their defaults.
 > `Cors__Origin`. Only set it if you deliberately serve the client from a
 > different origin and bypass the proxy.
 
-The `sqlserver` service is configured with `MSSQL_SA_PASSWORD` (default
-`Csub_Local_Dev_2026!`), `ACCEPT_EULA=Y`, and `MSSQL_PID=Developer`. The same
-`MSSQL_SA_PASSWORD` value is interpolated into the `api` service's connection
-string, so overriding it in one place keeps both in sync.
+The `sqlserver` service requires `MSSQL_SA_PASSWORD` (no default — set it in `.env`; use `Csub_Local_Dev_2026!` locally so `dotnet run`/`dotnet test` match), plus `ACCEPT_EULA=Y` and `MSSQL_PID=Developer`. The same `MSSQL_SA_PASSWORD` value is interpolated into the `api` service's connection string, so overriding it in one place keeps both in sync.
 
 ### Vite / client (dev only)
 

@@ -101,6 +101,9 @@ public sealed class StudentsController : ControllerBase
         var step = ParseIntOrZero(stepId);
         var note = body?.Note;
 
+        // Unlike CompleteStep, missing student/step is NOT a 404 here: the old API treats
+        // uncomplete as idempotent (deleting nothing is success); the lookups exist only
+        // to enrich the audit entry.
         var student = await _db.QueryOneAsync<StudentNameRow>(
             "SELECT display_name FROM students WHERE id = @studentId",
             new { studentId });
@@ -299,6 +302,7 @@ public sealed class StudentsController : ControllerBase
             LEFT JOIN (
               SELECT s2.id as student_id, COUNT(st.id) as overdue_count
               FROM students s2
+              -- deadline_date is ISO yyyy-MM-dd text, so string compare orders correctly and tolerates legacy free-text values (the analytics endpoint uses TRY_CAST for the same column).
               JOIN steps st ON st.is_active = 1 AND COALESCE(st.is_optional, 0) = 0 AND st.deadline_date IS NOT NULL AND st.deadline_date < CONVERT(varchar(10), CAST(SYSUTCDATETIME() AS date), 23)
                 AND (st.term_id = s2.term_id OR st.term_id IS NULL)
               LEFT JOIN student_progress sp ON sp.student_id = s2.id AND sp.step_id = st.id
@@ -357,7 +361,7 @@ public sealed class StudentsController : ControllerBase
 
     // GET /api/admin/audit
     [HttpGet("audit")]
-    public async Task<IActionResult> Audit_()
+    public async Task<IActionResult> GetAuditLog()
     {
         var studentId = Request.Query["studentId"].ToString();
         var entityType = Request.Query["entityType"].ToString();

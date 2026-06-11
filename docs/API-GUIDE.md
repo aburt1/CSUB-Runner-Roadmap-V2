@@ -668,7 +668,7 @@ async function runAndPoll(token) {
 
 ## Health & monitoring endpoints
 
-The API exposes two unauthenticated health endpoints from `Api/Controllers/HealthController.cs`, all mounted under `/api/health`. They are deliberately split so that an orchestrator (Docker Compose, Kubernetes, a load balancer, or an uptime monitor) can ask two *different* questions and react to them differently:
+The API exposes two unauthenticated health endpoints from `Api/Controllers/HealthController.cs`, both mounted under `/api/health`. They are deliberately split so that an orchestrator (Docker Compose, Kubernetes, a load balancer, or an uptime monitor) can ask two *different* questions and react to them differently:
 
 - **"Is the process alive?"** — a liveness probe. If this fails, the container is wedged and should be **restarted**.
 - **"Is the process ready to serve traffic?"** — a readiness probe. If this fails (e.g. SQL Server is briefly unreachable), the container should be **pulled out of rotation** but **not** killed — its dependency may recover on its own.
@@ -682,7 +682,7 @@ Conflating the two is a classic outage amplifier: if a liveness probe also check
 
 > The DB probe runs on a dedicated connection with a **3-second** connect/command timeout and no retry, so `/api/health/ready` answers quickly (≤ ~3 s) even when the database is unreachable.
 
-All three are anonymous (no integration key, no JWT) and live behind the same `/api` rate limiter as every other route, so a monitor polling aggressively still counts against the per-IP **200 / 15 min** budget — keep probe intervals reasonable.
+Both are anonymous (no integration key, no JWT) and live behind the same `/api` rate limiter as every other route, so a monitor polling aggressively still counts against the per-IP **200 / 15 min** budget — keep probe intervals reasonable.
 
 ### GET /api/health/live
 

@@ -2,6 +2,7 @@
 import { ref, computed, watch } from 'vue'
 import { useToastStore } from '../../stores/toast'
 import { useAdminApi } from '../../composables/useAdminApi'
+import { parseMaybeJson } from '../../utils/json'
 import AdminLogin from './AdminLogin.vue'
 import StudentsTab from './StudentsTab.vue'
 import AuditLogTab from './AuditLogTab.vue'
@@ -74,7 +75,12 @@ const token = ref<string | null>(
 const adminUser = ref<AdminUser | null>(
   (() => {
     const stored = sessionStorage.getItem('csub_admin_user')
-    return stored ? JSON.parse(stored) : null
+    if (!stored) return null
+    // parseMaybeJson returns null (the fallback) for corrupted values, avoiding a
+    // setup-time throw that would break the entire /admin page until storage is cleared.
+    const parsed = parseMaybeJson<AdminUser | null>(stored, null)
+    if (parsed === null) sessionStorage.removeItem('csub_admin_user')
+    return parsed
   })(),
 )
 
