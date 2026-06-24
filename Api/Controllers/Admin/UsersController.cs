@@ -18,6 +18,10 @@ public sealed class UsersController : ControllerBase
 {
     private readonly Db _db;
 
+    // Single source for the assignable roles so Create and Update validate against
+    // the same set; adding or renaming a role here can't drift between the two paths.
+    private static readonly string[] ValidRoles = { "viewer", "admissions", "admissions_editor", "sysadmin" };
+
     public UsersController(Db db)
     {
         _db = db;
@@ -43,9 +47,8 @@ public sealed class UsersController : ControllerBase
         if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(displayName))
             return BadRequest(new { error = "email and displayName required" });
 
-        var validRoles = new[] { "viewer", "admissions", "admissions_editor", "sysadmin" };
-        if (!string.IsNullOrEmpty(role) && !validRoles.Contains(role))
-            return BadRequest(new { error = $"role must be one of: {string.Join(", ", validRoles)}" });
+        if (!string.IsNullOrEmpty(role) && !ValidRoles.Contains(role))
+            return BadRequest(new { error = $"role must be one of: {string.Join(", ", ValidRoles)}" });
 
         var normalizedEmail = email.ToLowerInvariant().Trim();
         var existing = await _db.QueryOneAsync<IdRow>(
@@ -99,9 +102,8 @@ public sealed class UsersController : ControllerBase
         if (hasRole)
         {
             var role = roleEl.ValueKind == JsonValueKind.String ? roleEl.GetString() : null;
-            var validRoles = new[] { "viewer", "admissions", "admissions_editor", "sysadmin" };
-            if (role is null || !validRoles.Contains(role))
-                return BadRequest(new { error = $"role must be one of: {string.Join(", ", validRoles)}" });
+            if (role is null || !ValidRoles.Contains(role))
+                return BadRequest(new { error = $"role must be one of: {string.Join(", ", ValidRoles)}" });
 
             if (role != "sysadmin" && user.role == "sysadmin")
                 guardDemote = true;

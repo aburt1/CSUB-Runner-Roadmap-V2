@@ -19,7 +19,48 @@ public sealed class ApiCheckRunner
 {
     // AllowAutoRedirect = false so a validated URL can't 3xx-redirect to an internal
     // target (SSRF bypass); a redirect is treated as a non-success response.
-    private static readonly HttpClient Http = new(new SocketsHttpHandler { AllowAutoRedirect = false });
+    //
+    // ConnectCallback re-checks the IP the socket is actually about to connect to,
+    // because ValidateUrlAsync resolves DNS separately from the connect that
+    // Http.SendAsync performs. Without this, a host that returns a public IP at
+    // validation and a private IP a moment later (DNS rebinding, or round-robin
+    // where validation happened to miss a private record) would still reach an
+    // internal address. Re-running IsPrivateAddress here pins the decision to the
+    // endpoint we connect to. Honest public hosts are unaffected; dev keeps the
+    // same private/localhost allowance ValidateUrlAsync uses.
+    private static readonly HttpClient Http = new(new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        ConnectCallback = async (context, cancellationToken) =>
+        {
+            var endpoint = context.DnsEndPoint;
+            var addresses = await System.Net.Dns.GetHostAddressesAsync(endpoint.Host, cancellationToken);
+
+            Socket? socket = null;
+            foreach (var address in addresses)
+            {
+                if (!s_allowPrivateConnect && IsPrivateAddress(address))
+                    throw new HttpRequestException($"Connect to private IP {address} blocked");
+                try
+                {
+                    socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                    await socket.ConnectAsync(new IPEndPoint(address, endpoint.Port), cancellationToken);
+                    return new NetworkStream(socket, ownsSocket: true);
+                }
+                catch
+                {
+                    socket?.Dispose();
+                    socket = null;
+                }
+            }
+            throw new HttpRequestException($"Unable to connect to {endpoint.Host}:{endpoint.Port}");
+        },
+    });
+
+    // Set once from the host environment (the handler above is static, so it cannot
+    // read the instance _isDev). Mirrors ValidateUrlAsync's dev allowance for
+    // private/localhost mock APIs.
+    private static volatile bool s_allowPrivateConnect;
 
     // 5s per request keeps one slow upstream from eating most of the 15s run budget
     // (same values as the old Node runner).
@@ -41,6 +82,9 @@ public sealed class ApiCheckRunner
         _logger = logger;
         // process.env.NODE_ENV !== 'production' -> not the Production environment.
         _isDev = !env.IsProduction();
+        // Share the dev flag with the static ConnectCallback (which gates the
+        // connect-time private-IP rejection the same way ValidateUrlAsync gates it).
+        s_allowPrivateConnect = _isDev;
     }
 
     public sealed class CheckedStep
@@ -410,6 +454,16 @@ public sealed class ApiCheckRunner
 
     public async Task<List<CheckedStep>> RunApiChecksForStudentAsync(StudentForCheck student)
     {
+        // Advance the durable 5-minute throttle as soon as the run is attempted, not
+        // only on success. The in-memory TryBeginRun claim is lost on process restart,
+        // so this timestamp is the real overload guard against repeated full runs hitting
+        // upstream APIs — if a check below threw (or the process died mid-run) before a
+        // success-only write, the throttle would never engage. Behavior-preserving for the
+        // happy path (the timestamp still advances); only the failure path now throttles.
+        await _db.ExecuteAsync(
+            "UPDATE students SET last_api_check_at = SYSUTCDATETIME() WHERE id = @id",
+            new { id = student.id });
+
         var checks = await _db.QueryAllAsync<StepApiCheckToRun>(
             @"SELECT sac.step_id, sac.http_method, sac.url,
                      sac.auth_type, sac.auth_credentials, sac.headers,
@@ -547,11 +601,7 @@ public sealed class ApiCheckRunner
             }
         }
 
-        // Update throttle timestamp.
-        await _db.ExecuteAsync(
-            "UPDATE students SET last_api_check_at = SYSUTCDATETIME() WHERE id = @id",
-            new { id = student.id });
-
+        // Throttle timestamp is written at the top of the run (see above), so no write here.
         return checkedSteps;
     }
 

@@ -10,6 +10,11 @@ namespace Api.Auth;
 // caches them and refreshes automatically (handling key rotation).
 public sealed class AzureAdTokenValidator
 {
+    // Cap the OpenID metadata/JWKS fetch so an unreachable Microsoft endpoint fails fast
+    // instead of blocking an admin login for the framework default (100s). Matches the 5s
+    // deadline ApiCheckRunner.PerRequestTimeoutMs applies to every other outbound call.
+    private const int MetadataFetchTimeoutMs = 5_000;
+
     private readonly IConfiguration _config;
     private ConfigurationManager<OpenIdConnectConfiguration>? _configManager;
     private readonly object _lock = new();
@@ -26,7 +31,8 @@ public sealed class AzureAdTokenValidator
         var clientId = _config["AzureAd:ClientId"];
         var authority = $"https://login.microsoftonline.com/{tenantId}/v2.0";
 
-        var oidcConfig = await GetConfigManager(authority).GetConfigurationAsync(CancellationToken.None);
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(MetadataFetchTimeoutMs));
+        var oidcConfig = await GetConfigManager(authority).GetConfigurationAsync(cts.Token);
 
         var parameters = new TokenValidationParameters
         {

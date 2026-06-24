@@ -32,7 +32,14 @@ public sealed class Db
     }
 
     private const int MaxAttempts = 4;
-    // 200/400/800ms — ~1.4s worst case, well under the client request timeout.
+    // Backoff sleeps between the 4 attempts are 200/400/800ms (~1.4s total). That is
+    // only the idle wait BETWEEN tries — it is NOT the worst-case latency. The
+    // connection string supplies no explicit Connect/Command timeout, so SqlClient
+    // defaults apply (15s connect, 30s command), and each attempt can itself block on
+    // those before failing. A stalled server can therefore hold a request for roughly
+    // the backoff sleeps PLUS up to MaxAttempts × (connect + command) timeouts, far
+    // longer than 1.4s. Deploy config (not this file) must set timeouts low enough to
+    // stay under the client request timeout; HealthController pins its own short ones.
     private const int BaseRetryDelayMs = 200;
 
     // Errors that guarantee the statement/transaction did NOT take effect: the request

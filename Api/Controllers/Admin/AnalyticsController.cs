@@ -30,6 +30,16 @@ public sealed class AnalyticsController : ControllerBase
 {
     private readonly Db _db;
 
+    // Number of worst-performing steps the bottlenecks endpoint returns.
+    private const int BottleneckStepCount = 5;
+
+    // Ordered velocity buckets — the single source for bucketOrder, the zeroed
+    // tally dictionary, and the output rows. The day cutoffs that classify a
+    // student into a bucket (and BuildVelocityBucketFilter's SQL min/max bounds)
+    // are a deliberately separate concern and are NOT derived from this.
+    private static readonly string[] VelocityBuckets =
+        { "1-3 days", "4-7 days", "1-2 weeks", "2-4 weeks", "4+ weeks" };
+
     public AnalyticsController(Db db)
     {
         _db = db;
@@ -276,7 +286,7 @@ public sealed class AnalyticsController : ControllerBase
                WHERE s.{QueryHelpers.ActiveStepFilter} {termFilter}
                GROUP BY s.id, s.title, s.sort_order
                ORDER BY completed_count ASC
-               OFFSET 0 ROWS FETCH NEXT 5 ROWS ONLY",
+               OFFSET 0 ROWS FETCH NEXT {BottleneckStepCount} ROWS ONLY",
             new { termId });
 
         var stepsOut = new List<object>();
@@ -621,15 +631,7 @@ public sealed class AnalyticsController : ControllerBase
                GROUP BY st.id",
             new { termId });
 
-        var bucketOrder = new[] { "1-3 days", "4-7 days", "1-2 weeks", "2-4 weeks", "4+ weeks" };
-        var buckets = new Dictionary<string, int>
-        {
-            { "1-3 days", 0 },
-            { "4-7 days", 0 },
-            { "1-2 weeks", 0 },
-            { "2-4 weeks", 0 },
-            { "4+ weeks", 0 },
-        };
+        var buckets = VelocityBuckets.ToDictionary(label => label, _ => 0);
 
         foreach (var student in students)
         {
@@ -642,7 +644,7 @@ public sealed class AnalyticsController : ControllerBase
         }
 
         var outRows = new List<object>();
-        foreach (var bucket in bucketOrder)
+        foreach (var bucket in VelocityBuckets)
             outRows.Add(new { bucket, student_count = buckets[bucket] });
 
         return Ok(outRows);

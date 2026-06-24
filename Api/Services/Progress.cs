@@ -18,6 +18,8 @@ public static class Progress
             : (null, true);
     }
 
+    // student_id_number is the public API name (frozen JSON contract) for the
+    // students.emplid column (frozen schema); the two names are the same value.
     public static async Task<StudentResolution> ResolveStudentByIdNumberAsync(Db db, object? studentIdNumber)
     {
         var normalized = NormalizeStudentIdNumber(studentIdNumber);
@@ -72,7 +74,10 @@ public static class Progress
             : input.Status == "not_completed" ? "not_completed"
             : "completed";
         var normalizedNote = string.IsNullOrEmpty(input.Note) ? null : input.Note;
-        var normalizedCompletedBy = string.IsNullOrEmpty(input.CompletedBy) ? "manual" : input.CompletedBy;
+        // A blank completed_by means a manual (human) change; "manual" is the stored sentinel.
+        // Stated once here and reused for both the incoming value and the stored value below.
+        static string CompletedByOrManual(string? v) => string.IsNullOrEmpty(v) ? "manual" : v!;
+        var normalizedCompletedBy = CompletedByOrManual(input.CompletedBy);
         var (explicitCompletedAt, invalid) = NormalizeCompletedAt(input.CompletedAt);
         if (invalid)
             return new ProgressChangeResult { Error = "completed_at must be a valid ISO timestamp" };
@@ -111,14 +116,14 @@ public static class Progress
                 if (current.status == nextStatus
                     && current.note == normalizedNote
                     && sameCompletedAt
-                    && (string.IsNullOrEmpty(current.completed_by) ? "manual" : current.completed_by) == normalizedCompletedBy)
+                    && CompletedByOrManual(current.completed_by) == normalizedCompletedBy)
                 {
                     return new ProgressChangeResult
                     {
                         Result = "noop",
                         Status = nextStatus,
                         CompletedAt = current.completed_at,
-                        CompletedBy = string.IsNullOrEmpty(current.completed_by) ? "manual" : current.completed_by,
+                        CompletedBy = CompletedByOrManual(current.completed_by),
                     };
                 }
 
