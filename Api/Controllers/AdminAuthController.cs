@@ -20,13 +20,15 @@ public sealed class AdminAuthController : ControllerBase
     private readonly JwtService _jwt;
     private readonly AzureAdTokenValidator _azure;
     private readonly IConfiguration _config;
+    private readonly ILogger<AdminAuthController> _logger;
 
-    public AdminAuthController(Db db, JwtService jwt, AzureAdTokenValidator azure, IConfiguration config)
+    public AdminAuthController(Db db, JwtService jwt, AzureAdTokenValidator azure, IConfiguration config, ILogger<AdminAuthController> logger)
     {
         _db = db;
         _jwt = jwt;
         _azure = azure;
         _config = config;
+        _logger = logger;
     }
 
     public sealed record LoginRequest(string? Email, string? Password);
@@ -47,7 +49,12 @@ public sealed class AdminAuthController : ControllerBase
             new { email = body.Email.ToLowerInvariant().Trim() });
 
         if (user is null || !Passwords.Verify(body.Password, user.password_hash))
+        {
+            _logger.LogWarning(
+                "Admin login failed for {Email} from {RemoteIp}",
+                body.Email, HttpContext.Connection.RemoteIpAddress);
             return Unauthorized(new { error = "Invalid credentials" });
+        }
 
         var token = _jwt.IssueAdminToken(user.id.ToString(), user.role, user.email, user.display_name);
         return Ok(new { token, user = new { id = user.id, email = user.email, displayName = user.display_name, role = user.role } });
@@ -116,8 +123,12 @@ public sealed class AdminAuthController : ControllerBase
             email = claims.email ?? "";
             name = claims.name ?? "";
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(
+                ex,
+                "Admin SSO token validation failed from {RemoteIp}",
+                HttpContext.Connection.RemoteIpAddress);
             return Unauthorized(new { error = "Invalid or expired token" });
         }
 

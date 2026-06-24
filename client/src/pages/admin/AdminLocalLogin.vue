@@ -45,23 +45,37 @@ const handleSubmit = async () => {
       </h1>
       <p class="font-body text-csub-gray text-sm mb-6 text-center">Emergency access only.</p>
       <form @submit.prevent="handleSubmit" class="space-y-4">
-        <input
-          type="text"
-          required
-          v-model="username"
-          placeholder="Username"
-          autocomplete="username"
-          class="w-full px-4 py-3 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent"
-        />
-        <input
-          type="password"
-          required
-          v-model="password"
-          placeholder="Password"
-          autocomplete="current-password"
-          class="w-full px-4 py-3 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent"
-        />
-        <p v-if="error" class="text-red-600 text-sm font-body">{{ error }}</p>
+        <div>
+          <label for="local-username" class="sr-only">Username</label>
+          <input
+            id="local-username"
+            type="text"
+            required
+            v-model="username"
+            placeholder="Username"
+            autocomplete="username"
+            :aria-invalid="error ? 'true' : undefined"
+            :aria-describedby="error ? 'local-login-error' : undefined"
+            class="w-full px-4 py-3 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent"
+          />
+        </div>
+        <div>
+          <label for="local-password" class="sr-only">Password</label>
+          <input
+            id="local-password"
+            type="password"
+            required
+            v-model="password"
+            placeholder="Password"
+            autocomplete="current-password"
+            :aria-invalid="error ? 'true' : undefined"
+            :aria-describedby="error ? 'local-login-error' : undefined"
+            class="w-full px-4 py-3 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent"
+          />
+        </div>
+        <p v-if="error" id="local-login-error" role="alert" class="text-red-600 text-sm font-body">
+          {{ error }}
+        </p>
         <button
           type="submit"
           :disabled="loading"

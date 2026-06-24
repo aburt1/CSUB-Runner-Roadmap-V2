@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Api.Auth;
 using Api.Services;
+using Microsoft.Extensions.Logging;
 
 namespace Api.Data;
 
@@ -9,33 +10,44 @@ namespace Api.Data;
 // "is this table empty?" so it is safe to run on every boot.
 public static class Seeder
 {
-    public static async Task RunAsync(Db db, IConfiguration config, IHostEnvironment env)
+    public static async Task RunAsync(Db db, IConfiguration config, IHostEnvironment env, ILogger? logger = null)
     {
         var isProduction = env.IsProduction();
 
-        await EnsureDefaultTermAsync(db);
+        logger?.LogInformation("Seeder starting (production={IsProduction}).", isProduction);
+
+        await EnsureDefaultTermAsync(db, logger);
         var termId = await ActiveTermIdAsync(db);
 
         // Terms exist but none is active (e.g. an admin deactivated them all): skip the
         // term-scoped seeds rather than writing rows with a dangling term_id of 0.
         if (termId > 0)
-            await SeedChecklistAsync(db, termId);
+            await SeedChecklistAsync(db, termId, logger);
+        else
+            logger?.LogWarning("Seeder: no active term; skipping term-scoped seeds (checklist, sample students).");
         await StepKeys.EnsureAllAsync(db);
 
-        await SeedDefaultAdminAsync(db, config, isProduction);
-        await SeedDefaultIntegrationClientAsync(db, config, isProduction);
+        await SeedDefaultAdminAsync(db, config, isProduction, logger);
+        await SeedDefaultIntegrationClientAsync(db, config, isProduction, logger);
 
         if (!isProduction && termId > 0)
-            await SeedSampleStudentsAsync(db, termId);
+            await SeedSampleStudentsAsync(db, termId, logger);
+
+        logger?.LogInformation("Seeder complete.");
     }
 
-    private static async Task EnsureDefaultTermAsync(Db db)
+    private static async Task EnsureDefaultTermAsync(Db db, ILogger? logger)
     {
         var count = await db.QueryOneAsync<int>("SELECT COUNT(*) FROM terms");
         if (count == 0)
         {
             await db.ExecuteAsync(
                 "INSERT INTO terms (name, start_date, end_date, is_active) VALUES ('Fall 2026', '2026-08-01', '2026-12-31', 1)");
+            logger?.LogInformation("Seeder: inserted default term 'Fall 2026'.");
+        }
+        else
+        {
+            logger?.LogInformation("Seeder: terms already present ({Count}); skipping default term.", count);
         }
     }
 
@@ -44,10 +56,14 @@ public static class Seeder
     private static Task<int> ActiveTermIdAsync(Db db) =>
         db.QueryOneAsync<int>("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id");
 
-    private static async Task SeedChecklistAsync(Db db, int termId)
+    private static async Task SeedChecklistAsync(Db db, int termId, ILogger? logger)
     {
         var stepCount = await db.QueryOneAsync<int>("SELECT COUNT(*) FROM steps");
-        if (stepCount > 0) return;
+        if (stepCount > 0)
+        {
+            logger?.LogInformation("Seeder: steps already present ({Count}); skipping checklist seed.", stepCount);
+            return;
+        }
 
         var path = Path.Combine(AppContext.BaseDirectory, "Data", "seed", "fall2026-onboarding-checklist.json");
         var items = JsonSerializer.Deserialize<List<ManifestItem>>(
@@ -89,6 +105,8 @@ public static class Seeder
                     });
             }
         });
+
+        logger?.LogInformation("Seeder: inserted {Count} checklist steps for term {TermId}.", items.Count, termId);
     }
 
     // A production admin password is unacceptable if it is missing, too short, the
@@ -99,10 +117,14 @@ public static class Seeder
         || password == "admin123"
         || password.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase);
 
-    private static async Task SeedDefaultAdminAsync(Db db, IConfiguration config, bool isProduction)
+    private static async Task SeedDefaultAdminAsync(Db db, IConfiguration config, bool isProduction, ILogger? logger)
     {
         var count = await db.QueryOneAsync<int>("SELECT COUNT(*) FROM admin_users");
-        if (count > 0) return;
+        if (count > 0)
+        {
+            logger?.LogInformation("Seeder: admin_users already present ({Count}); skipping default admin.", count);
+            return;
+        }
 
         var email = config["Admin:DefaultEmail"] ?? "admin@csub.edu";
         var password = config["Admin:DefaultPassword"];
@@ -114,13 +136,20 @@ public static class Seeder
         await db.ExecuteAsync(
             "INSERT INTO admin_users (email, password_hash, role, display_name) VALUES (@email, @hash, 'sysadmin', 'Admin')",
             new { email, hash = Passwords.Hash(password) });
+        logger?.LogInformation("Seeder: created default admin '{Email}' (role sysadmin).", email);
     }
 
-    private static async Task SeedDefaultIntegrationClientAsync(Db db, IConfiguration config, bool isProduction)
+    private static async Task SeedDefaultIntegrationClientAsync(Db db, IConfiguration config, bool isProduction, ILogger? logger)
     {
         var count = await db.QueryOneAsync<int>("SELECT COUNT(*) FROM integration_clients");
         var defaultKey = config["Integration:DefaultKey"];
-        if (count > 0 || (isProduction && string.IsNullOrEmpty(defaultKey))) return;
+        if (count > 0 || (isProduction && string.IsNullOrEmpty(defaultKey)))
+        {
+            logger?.LogInformation(
+                "Seeder: skipping default integration client (existing={Count}, productionWithoutKey={Skipped}).",
+                count, isProduction && string.IsNullOrEmpty(defaultKey));
+            return;
+        }
 
         // Use IsNullOrEmpty consistent with the rest of the app (compose passes unset vars
         // as empty strings, not null, so ?? alone would seed a client with name "").
@@ -131,15 +160,20 @@ public static class Seeder
         await db.ExecuteAsync(
             "INSERT INTO integration_clients (name, key_hash, is_active) VALUES (@name, @keyHash, 1)",
             new { name, keyHash = Passwords.Hash(key) });
+        logger?.LogInformation("Seeder: created default integration client '{Name}'.", name);
     }
 
     // 50 deterministic sample students with realistic progress (dev only),
     // ported from the seed loop in server/db/init.ts. Uses a fixed RNG seed so
     // reseeding a fresh database is reproducible.
-    private static async Task SeedSampleStudentsAsync(Db db, int termId)
+    private static async Task SeedSampleStudentsAsync(Db db, int termId, ILogger? logger)
     {
         var count = await db.QueryOneAsync<int>("SELECT COUNT(*) FROM students");
-        if (count > 0) return;
+        if (count > 0)
+        {
+            logger?.LogInformation("Seeder: students already present ({Count}); skipping sample students.", count);
+            return;
+        }
 
         var stepRows = await db.QueryAllAsync<SeedStepRow>(
             "SELECT id, sort_order FROM steps WHERE term_id = @termId AND COALESCE(is_optional, 0) = 0 ORDER BY sort_order",
@@ -240,6 +274,8 @@ public static class Seeder
                 }
             }
         });
+
+        logger?.LogInformation("Seeder: inserted 50 sample students for term {TermId}.", termId);
     }
 
     private sealed class ManifestItem

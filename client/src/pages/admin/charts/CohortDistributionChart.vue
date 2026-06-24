@@ -110,11 +110,35 @@ const options = computed<ChartOptions<'bar'>>(() => ({
     },
   },
 }))
+
+const ariaLabel = computed(
+  () =>
+    `Cohort distribution bar chart by completion percentage. ${chartData.value
+      .map((d) => `${d.name}: ${d.value} students`)
+      .join('. ')}`,
+)
 </script>
 
 <template>
   <p v-if="!data?.length" class="font-body text-sm text-csub-gray text-center py-4">No data</p>
-  <div v-else class="h-64">
-    <Bar :data="barData" :options="options" :plugins="[valueLabels]" />
+  <div v-else class="h-64" role="img" :aria-label="ariaLabel">
+    <Bar :data="barData" :options="options" :plugins="[valueLabels]" aria-hidden="true" />
+    <table class="sr-only">
+      <caption>
+        Cohort distribution by completion percentage
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Completion %</th>
+          <th scope="col">Students</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="row in chartData" :key="row.name">
+          <th scope="row">{{ row.name }}</th>
+          <td>{{ row.value }}</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </template>

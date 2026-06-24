@@ -13,13 +13,15 @@ public sealed class AuthController : ControllerBase
     private readonly JwtService _jwt;
     private readonly AzureAdTokenValidator _azure;
     private readonly IHostEnvironment _env;
+    private readonly ILogger<AuthController> _logger;
 
-    public AuthController(Db db, JwtService jwt, AzureAdTokenValidator azure, IHostEnvironment env)
+    public AuthController(Db db, JwtService jwt, AzureAdTokenValidator azure, IHostEnvironment env, ILogger<AuthController> logger)
     {
         _db = db;
         _jwt = jwt;
         _azure = azure;
         _env = env;
+        _logger = logger;
     }
 
     public sealed record DevLoginRequest(string? Name, string? Email);
@@ -72,8 +74,12 @@ public sealed class AuthController : ControllerBase
             email = claims.email ?? "";
             name = claims.name ?? "";
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(
+                ex,
+                "Student SSO token validation failed from {RemoteIp}",
+                HttpContext.Connection.RemoteIpAddress);
             return Unauthorized(new { error = "Invalid or expired token" });
         }
 

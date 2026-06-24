@@ -138,6 +138,13 @@ const options = computed<ChartOptions<'bar'>>(() => ({
     },
   },
 }))
+
+const ariaLabel = computed(
+  () =>
+    `Stalled students bar chart by time inactive. ${data.value
+      .map((d) => `${d.bucket}: ${d.student_count} students`)
+      .join('. ')}`,
+)
 </script>
 
 <template>
@@ -153,8 +160,25 @@ const options = computed<ChartOptions<'bar'>>(() => ({
       </p>
     </div>
 
-    <div style="height: 300px">
-      <Bar :data="barData" :options="options" />
+    <div style="height: 300px" role="img" :aria-label="ariaLabel">
+      <Bar :data="barData" :options="options" aria-hidden="true" />
+      <table class="sr-only">
+        <caption>
+          Stalled students by time inactive
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Time inactive</th>
+            <th scope="col">Students</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in data" :key="row.bucket">
+            <th scope="row">{{ row.bucket }}</th>
+            <td>{{ row.student_count }}</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </template>

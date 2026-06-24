@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import type { AdminApi } from '../../composables/useAdminApi'
 
 interface DrillDownStudent {
@@ -95,15 +95,23 @@ const handleKey = (e: globalThis.KeyboardEvent) => {
   if (e.key === 'Escape') emit('close')
 }
 
+// Remember the element that had focus before the panel opened so we can restore
+// it on close — otherwise a keyboard user is dropped to document.body.
+let previouslyFocused: HTMLElement | null = null
+
 watch(
   () => props.open,
   (isOpen) => {
     if (isOpen) {
+      previouslyFocused = document.activeElement as HTMLElement | null
       document.addEventListener('mousedown', handleClick)
       document.addEventListener('keydown', handleKey)
+      nextTick(() => panelRef.value?.focus())
     } else {
       document.removeEventListener('mousedown', handleClick)
       document.removeEventListener('keydown', handleKey)
+      previouslyFocused?.focus()
+      previouslyFocused = null
     }
   },
   { immediate: true },
@@ -123,12 +131,17 @@ onUnmounted(() => {
         <Transition name="drill-down-panel" appear>
           <div
             ref="panelRef"
-            class="absolute right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-xl z-50 flex flex-col"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="drill-down-title"
+            :tabindex="-1"
+            class="absolute right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-xl z-50 flex flex-col focus:outline-none"
           >
             <!-- Header -->
             <div class="flex items-start justify-between p-5 border-b border-gray-200">
               <div class="pr-4">
                 <h2
+                  id="drill-down-title"
                   class="font-display text-sm font-bold text-csub-blue-dark uppercase tracking-wide"
                 >
                   {{ title }}

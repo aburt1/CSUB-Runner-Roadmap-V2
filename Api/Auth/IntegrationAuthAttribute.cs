@@ -1,6 +1,7 @@
 using Api.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.Extensions.Logging;
 
 namespace Api.Auth;
 
@@ -19,6 +20,8 @@ public sealed class IntegrationAuthAttribute : Attribute, IAsyncActionFilter
     {
         var http = context.HttpContext;
         var db = http.RequestServices.GetRequiredService<Db>();
+        var logger = http.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger<IntegrationAuthAttribute>();
 
         var credential = GetIntegrationCredential(http);
         if (string.IsNullOrEmpty(credential))
@@ -45,6 +48,11 @@ public sealed class IntegrationAuthAttribute : Attribute, IAsyncActionFilter
                 return;
             }
 
+            // Never log the credential. Client name + remote IP let an operator tell a
+            // wrong/deactivated client name from a rotated/bad key.
+            logger.LogWarning(
+                "Integration auth rejected for client '{ClientName}' from {RemoteIp} (unknown client or bad key)",
+                clientName, http.Connection.RemoteIpAddress);
             context.Result = AuthError.Result(401, "Invalid integration credentials");
             return;
         }
@@ -66,6 +74,10 @@ public sealed class IntegrationAuthAttribute : Attribute, IAsyncActionFilter
             }
         }
 
+        // Fallback scan exhausted: no X-Client-Name was supplied, so log that fact + IP.
+        logger.LogWarning(
+            "Integration auth rejected from {RemoteIp} (no X-Client-Name; key matched no active client)",
+            http.Connection.RemoteIpAddress);
         context.Result = AuthError.Result(401, "Invalid integration credentials");
     }
 

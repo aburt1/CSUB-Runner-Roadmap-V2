@@ -248,7 +248,7 @@ const handleClick = () => {
         >
           Optional
         </span>
-        <span class="text-[11px] font-body text-gray-400 flex-shrink-0 hidden sm:inline">
+        <span class="text-[11px] font-body text-gray-500 flex-shrink-0 hidden sm:inline">
           Sign in to unlock
         </span>
       </div>
@@ -329,7 +329,7 @@ const handleClick = () => {
             <!-- Completed date -->
             <span
               v-if="step.status === 'completed' && completedAt"
-              class="text-xs font-body text-gray-400"
+              class="text-xs font-body text-gray-500"
             >
               {{ completedDateLabel }}
             </span>

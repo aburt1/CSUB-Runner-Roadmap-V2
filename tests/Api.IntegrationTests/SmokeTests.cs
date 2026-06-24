@@ -66,4 +66,26 @@ public class SmokeTests
         var count = Convert.ToInt32(await _fx.ScalarAsync($"SELECT COUNT(*) FROM schema_version WHERE version = '{version}'"));
         Assert.Equal(1, count);
     }
+
+    // Guards the structural seed invariants the analytics suite asserts against, so a
+    // cross-class leak surfaces as ONE clear failure here rather than a confusing
+    // count drift elsewhere. All classes share one seeded DB with no per-test reset:
+    // IntegrationsTests toggles seed-student-001's submit-final-documents PROGRESS, and
+    // the deadline-risk exclusion test waives a step — those mutate student_progress
+    // rows, never the seed STRUCTURE. These invariants are exactly the structure:
+    //   - 50 seeded students remain in term 1 (other tests only ADD students),
+    //   - the submit-final-documents step still exists and is active.
+    // (Progress rows are intentionally not asserted — they are legitimately mutated.)
+    [Fact]
+    public async Task Seed_structural_invariants_intact()
+    {
+        var term1Students = Convert.ToInt32(
+            await _fx.ScalarAsync("SELECT COUNT(*) FROM students WHERE term_id = 1"));
+        Assert.True(term1Students >= 50, $"expected >= 50 term-1 students, found {term1Students}");
+
+        var submitFinalActive = Convert.ToInt32(
+            await _fx.ScalarAsync(
+                "SELECT COUNT(*) FROM steps WHERE step_key = 'submit-final-documents' AND term_id = 1 AND is_active = 1"));
+        Assert.Equal(1, submitFinalActive);
+    }
 }

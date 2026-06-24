@@ -278,7 +278,7 @@ function handleNavigate(direction: 'prev' | 'next') {
             <span class="text-white/30">&middot;</span>
             <button
               @click="logout"
-              class="font-body text-sm text-white/60 hover:text-white transition-colors"
+              class="font-body text-sm text-white/80 hover:text-white transition-colors"
               aria-label="Sign out"
             >
               Sign out

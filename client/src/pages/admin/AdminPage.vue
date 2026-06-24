@@ -215,7 +215,7 @@ const onTermSelectChange = (e: Event) => {
                 {{ ROLES[role]?.label || role }}
               </span>
             </span>
-            <button @click="handleLogout" class="text-white/50 hover:text-white transition-colors">
+            <button @click="handleLogout" class="text-white/80 hover:text-white transition-colors">
               Sign Out
             </button>
           </div>

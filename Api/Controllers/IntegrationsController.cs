@@ -3,6 +3,7 @@ using Api.Auth;
 using Api.Data;
 using Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 
 namespace Api.Controllers;
 
@@ -21,10 +22,12 @@ namespace Api.Controllers;
 public sealed class IntegrationsController : ControllerBase
 {
     private readonly Db _db;
+    private readonly ILogger<IntegrationsController> _logger;
 
-    public IntegrationsController(Db db)
+    public IntegrationsController(Db db, ILogger<IntegrationsController> logger)
     {
         _db = db;
+        _logger = logger;
     }
 
     // Per-errorCode HTTP status, mirroring ERROR_STATUS in the old route file.
@@ -319,8 +322,24 @@ public sealed class IntegrationsController : ControllerBase
 
             return outcome;
         }
-        catch
+        catch (SqlException ex) when (ex.Number is 2627 or 2601)
         {
+            // Unique-key collision: the event was already stored by a concurrent/earlier
+            // request — replay its persisted outcome (this is the intended idempotency race).
+            var stored = await GetStoredIntegrationEventAsync(integrationClientId, sourceEventId);
+            return stored ?? outcome;
+        }
+        catch (Exception ex)
+        {
+            // A genuine failure (write timeout, other constraint, overflow, retry
+            // exhaustion). Previously swallowed silently, which could leave idempotency
+            // unpersisted while the response looked successful — a later replay would
+            // re-execute. Log it so the failure is visible; behavior otherwise unchanged
+            // (re-read the row in case it was in fact stored, else surface the outcome).
+            _logger.LogError(
+                ex,
+                "Failed to persist integration_events row for client {ClientId} source_event_id {SourceEventId}",
+                integrationClientId, sourceEventId);
             var stored = await GetStoredIntegrationEventAsync(integrationClientId, sourceEventId);
             return stored ?? outcome;
         }

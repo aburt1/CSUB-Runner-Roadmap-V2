@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Api.Services;
+using Microsoft.Extensions.Configuration;
 
 namespace Api.IntegrationTests;
 
@@ -72,7 +73,7 @@ public class HelperTests
         var runner = new ApiCheckRunner(
             db: null!,
             encryption: null!,
-            env: new FakeHostEnvironment(),
+            config: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<ApiCheckRunner>.Instance);
 
         var runningState = new ApiCheckRunner.RunState { status = "running" };
@@ -91,7 +92,7 @@ public class HelperTests
         var runner = new ApiCheckRunner(
             db: null!,
             encryption: null!,
-            env: new FakeHostEnvironment(),
+            config: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<ApiCheckRunner>.Instance);
 
         var runningState  = new ApiCheckRunner.RunState { status = "running" };
@@ -104,13 +105,88 @@ public class HelperTests
         Assert.True(runner.TryBeginRun("s1", runningState));
     }
 
-    // Minimal IHostEnvironment stub (only IsProduction() is called by the runner constructor).
-    private sealed class FakeHostEnvironment : Microsoft.Extensions.Hosting.IHostEnvironment
+    // ---- ApiCheckRunner SSRF: private-target allowance is flag-gated, not env-gated ----
+
+    private static ApiCheckRunner RunnerWith(bool allowPrivateTargets)
     {
-        public string EnvironmentName { get; set; } = "Development";
-        public string ApplicationName { get; set; } = "Test";
-        public string ContentRootPath { get; set; } = "";
-        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
-            new Microsoft.Extensions.FileProviders.NullFileProvider();
+        var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ApiCheck:AllowPrivateTargets"] = allowPrivateTargets ? "true" : "false",
+            })
+            .Build();
+        return new ApiCheckRunner(
+            db: null!,
+            encryption: null!,
+            config: config,
+            logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<ApiCheckRunner>.Instance);
+    }
+
+    [Fact]
+    public async Task ValidateUrl_blocks_localhost_when_flag_off()
+    {
+        var result = await RunnerWith(allowPrivateTargets: false).ValidateUrlAsync("http://localhost:3000/x");
+        Assert.False(result.valid);
+    }
+
+    [Fact]
+    public async Task ValidateUrl_allows_localhost_only_when_flag_on()
+    {
+        var result = await RunnerWith(allowPrivateTargets: true).ValidateUrlAsync("http://localhost:3000/x");
+        Assert.True(result.valid);
+    }
+
+    [Theory]
+    [InlineData("http://10.0.0.1/x")]
+    [InlineData("http://169.254.169.254/latest/meta-data/")]  // cloud metadata endpoint
+    [InlineData("http://192.168.1.1/x")]
+    public async Task ValidateUrl_blocks_private_and_metadata_ip_when_flag_off(string url)
+    {
+        var result = await RunnerWith(allowPrivateTargets: false).ValidateUrlAsync(url);
+        Assert.False(result.valid);
+    }
+
+    // ---- ApiCheckRunner: custom-header allow/denylist (Host/CRLF) ----
+
+    private static System.Net.Http.HttpRequestMessage ApplyHeaders(string headersJson)
+    {
+        var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, "https://example.com");
+        var method = typeof(ApiCheckRunner).GetMethod(
+            "ApplyCustomHeaders",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        method.Invoke(null, new object?[] { request, headersJson });
+        return request;
+    }
+
+    [Fact]
+    public void ApplyCustomHeaders_drops_restricted_and_crlf_headers()
+    {
+        var json = """
+        [
+          {"key":"Host","value":"internal.vhost"},
+          {"key":"Content-Length","value":"0"},
+          {"key":"Transfer-Encoding","value":"chunked"},
+          {"key":"X-Inject","value":"ok\r\nX-Evil: smuggled"},
+          {"key":"X-Custom","value":"fine"}
+        ]
+        """;
+        var request = ApplyHeaders(json);
+
+        // Content-Length is skipped before TryAddWithoutValidation; asserting via
+        // request.Headers.Contains would itself throw (it is a content header), so the
+        // safety here is simply that ApplyHeaders did not throw and added no such header.
+        Assert.False(request.Headers.Contains("Host"));
+        Assert.False(request.Headers.Contains("Transfer-Encoding"));
+        Assert.False(request.Headers.Contains("X-Inject"));   // CRLF in value -> dropped
+        Assert.False(request.Headers.Contains("X-Evil"));     // never smuggled in
+        Assert.True(request.Headers.Contains("X-Custom"));    // benign header still applied
+    }
+
+    [Fact]
+    public void ApplyCustomHeaders_restricted_name_match_is_case_insensitive()
+    {
+        var request = ApplyHeaders("""[{"key":"host","value":"internal.vhost"}]""");
+        Assert.False(request.Headers.Contains("host"));
+        Assert.False(request.Headers.Contains("Host"));
     }
 }

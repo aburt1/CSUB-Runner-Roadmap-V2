@@ -1,5 +1,6 @@
 using Dapper;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging;
 
 namespace Api.Data;
 
@@ -59,25 +60,28 @@ public sealed class Db
         40613, 40197, 10060, 10054, 10053, 4221, 233, 121, 64, 20, -2,
     ];
 
-    private enum RetryKind { Read, Write }
+    internal enum RetryKind { Read, Write }
 
     private readonly string _connectionString;
+    private readonly ILogger<Db>? _logger;
 
     // When this Db represents an open transaction, these are set and every
     // call runs on that single connection/transaction instead of a new one.
     private readonly SqlConnection? _txConnection;
     private readonly SqlTransaction? _transaction;
 
-    public Db(string connectionString)
+    public Db(string connectionString, ILogger<Db>? logger = null)
     {
         _connectionString = connectionString;
+        _logger = logger;
     }
 
-    private Db(SqlConnection txConnection, SqlTransaction transaction)
+    private Db(SqlConnection txConnection, SqlTransaction transaction, ILogger<Db>? logger)
     {
         _connectionString = txConnection.ConnectionString;
         _txConnection = txConnection;
         _transaction = transaction;
+        _logger = logger;
     }
 
     // Returns the first row mapped to T, or null when there are no rows. READ semantics:
@@ -141,7 +145,7 @@ public sealed class Db
             await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync();
             try
             {
-                var scoped = new Db(connection, transaction);
+                var scoped = new Db(connection, transaction, _logger);
                 var result = await work(scoped);
                 await transaction.CommitAsync();
                 return result;
@@ -180,36 +184,50 @@ public sealed class Db
             }
             catch (Exception ex) when (attempt < MaxAttempts && IsRetryable(ex, kind, opened))
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(BaseRetryDelayMs * Math.Pow(2, attempt - 1)));
+                var delayMs = BaseRetryDelayMs * Math.Pow(2, attempt - 1);
+                // A query that succeeds on a later attempt leaves no other trace, so log
+                // here: an operator needs this signal to see an intermittently unhealthy DB
+                // before retries exhaust. Logging only — no change to query semantics.
+                _logger?.LogWarning(
+                    ex,
+                    "Transient DB fault ({Kind}) on attempt {Attempt}/{MaxAttempts}; retrying in {DelayMs}ms: {Message}",
+                    kind, attempt, MaxAttempts, delayMs, ex.Message);
+                await Task.Delay(TimeSpan.FromMilliseconds(delayMs));
             }
         }
     }
 
     private static bool IsRetryable(Exception ex, RetryKind kind, bool opened)
     {
-        // Failure before/while opening: no command was sent, retry on any transient error.
         // TimeoutException covers connection-pool exhaustion (SqlConnection.OpenAsync can
-        // throw it directly when the pool wait times out, before any command is sent).
-        if (!opened)
-            return IsInSet(ex, SafeTransientErrorNumbers) || IsInSet(ex, AmbiguousTransientErrorNumbers) || ex is TimeoutException;
+        // throw it directly when the pool wait times out, before any command is sent), so
+        // it is retryable wherever a read is — i.e. on the open path or for any read.
+        if (ex is TimeoutException)
+            return !opened || kind == RetryKind.Read;
 
-        // Reads can retry everything (including pool timeouts on the open path).
-        // Writes only retry errors guaranteed not to have taken effect.
-        return kind switch
-        {
-            RetryKind.Read => IsInSet(ex, SafeTransientErrorNumbers) || IsInSet(ex, AmbiguousTransientErrorNumbers) || ex is TimeoutException,
-            _ => IsInSet(ex, SafeTransientErrorNumbers),
-        };
-    }
-
-    private static bool IsInSet(Exception ex, HashSet<int> numbers)
-    {
+        // A SqlException can carry several SqlError entries; retry if ANY one of them is
+        // classified retryable for this (kind, opened) — the per-number rule lives in
+        // IsRetryableForNumber so it can be unit-tested without a SqlException.
         if (ex is SqlException sql)
         {
             foreach (SqlError error in sql.Errors)
-                if (numbers.Contains(error.Number))
+                if (IsRetryableForNumber(error.Number, kind, opened))
                     return true;
         }
         return false;
+    }
+
+    // Core retry-classification invariant, isolated from SqlException so it can be tested
+    // directly (SqlException is sealed with no public ctor). Behavior must match the
+    // per-error decision IsRetryable made before this was extracted:
+    //   - Failure before/while opening (!opened): nothing was sent — retry on any transient.
+    //   - READ statements: always safe to retry, on any transient.
+    //   - WRITE statements: retry ONLY errors guaranteed not to have taken effect.
+    internal static bool IsRetryableForNumber(int number, RetryKind kind, bool opened)
+    {
+        if (!opened || kind == RetryKind.Read)
+            return SafeTransientErrorNumbers.Contains(number) || AmbiguousTransientErrorNumbers.Contains(number);
+
+        return SafeTransientErrorNumbers.Contains(number);
     }
 }

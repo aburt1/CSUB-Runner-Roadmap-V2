@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging;
 
 namespace Api.Data;
 
@@ -18,7 +19,7 @@ public static class SchemaInitializer
     // DEV/TEST ONLY: in production the database is provisioned by a DBA and the app's
     // login is not expected to hold server-level CREATE DATABASE rights. Program.cs
     // only calls this when Database:AutoCreate is enabled (default: non-Production).
-    public static async Task EnsureDatabaseAsync(string connectionString)
+    public static async Task EnsureDatabaseAsync(string connectionString, ILogger? logger = null)
     {
         var builder = new SqlConnectionStringBuilder(connectionString);
         var dbName = builder.InitialCatalog;
@@ -44,6 +45,11 @@ public static class SchemaInitializer
             catch (Exception ex)
             {
                 last = ex;
+                // Without this, a cold start (SQL Server still warming up) is silent for up
+                // to 45s before success or the final throw. Logging only.
+                logger?.LogWarning(
+                    "EnsureDatabase attempt {Attempt}/15 failed; retrying in 3s: {Message}",
+                    attempt, ex.Message);
                 await Task.Delay(3000);
             }
         }

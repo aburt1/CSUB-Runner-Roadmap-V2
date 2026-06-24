@@ -187,19 +187,21 @@ const handleSubmit = () => {
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-4 items-start">
         <div>
-          <label :class="label">Title *</label>
-          <input type="text" required v-model="title" :class="field" />
+          <label :class="label" for="step-title">Title *</label>
+          <input id="step-title" type="text" required v-model="title" :class="field" />
         </div>
         <div class="sm:w-48">
-          <label :class="label">Icon</label>
+          <label :class="label" for="step-icon">Icon</label>
           <div class="relative" ref="iconPickerRef">
             <div class="relative">
               <span
                 class="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-md bg-gray-50 border border-gray-200 flex items-center justify-center text-xl pointer-events-none"
+                aria-hidden="true"
               >
                 {{ icon || '📋' }}
               </span>
               <input
+                id="step-icon"
                 type="text"
                 value=""
                 @focus="showEmojiPicker = true"
@@ -217,8 +219,9 @@ const handleSubmit = () => {
         </div>
       </div>
       <div>
-        <label :class="label">Short Description</label>
+        <label :class="label" for="step-description">Short Description</label>
         <input
+          id="step-description"
           type="text"
           v-model="description"
           :class="field"
@@ -375,16 +378,22 @@ const handleSubmit = () => {
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label :class="label">Deadline Label</label>
-          <input type="text" v-model="deadline" :class="field" placeholder="e.g. May 1" />
+          <label :class="label" for="step-deadline-label">Deadline Label</label>
+          <input
+            id="step-deadline-label"
+            type="text"
+            v-model="deadline"
+            :class="field"
+            placeholder="e.g. May 1"
+          />
         </div>
         <div>
-          <label :class="label">Deadline Date</label>
-          <input type="date" v-model="deadlineDate" :class="field" />
+          <label :class="label" for="step-deadline-date">Deadline Date</label>
+          <input id="step-deadline-date" type="date" v-model="deadlineDate" :class="field" />
         </div>
         <div>
-          <label :class="label">Sort Order</label>
-          <input type="number" v-model="sortOrder" :class="field" />
+          <label :class="label" for="step-sort-order">Sort Order</label>
+          <input id="step-sort-order" type="number" v-model="sortOrder" :class="field" />
         </div>
       </div>
       <label class="flex items-center gap-2 cursor-pointer">
@@ -418,9 +427,36 @@ const handleSubmit = () => {
         </p>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <input type="text" v-model="contactName" :class="field" placeholder="Contact name" />
-        <input type="email" v-model="contactEmail" :class="field" placeholder="Email" />
-        <input type="tel" v-model="contactPhone" :class="field" placeholder="Phone" />
+        <div>
+          <label :class="label" for="step-contact-name">Contact name</label>
+          <input
+            id="step-contact-name"
+            type="text"
+            v-model="contactName"
+            :class="field"
+            placeholder="Contact name"
+          />
+        </div>
+        <div>
+          <label :class="label" for="step-contact-email">Email</label>
+          <input
+            id="step-contact-email"
+            type="email"
+            v-model="contactEmail"
+            :class="field"
+            placeholder="Email"
+          />
+        </div>
+        <div>
+          <label :class="label" for="step-contact-phone">Phone</label>
+          <input
+            id="step-contact-phone"
+            type="tel"
+            v-model="contactPhone"
+            :class="field"
+            placeholder="Phone"
+          />
+        </div>
       </div>
     </section>
 

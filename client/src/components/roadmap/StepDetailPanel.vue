@@ -51,6 +51,11 @@ function onNavigate(direction: 'prev' | 'next'): void {
 
 const panelRef = useTemplateRef<HTMLDivElement>('panelRef')
 
+// The element that opened the dialog (e.g. the timeline step button). Captured on
+// mount so we can return focus to it on close — otherwise a keyboard/SR user is
+// dropped to document.body and loses their place.
+let opener: HTMLElement | null = null
+
 // Guarded parse: these computeds run during render, so one malformed DB row must
 // degrade to "no links", not throw and take down the whole component tree.
 const links = computed<LinkItem[]>(() => parseMaybeJson(props.step.links, []))
@@ -96,6 +101,7 @@ function handleKeyDown(e: KeyboardEvent): void {
 }
 
 onMounted(() => {
+  opener = document.activeElement as HTMLElement | null
   document.addEventListener('keydown', handleKeyDown)
   document.body.style.overflow = 'hidden'
   panelRef.value?.focus()
@@ -107,6 +113,8 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeyDown)
   document.body.style.overflow = ''
+  opener?.focus()
+  opener = null
 })
 
 // Focus panel on open / step change
@@ -177,7 +185,7 @@ function formatCompletedAt(value: string): string {
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <span class="font-body text-xs text-gray-400 font-medium px-1">
+            <span class="font-body text-xs text-gray-500 font-medium px-1">
               {{ stepNumber }} of {{ totalSteps }}
             </span>
             <button
@@ -251,7 +259,7 @@ function formatCompletedAt(value: string): string {
               >
                 Optional
               </span>
-              <span v-if="completedAt" class="text-xs font-body text-gray-400">
+              <span v-if="completedAt" class="text-xs font-body text-gray-500">
                 Completed {{ formatCompletedAt(completedAt) }}
               </span>
             </div>

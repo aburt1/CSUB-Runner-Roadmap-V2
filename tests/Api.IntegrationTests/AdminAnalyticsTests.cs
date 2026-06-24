@@ -395,4 +395,191 @@ public class AdminAnalyticsTests
             "/api/admin/analytics/students?term_id=1&filter_type=tag&filter_value=first-gen");
         Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
     }
+
+    // ─── Drilldown: the remaining filter_types ───────────────
+    // Only `tag` and `cohort_bucket` were covered. Each builder below produces its own
+    // hand-written SQL + Title; these assert the SQL executes (200), the documented
+    // shape holds, and the per-builder Title string is exact. Student counts use >= 0 /
+    // shape checks (shared-DB rules); the asserts that matter are that the query runs
+    // and the Title is correct.
+
+    private async Task<int> FirstActiveStepIdAsync()
+    {
+        var steps = await (await _fx.Admin().GetAsync("/api/admin/steps?term_id=1"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        return steps[0].GetProperty("id").GetInt32();
+    }
+
+    private static void AssertDrilldownShape(JsonElement body, string expectedTitle)
+    {
+        Assert.Equal(expectedTitle, body.GetProperty("title").GetString());
+        Assert.True(body.GetProperty("total").GetInt32() >= 0);
+        Assert.Equal(1, body.GetProperty("page").GetInt32());
+        Assert.Equal(50, body.GetProperty("per_page").GetInt32());
+        Assert.Equal(JsonValueKind.Array, body.GetProperty("students").ValueKind);
+        foreach (var s in body.GetProperty("students").EnumerateArray())
+        {
+            Assert.True(s.TryGetProperty("id", out _));
+            Assert.True(s.TryGetProperty("display_name", out _));
+            Assert.True(s.GetProperty("completed_count").GetInt32() >= 0);
+            Assert.True(s.GetProperty("total_steps").GetInt32() >= 22);
+            Assert.InRange(s.GetProperty("completion_pct").GetInt32(), 0, 100);
+        }
+    }
+
+    [Fact]
+    public async Task Drilldown_step_completed_returns_students_with_step_title()
+    {
+        var stepId = await FirstActiveStepIdAsync();
+        var res = await _fx.Admin().GetAsync(
+            $"/api/admin/analytics/students?term_id=1&filter_type=step_completed&filter_value={stepId}");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.StartsWith("Students who completed ", body.GetProperty("title").GetString());
+        AssertDrilldownShape(body, body.GetProperty("title").GetString()!);
+    }
+
+    [Fact]
+    public async Task Drilldown_step_not_completed_returns_students_with_step_title()
+    {
+        var stepId = await FirstActiveStepIdAsync();
+        var res = await _fx.Admin().GetAsync(
+            $"/api/admin/analytics/students?term_id=1&filter_type=step_not_completed&filter_value={stepId}");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.StartsWith("Students who haven't completed ", body.GetProperty("title").GetString());
+        AssertDrilldownShape(body, body.GetProperty("title").GetString()!);
+    }
+
+    [Fact]
+    public async Task Drilldown_stalled_bucket_returns_students()
+    {
+        var res = await _fx.Admin().GetAsync(
+            "/api/admin/analytics/students?term_id=1&filter_type=stalled&filter_value=7-14%20days");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        AssertDrilldownShape(body, "Students stalled 7-14 days");
+    }
+
+    [Fact]
+    public async Task Drilldown_velocity_bucket_returns_students()
+    {
+        var res = await _fx.Admin().GetAsync(
+            "/api/admin/analytics/students?term_id=1&filter_type=velocity_bucket&filter_value=1-3%20days");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        AssertDrilldownShape(body, "Students completing in 1-3 days");
+    }
+
+    [Fact]
+    public async Task Drilldown_trend_date_returns_completions_with_formatted_title()
+    {
+        var res = await _fx.Admin().GetAsync(
+            "/api/admin/analytics/students?term_id=1&filter_type=trend_date&filter_value=2026-01-05");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        // Mirrors JS toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }).
+        AssertDrilldownShape(body, "Completions on Jan 5, 2026");
+    }
+
+    [Fact]
+    public async Task Drilldown_deadline_risk_returns_at_risk_students_with_step_title()
+    {
+        var stepId = await FirstActiveStepIdAsync();
+        var res = await _fx.Admin().GetAsync(
+            $"/api/admin/analytics/students?term_id=1&filter_type=deadline_risk&filter_value={stepId}");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.StartsWith("At-risk students for ", body.GetProperty("title").GetString());
+        AssertDrilldownShape(body, body.GetProperty("title").GetString()!);
+    }
+
+    // The numeric/date pre-validation guards turn a SQL-conversion 500 into a 400.
+
+    [Fact]
+    public async Task Drilldown_step_completed_with_non_numeric_value_is_400()
+    {
+        var res = await _fx.Admin().GetAsync(
+            "/api/admin/analytics/students?term_id=1&filter_type=step_completed&filter_value=abc");
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("filter_value must be a step id", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Drilldown_trend_date_with_non_date_value_is_400()
+    {
+        var res = await _fx.Admin().GetAsync(
+            "/api/admin/analytics/students?term_id=1&filter_type=trend_date&filter_value=notadate");
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("filter_value must be a date", body.GetProperty("error").GetString());
+    }
+
+    // ─── deadline-risk: waived students are excluded ─────────
+    // AnalyticsController.DeadlineRisk excludes status IN ('completed','waived') from
+    // both at_risk_count and the per-step students[]. The shape-only test above can't
+    // catch a regression that flips 'waived' back into the at-risk set. This waives an
+    // active in-window step for a currently-at-risk student and asserts they drop out of
+    // that step's students[] AND at_risk_count falls by exactly 1 (relative compare per
+    // shared-DB rules — no reliance on an absolute count).
+
+    [Fact]
+    public async Task DeadlineRisk_excludes_a_waived_student_from_step()
+    {
+        // Default 14-day window has a seeded future-deadline step ("Register for
+        // Orientation", 2026-07-01) for term 1.
+        var before = await (await _fx.Admin().GetAsync("/api/admin/analytics/deadline-risk?term_id=1"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+
+        // Pick any in-window step that has at least one at-risk student to waive.
+        JsonElement targetStep = default;
+        string? studentId = null;
+        foreach (var step in before.EnumerateArray())
+        {
+            var students = step.GetProperty("students");
+            if (students.GetArrayLength() > 0)
+            {
+                targetStep = step;
+                studentId = students[0].GetProperty("id").GetString();
+                break;
+            }
+        }
+
+        Assert.NotNull(studentId); // seed must surface at least one at-risk student in-window
+        var stepId = targetStep.GetProperty("id").GetInt32();
+        var beforeAtRisk = targetStep.GetProperty("at_risk_count").GetInt32();
+
+        // Waive that step for the at-risk student via the admin progress endpoint.
+        var waive = await _fx.Admin().PostAsJsonAsync(
+            $"/api/admin/students/{studentId}/steps/{stepId}/complete",
+            new { status = "waived", note = "deadline-risk exclusion test" });
+        Assert.Equal(HttpStatusCode.OK, waive.StatusCode);
+
+        // Re-fetch: the waived student must be gone from this step's students[] and the
+        // at_risk_count must have dropped by exactly 1.
+        var after = await (await _fx.Admin().GetAsync("/api/admin/analytics/deadline-risk?term_id=1"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+
+        var found = false;
+        foreach (var step in after.EnumerateArray())
+        {
+            if (step.GetProperty("id").GetInt32() != stepId) continue;
+            found = true;
+
+            foreach (var s in step.GetProperty("students").EnumerateArray())
+                Assert.NotEqual(studentId, s.GetProperty("id").GetString());
+
+            Assert.Equal(beforeAtRisk - 1, step.GetProperty("at_risk_count").GetInt32());
+        }
+        Assert.True(found); // step is still in-window, just with one fewer at-risk student
+    }
 }

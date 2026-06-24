@@ -36,7 +36,7 @@ if (builder.Environment.IsDevelopment())
 // One shared Db, built from the configured connection string.
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("Missing ConnectionStrings:Default in configuration.");
-builder.Services.AddSingleton(new Db(connectionString));
+builder.Services.AddSingleton(sp => new Db(connectionString, sp.GetService<ILogger<Db>>()));
 
 builder.Services.AddSingleton<JwtService>();
 builder.Services.AddSingleton<AzureAdTokenValidator>();
@@ -111,14 +111,14 @@ _ = app.Services.GetRequiredService<Api.Services.Encryption>();
 var db = app.Services.GetRequiredService<Db>();
 var autoCreateDatabase = app.Configuration.GetValue<bool?>("Database:AutoCreate") ?? !app.Environment.IsProduction();
 if (autoCreateDatabase)
-    await SchemaInitializer.EnsureDatabaseAsync(connectionString);
+    await SchemaInitializer.EnsureDatabaseAsync(connectionString, app.Logger);
 
 await SchemaInitializer.RunAsync(db, Path.Combine(AppContext.BaseDirectory, "Data", "schema.sql"));
 
 // Seed bootstrap data (default term, checklist, default admin, integration client) on an
 // empty database. Idempotent. Disable with Database:Seed=false if a DBA seeds out-of-band.
 if (app.Configuration.GetValue<bool?>("Database:Seed") ?? true)
-    await Seeder.RunAsync(db, app.Configuration, app.Environment);
+    await Seeder.RunAsync(db, app.Configuration, app.Environment, app.Logger);
 
 // Outermost: turn any unhandled error into the old { error: "Internal server error" }
 // envelope (and never leak stack traces).
@@ -130,7 +130,10 @@ app.Use(async (context, next) =>
     }
     catch (Exception ex)
     {
-        app.Logger.LogError(ex, "Unhandled request error");
+        app.Logger.LogError(
+            ex,
+            "Unhandled request error for {Method} {Path} (trace {TraceId})",
+            context.Request.Method, context.Request.Path, context.TraceIdentifier);
         if (!context.Response.HasStarted)
         {
             context.Response.Clear();

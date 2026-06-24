@@ -115,13 +115,39 @@ const options = computed<ChartOptions<'bar'>>(() => ({
     },
   },
 }))
+
+const ariaLabel = computed(
+  () =>
+    `Bottleneck bar chart. ${chartData.value
+      .map((d) => `${d.fullTitle}: ${d.count} of ${d.total} students (${d.pct}%)`)
+      .join('. ')}`,
+)
 </script>
 
 <template>
   <p v-if="!data?.steps?.length" class="font-body text-sm text-csub-gray text-center py-4">
     No data
   </p>
-  <div v-else class="h-64">
-    <Bar :data="barData" :options="options" />
+  <div v-else class="h-64" role="img" :aria-label="ariaLabel">
+    <Bar :data="barData" :options="options" aria-hidden="true" />
+    <table class="sr-only">
+      <caption>
+        Bottleneck steps
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Step</th>
+          <th scope="col">Completed</th>
+          <th scope="col">Percent</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="row in chartData" :key="row.id">
+          <th scope="row">{{ row.fullTitle }}</th>
+          <td>{{ row.count }} of {{ row.total }}</td>
+          <td>{{ row.pct }}%</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </template>

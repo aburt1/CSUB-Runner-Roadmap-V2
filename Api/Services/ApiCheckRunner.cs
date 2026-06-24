@@ -57,9 +57,12 @@ public sealed class ApiCheckRunner
         },
     });
 
-    // Set once from the host environment (the handler above is static, so it cannot
-    // read the instance _isDev). Mirrors ValidateUrlAsync's dev allowance for
-    // private/localhost mock APIs.
+    // Set once from config (the handler above is static, so it cannot read the
+    // instance _allowPrivateTargets). Mirrors ValidateUrlAsync's allowance for
+    // private/localhost mock APIs. Defaults to false (fail-closed): it is only
+    // ever set true by the explicit ApiCheck:AllowPrivateTargets flag, never by
+    // environment name — so a non-Production deploy that forgets the flag still
+    // blocks DNS-rebinding to internal targets.
     private static volatile bool s_allowPrivateConnect;
 
     // 5s per request keeps one slow upstream from eating most of the 15s run budget
@@ -70,21 +73,27 @@ public sealed class ApiCheckRunner
     private readonly Db _db;
     private readonly Encryption _encryption;
     private readonly ILogger<ApiCheckRunner> _logger;
-    private readonly bool _isDev;
+
+    // When true, ValidateUrlAsync and the connect-time recheck allow private/
+    // localhost targets (for dev/test mock APIs). Driven by an explicit config
+    // flag, NOT the environment name — see s_allowPrivateConnect.
+    private readonly bool _allowPrivateTargets;
 
     // In-memory run state, keyed by student id (mirrors `runStates` Map).
     private readonly ConcurrentDictionary<string, RunState> _runStates = new();
 
-    public ApiCheckRunner(Db db, Encryption encryption, IHostEnvironment env, ILogger<ApiCheckRunner> logger)
+    public ApiCheckRunner(Db db, Encryption encryption, IConfiguration config, ILogger<ApiCheckRunner> logger)
     {
         _db = db;
         _encryption = encryption;
         _logger = logger;
-        // process.env.NODE_ENV !== 'production' -> not the Production environment.
-        _isDev = !env.IsProduction();
-        // Share the dev flag with the static ConnectCallback (which gates the
+        // Opt-in only: private/localhost targets are blocked everywhere unless this
+        // flag is explicitly set. Previously this tracked !IsProduction(), which
+        // silently opened both SSRF layers in every non-Production environment.
+        _allowPrivateTargets = config.GetValue<bool>("ApiCheck:AllowPrivateTargets");
+        // Share the decision with the static ConnectCallback (which gates the
         // connect-time private-IP rejection the same way ValidateUrlAsync gates it).
-        s_allowPrivateConnect = _isDev;
+        s_allowPrivateConnect = _allowPrivateTargets;
     }
 
     public sealed class CheckedStep
@@ -250,7 +259,9 @@ public sealed class ApiCheckRunner
 
     // Structured (not string-prefix) check so IPv4-mapped IPv6 (::ffff:10.0.0.1),
     // link-local (fe80::), site-local, and unspecified addresses are all caught.
-    private static bool IsPrivateAddress(IPAddress address)
+    // internal (not private) so the integration-test project can table-test the
+    // private-range bit logic directly; still inaccessible to ordinary callers.
+    internal static bool IsPrivateAddress(IPAddress address)
     {
         if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
         if (IPAddress.IsLoopback(address)) return true;
@@ -275,8 +286,8 @@ public sealed class ApiCheckRunner
     }
 
     // Validate a URL for SSRF protection: reject private IPs, localhost, and
-    // non-HTTP(S) schemes. In development the private/localhost targets are
-    // allowed (for mock/test APIs), matching the old behavior.
+    // non-HTTP(S) schemes. Private/localhost targets are allowed only when the
+    // explicit ApiCheck:AllowPrivateTargets flag is set (for mock/test APIs).
     public async Task<UrlValidation> ValidateUrlAsync(string urlString)
     {
         Uri parsed;
@@ -297,7 +308,7 @@ public sealed class ApiCheckRunner
 
         if (hostname == "localhost" || hostname == "[::1]" || hostname == "::1")
         {
-            if (!_isDev)
+            if (!_allowPrivateTargets)
                 return new UrlValidation { valid = false, reason = "Requests to localhost are not allowed" };
             return new UrlValidation { valid = true };
         }
@@ -316,10 +327,10 @@ public sealed class ApiCheckRunner
             return new UrlValidation { valid = false, reason = $"DNS resolution failed for {hostname}" };
 
         // Validate EVERY resolved address (a host can return multiple A/AAAA records);
-        // reject if any maps to a private/internal range. In dev these are allowed.
+        // reject if any maps to a private/internal range. Allowed only behind the flag.
         foreach (var address in addresses)
         {
-            if (!_isDev && IsPrivateAddress(address))
+            if (!_allowPrivateTargets && IsPrivateAddress(address))
                 return new UrlValidation { valid = false, reason = $"Resolved to private IP {address}" };
         }
 
@@ -347,6 +358,16 @@ public sealed class ApiCheckRunner
         }
     }
 
+    // Header names an admin must not be able to set on the outbound request.
+    // Host can redirect the request to an internal vhost behind the vetted IP;
+    // Content-Length / Transfer-Encoding enable request smuggling. Compared
+    // case-insensitively. TryAddWithoutValidation skips CRLF sanitization, so we
+    // also reject any name or value containing CR/LF (header injection).
+    private static readonly HashSet<string> RestrictedHeaderNames =
+        new(StringComparer.OrdinalIgnoreCase) { "Host", "Content-Length", "Transfer-Encoding" };
+
+    private static bool HasCrlf(string value) => value.Contains('\r') || value.Contains('\n');
+
     private static void ApplyCustomHeaders(HttpRequestMessage request, string? headersJson)
     {
         if (string.IsNullOrEmpty(headersJson)) return;
@@ -356,8 +377,13 @@ public sealed class ApiCheckRunner
             if (custom is null) return;
             foreach (var pair in custom)
             {
-                if (!string.IsNullOrEmpty(pair.key))
-                    request.Headers.TryAddWithoutValidation(pair.key, pair.value ?? "");
+                if (string.IsNullOrEmpty(pair.key)) continue;
+                var value = pair.value ?? "";
+                // Drop restricted names and any CRLF-bearing name/value rather than
+                // letting TryAddWithoutValidation pass them through unsanitized.
+                if (RestrictedHeaderNames.Contains(pair.key)) continue;
+                if (HasCrlf(pair.key) || HasCrlf(value)) continue;
+                request.Headers.TryAddWithoutValidation(pair.key, value);
             }
         }
         catch

@@ -85,11 +85,35 @@ const options = computed<ChartOptions<'line'>>(() => ({
     },
   },
 }))
+
+const ariaLabel = computed(
+  () =>
+    `Completion trend line chart over time. ${chartData.value
+      .map((d) => `${d.date}: ${d.completions} completions`)
+      .join('. ')}`,
+)
 </script>
 
 <template>
   <p v-if="!data?.length" class="font-body text-sm text-csub-gray text-center py-4">No data</p>
-  <div v-else class="h-64">
-    <Line :data="lineData" :options="options" />
+  <div v-else class="h-64" role="img" :aria-label="ariaLabel">
+    <Line :data="lineData" :options="options" aria-hidden="true" />
+    <table class="sr-only">
+      <caption>
+        Completions over time
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Completions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="row in chartData" :key="row.rawDate">
+          <th scope="row">{{ row.date }}</th>
+          <td>{{ row.completions }}</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
 </template>

@@ -108,6 +108,13 @@ const options = computed<ChartOptions<'bar'>>(() => ({
     },
   },
 }))
+
+const ariaLabel = computed(
+  () =>
+    `Cohort comparison bar chart, average completion percent by student population. ${data.value
+      .map((d) => `${d.tag}: ${d.avg_completion_pct}%`)
+      .join('. ')}`,
+)
 </script>
 
 <template>
@@ -123,8 +130,25 @@ const options = computed<ChartOptions<'bar'>>(() => ({
       </p>
     </div>
 
-    <div style="height: 300px">
-      <Bar :data="barData" :options="options" />
+    <div style="height: 300px" role="img" :aria-label="ariaLabel">
+      <Bar :data="barData" :options="options" aria-hidden="true" />
+      <table class="sr-only">
+        <caption>
+          Average completion percent by student population
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Population</th>
+            <th scope="col">Average completion</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in data" :key="row.tag">
+            <th scope="row">{{ row.tag }}</th>
+            <td>{{ row.avg_completion_pct }}%</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </template>

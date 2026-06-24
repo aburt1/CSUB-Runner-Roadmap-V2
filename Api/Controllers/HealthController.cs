@@ -16,14 +16,16 @@ namespace Api.Controllers;
 public sealed class HealthController : ControllerBase
 {
     private readonly string _probeConnectionString;
+    private readonly ILogger<HealthController> _logger;
 
-    public HealthController(IConfiguration config)
+    public HealthController(IConfiguration config, ILogger<HealthController> logger)
     {
         var builder = new SqlConnectionStringBuilder(config.GetConnectionString("Default"))
         {
             ConnectTimeout = 3,
         };
         _probeConnectionString = builder.ConnectionString;
+        _logger = logger;
     }
 
     [HttpGet("live")]
@@ -49,8 +51,11 @@ public sealed class HealthController : ControllerBase
             await command.ExecuteScalarAsync();
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            // The 503 body stays identical; this records why readiness flapped (login vs
+            // connect timeout vs network vs server down). Accept low probe noise.
+            _logger.LogWarning(ex, "Readiness DB probe failed");
             return false;
         }
     }
