@@ -36,6 +36,7 @@ const parseDetails = (
 
 function formatTime(ts: string): string {
   const d = new Date(ts.endsWith('Z') ? ts : ts + 'Z')
+  if (Number.isNaN(d.getTime())) return ts
   const now = new Date()
   const diffMs = now.getTime() - d.getTime()
   const diffMins = Math.floor(diffMs / 60000)

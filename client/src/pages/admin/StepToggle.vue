@@ -36,6 +36,16 @@ const showModal = ref<ModalAction | null>(null)
 
 const isDone = computed(() => props.status === 'completed' || props.status === 'waived')
 
+function formatCompletedAt(value: string): string {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return d.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
 const handleConfirm = async (note: string | null) => {
   const action = showModal.value
   showModal.value = null
@@ -114,13 +124,7 @@ const handleConfirm = async (note: string | null) => {
             Waived
           </span>
           <span v-if="isDone && completedAt" class="font-body text-[10px] text-csub-gray">
-            {{
-              new Date(completedAt).toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              })
-            }}
+            {{ formatCompletedAt(completedAt) }}
           </span>
         </div>
         <p v-if="note" class="font-body text-[10px] text-csub-gray/70 mt-0.5 italic truncate">

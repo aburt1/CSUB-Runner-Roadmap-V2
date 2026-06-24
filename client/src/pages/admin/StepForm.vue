@@ -33,6 +33,7 @@ const props = defineProps<{
   selectedTermId?: number | null
   role?: string
   api?: AdminApi
+  saving?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -141,6 +142,7 @@ const onEmojiSelect = (emoji: EmojiExt) => {
 }
 
 const handleSubmit = () => {
+  if (props.saving) return
   const contactInfo =
     contactName.value || contactEmail.value || contactPhone.value
       ? {
@@ -465,7 +467,8 @@ const handleSubmit = () => {
     <div class="flex gap-3 pt-2">
       <button
         type="submit"
-        class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-6 py-2.5 rounded-lg shadow transition-colors text-sm"
+        :disabled="saving"
+        class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-6 py-2.5 rounded-lg shadow transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {{ step ? 'Save Changes' : 'Create Step' }}
       </button>

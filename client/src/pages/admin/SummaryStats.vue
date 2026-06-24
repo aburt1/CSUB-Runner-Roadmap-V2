@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import type { AdminApi } from '../../composables/useAdminApi'
+import { useToastStore } from '../../stores/toast'
 
 interface StatsData {
   totalStudents: number
@@ -16,6 +17,7 @@ interface Props {
 const props = defineProps<Props>()
 
 const stats = ref<StatsData | null>(null)
+const toast = useToastStore()
 
 watch(
   () => [props.api, props.termId] as const,
@@ -26,7 +28,7 @@ watch(
       .then((data) => {
         stats.value = data
       })
-      .catch(() => {})
+      .catch(() => toast.error('Could not load summary stats.'))
   },
   { immediate: true },
 )

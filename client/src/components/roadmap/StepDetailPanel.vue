@@ -126,7 +126,9 @@ watch(
 )
 
 function formatCompletedAt(value: string): string {
-  return new Date(value).toLocaleDateString('en-US', {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return d.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',

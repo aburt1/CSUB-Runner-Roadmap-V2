@@ -111,6 +111,11 @@ export function useProgress() {
         // Token expired/invalid — drop back to the public/login view.
         toast.error('Your session expired — please sign in again.')
         auth.logout()
+      } else if (progressMap.value.size === 0) {
+        // Non-ok, non-401 (e.g. 5xx) with no prior data: surface an error so the
+        // student sees a retry path instead of a silently wiped checklist. If we
+        // already have progress loaded, keep it stale rather than overwrite.
+        error.value = 'Unable to load your progress. Please try again.'
       }
     } catch {
       // Server unavailable — keep existing data

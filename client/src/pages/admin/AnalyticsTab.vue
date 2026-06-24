@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { AdminApi } from '../../composables/useAdminApi'
+import { useToastStore } from '../../stores/toast'
 import SummaryStats from './SummaryStats.vue'
 import StepCompletionChart from './charts/StepCompletionChart.vue'
 import CompletionTrendChart from './charts/CompletionTrendChart.vue'
@@ -24,6 +25,8 @@ const props = defineProps<{
   api: AdminApi
   termId: number | null
 }>()
+
+const toast = useToastStore()
 
 const stepCompletion = ref<StepCompletionData | null>(null)
 const trend = ref<TrendPoint[] | null>(null)
@@ -59,7 +62,7 @@ watch(
         bottlenecks.value = bn
         cohort.value = co
       })
-      .catch(() => {})
+      .catch(() => toast.error('Could not load analytics. Please try again.'))
       .finally(() => {
         loading.value = false
       })

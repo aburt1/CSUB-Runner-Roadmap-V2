@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import type { AdminApi } from '../../composables/useAdminApi'
+import { useToastStore } from '../../stores/toast'
 
 interface DrillDownStudent {
   id: number
@@ -27,6 +28,7 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
+const toast = useToastStore()
 const students = ref<DrillDownStudent[]>([])
 const title = ref('')
 const total = ref(0)
@@ -55,7 +57,7 @@ watch(
         title.value = data.title
         total.value = data.total
       })
-      .catch(() => {})
+      .catch(() => toast.error('Could not load students.'))
       .finally(() => {
         loading.value = false
       })
@@ -77,7 +79,7 @@ const loadMore = async () => {
     students.value = [...students.value, ...data.students]
     page.value = nextPage
   } catch {
-    // ignore
+    toast.error('Could not load students.')
   } finally {
     loadingMore.value = false
   }

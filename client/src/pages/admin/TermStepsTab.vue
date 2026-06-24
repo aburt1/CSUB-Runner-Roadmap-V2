@@ -59,6 +59,7 @@ const canEdit = computed(() => props.role === 'admissions_editor' || props.role 
 const steps = ref<StepItem[]>([])
 const loading = ref(true)
 const editingStep = ref<Partial<StepItem> | null>(null)
+const savingStep = ref(false)
 const showInactive = ref(false)
 const selected = ref<Set<number>>(new Set())
 const showCloneModal = ref(false)
@@ -104,6 +105,8 @@ watch(
 )
 
 const handleSaveStep = async (data: StepSavePayload) => {
+  if (savingStep.value) return
+  savingStep.value = true
   try {
     if (editingStep.value?.id) {
       await props.api.put(`/steps/${editingStep.value.id}`, data)
@@ -116,6 +119,8 @@ const handleSaveStep = async (data: StepSavePayload) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Could not save the step. Please try again.'
     toast.error(msg)
+  } finally {
+    savingStep.value = false
   }
 }
 
@@ -382,6 +387,7 @@ const draggableSteps = computed<StepItem[]>({
           :selected-term-id="selectedTermId"
           :role="role"
           :api="api"
+          :saving="savingStep"
           @save="handleSaveStep"
           @cancel="editingStep = null"
         />
@@ -557,6 +563,7 @@ const draggableSteps = computed<StepItem[]>({
                     :selected-term-id="selectedTermId"
                     :role="role"
                     :api="api"
+                    :saving="savingStep"
                     @save="handleSaveStep"
                     @cancel="editingStep = null"
                   />
