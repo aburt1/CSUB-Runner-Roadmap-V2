@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick, useTemplateRef } from 'vue'
 import EmojiPicker from 'vue3-emoji-picker'
 import type { EmojiExt } from 'vue3-emoji-picker'
 import 'vue3-emoji-picker/css'
@@ -54,7 +54,7 @@ const TAG_PRESETS = [
 
 const parseJsonArray = (value: unknown): string[] => parseMaybeJson(value, [])
 
-const iconPickerRef = ref<HTMLDivElement | null>(null)
+const iconPickerRef = useTemplateRef<HTMLDivElement>('iconPickerRef')
 const title = ref(props.step?.title || '')
 const icon = ref(props.step?.icon || '📋')
 const showEmojiPicker = ref(false)

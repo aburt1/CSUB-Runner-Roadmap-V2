@@ -3,7 +3,7 @@ import { useEditor, EditorContent } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Underline from '@tiptap/extension-underline'
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, useTemplateRef } from 'vue'
 
 const props = defineProps<{
   value: string
@@ -54,7 +54,7 @@ watch(
 // Link input
 const showLinkInput = ref(false)
 const url = ref('')
-const linkInputRef = ref<HTMLInputElement | null>(null)
+const linkInputRef = useTemplateRef<HTMLInputElement>('linkInputRef')
 
 const openLinkInput = () => {
   showLinkInput.value = !showLinkInput.value

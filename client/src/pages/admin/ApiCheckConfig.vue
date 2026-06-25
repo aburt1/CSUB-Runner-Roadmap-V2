@@ -195,11 +195,6 @@ const addHeader = () => {
 const removeHeader = (idx: number) => {
   headers.value = headers.value.filter((_, i) => i !== idx)
 }
-const updateHeader = (idx: number, prop: keyof HeaderEntry, value: string) => {
-  const updated = [...headers.value]
-  updated[idx] = { ...updated[idx]!, [prop]: value }
-  headers.value = updated
-}
 
 const handleTestKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Enter') {
@@ -300,20 +295,8 @@ const handleTestKeydown = (e: KeyboardEvent) => {
       <div>
         <label :class="label">Custom Headers</label>
         <div v-for="(h, i) in headers" :key="i" class="flex gap-2 mb-1">
-          <input
-            type="text"
-            :value="h.key"
-            @input="updateHeader(i, 'key', ($event.target as HTMLInputElement).value)"
-            :class="field"
-            placeholder="Header name"
-          />
-          <input
-            type="text"
-            :value="h.value"
-            @input="updateHeader(i, 'value', ($event.target as HTMLInputElement).value)"
-            :class="field"
-            placeholder="Value"
-          />
+          <input type="text" v-model="h.key" :class="field" placeholder="Header name" />
+          <input type="text" v-model="h.value" :class="field" placeholder="Value" />
           <button
             type="button"
             @click="removeHeader(i)"

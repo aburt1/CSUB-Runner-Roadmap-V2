@@ -449,7 +449,7 @@ public sealed class ApiCheckRunner
                 extracted = null;
             }
 
-            var truncatedBody = responseBody.Length > 2048 ? responseBody.Substring(0, 2048) + "..." : responseBody;
+            var truncatedBody = responseBody.Length > 2048 ? responseBody[..2048] + "..." : responseBody;
 
             return new TestResult
             {

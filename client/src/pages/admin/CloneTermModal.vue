@@ -151,8 +151,7 @@ const handleSubmit = async () => {
               >Source Term</label
             >
             <select
-              :value="sourceTermId || ''"
-              @change="(e) => (sourceTermId = parseInt((e.target as HTMLSelectElement).value, 10))"
+              v-model.number="sourceTermId"
               class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue bg-white"
             >
               <option v-for="term in terms" :key="term.id" :value="term.id">{{ term.name }}</option>

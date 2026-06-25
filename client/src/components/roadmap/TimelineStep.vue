@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, useTemplateRef } from 'vue'
 import { safeUrl } from '../../utils/links'
 import DeadlineCountdown from './DeadlineCountdown.vue'
 import type { StepWithStatus, LinkItem } from '../../types/api'
@@ -125,7 +125,7 @@ const completedDateLabel = computed(() =>
 )
 
 // Reveal each step once as it scrolls into view, via IntersectionObserver (margin -20px).
-const li = ref<HTMLElement | null>(null)
+const li = useTemplateRef<HTMLElement>('li')
 const inView = ref(false)
 let observer: IntersectionObserver | null = null
 

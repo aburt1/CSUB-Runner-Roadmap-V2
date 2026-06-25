@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick, useTemplateRef } from 'vue'
 import type { AdminApi } from '../../composables/useAdminApi'
 import { useToastStore } from '../../stores/toast'
 
@@ -35,7 +35,7 @@ const total = ref(0)
 const page = ref(1)
 const loading = ref(false)
 const loadingMore = ref(false)
-const panelRef = ref<HTMLDivElement | null>(null)
+const panelRef = useTemplateRef<HTMLDivElement>('panelRef')
 
 watch(
   () => [props.open, props.filterType, props.filterValue, props.termId, props.api] as const,

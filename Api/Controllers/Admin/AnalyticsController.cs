@@ -825,7 +825,7 @@ public sealed class AnalyticsController : ControllerBase
         var tagPattern = $"%{filterValue}%";
         var fv = filterValue ?? "";
         var title = fv.Length > 0
-            ? $"{char.ToUpperInvariant(fv[0])}{fv.Substring(1)} students"
+            ? $"{char.ToUpperInvariant(fv[0])}{fv[1..]} students"
             : " students";
         return new FilterQuerySet
         {
