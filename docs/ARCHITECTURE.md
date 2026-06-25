@@ -351,12 +351,21 @@ each hop, so you can follow any one of them through the code.
 | Integration push (Trace 4) | `integration_clients`, `integration_events`, `students`, `steps`, `student_progress` | `student_progress`, `integration_events`, `audit_log` |
 | API checks (Trace 5) | `step_api_checks`, `steps`, `students`, `student_progress` | `student_progress`, `students.last_api_check_at` |
 
-The pattern worth noticing: **every** write to `student_progress` — student
-self-service, admin, integration, API check — goes through `Progress.ApplyAsync`, and
-every row carries a `completed_by` attribution (`manual` / `integration` /
-`api_check` / `auto`). Human and integration changes additionally land in `audit_log`;
-API-check changes are attributed but not audit-logged. One write path, one lock
-strategy.
+The pattern worth noticing — **one write path**: every write to `student_progress`
+(student, admin, integration, API check) funnels through `Progress.ApplyAsync`, so there
+is one lock strategy and one `completed_by` attribution (`manual` / `integration` /
+`api_check` / `auto`). Human and integration changes also land in `audit_log`; API-check
+changes are attributed but not audit-logged.
+
+```mermaid
+flowchart LR
+  s[Student self-service] --> apply
+  ad[Admin edit] --> apply
+  intg[Integration push] --> apply
+  chk[API-check result] --> apply
+  apply["Progress.ApplyAsync<br/>one write path · UPDLOCK + HOLDLOCK"] --> sp[("student_progress")]
+  apply -->|human / integration| al[("audit_log")]
+```
 
 (Students can also self-complete **optional** steps directly — `PUT
 /api/steps/{stepId}/status` — gated to optional, active, tag-applicable steps in their
