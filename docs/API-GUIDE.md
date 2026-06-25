@@ -415,8 +415,8 @@ flowchart TD
   trigger([Student triggers run]) --> cooldown{"within 5-min cooldown?<br/>(last_api_check_at)"}
   cooldown -->|Yes| skip["Skip run"]
   cooldown -->|No| load["Load enabled checks<br/>active term, steps active<br/>ordered by sort_order"]
-  load --> call["Per check: substitute student id into URL<br/>GET/POST, extract response_field_path"]
-  call --> truthy{"extracted value truthy?"}
+  load --> fetch["Per check: substitute student id into URL<br/>GET/POST, extract response_field_path"]
+  fetch --> truthy{"extracted value truthy?"}
   truthy -->|Truthy| comp{"step already complete?"}
   comp -->|No| markdone["Mark complete<br/>completed_by = api_check"]
   comp -->|Yes| noop1["Leave as-is"]
