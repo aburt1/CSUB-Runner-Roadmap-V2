@@ -1,24 +1,23 @@
 # Development Setup Guide
 
-This guide walks through everything needed to get the CSUB Runner Roadmap (V2)
-running, whether you want the full stack in Docker, a local dev loop with hot
-reload, or just the Vue frontend on its own machine pointed at a remote backend.
-It also covers the **developer quality workflow** — the npm and `dotnet` scripts
-you run before pushing (tests, lint, format) — and the **startup flags**
-(`Database:AutoCreate`, `Database:Seed`) that control what the API does to your
-database on boot.
+This guide gets the CSUB Runner Roadmap running locally and is your day-to-day
+reference for the pre-push quality commands (tests, lint, format) and the startup
+flags (`Database:AutoCreate`, `Database:Seed`). For how the pieces fit together see
+[Architecture](ARCHITECTURE.md); to ship to a Windows Server + SQL Server see
+[Deployment](DEPLOYMENT.md).
 
-The app is split into three pieces:
+**Pick your path:**
 
-- **`web`** — the Vue 3 client (Vite build) served by nginx.
-- **`api`** — the ASP.NET Core API (.NET 10) backed by Dapper.
-- **`sqlserver`** — SQL Server 2022 holding all application data.
+```mermaid
+flowchart LR
+  q{How do you want<br/>to run it?} --> d1["Active dev — recommended<br/>SQL in Docker + dotnet run + npm run dev<br/>hot reload, no secrets"]
+  q --> d2["Whole stack in Docker<br/>docker compose up<br/>web + api + sqlserver"]
+  q --> d3["Frontend only<br/>npm run dev → remote API"]
+```
 
-In production these run as **three separate containers**; in local development
-you typically run SQL Server in a container and the API + client as two host
-processes. Both arrangements are described below. For how the pieces fit
-together at a higher level, see [Architecture](ARCHITECTURE.md); for shipping to
-a real Windows Server + SQL Server, see [Deployment](DEPLOYMENT.md).
+The app has three pieces — **web** (Vue 3 client), **api** (ASP.NET Core .NET 10 +
+Dapper), **sqlserver** (SQL Server 2022). In dev you usually run SQL in a container
+and the API + client as host processes; in production all three are containers.
 
 ## Prerequisites
 
@@ -247,7 +246,7 @@ The database, schema, and seed data are applied automatically on first API start
 
 ### Confirm it's up
 
-Once the API is running, the health endpoints report status. There are three,
+Once the API is running, the health endpoints report status. There are two,
 each with a different job (defined in `Api/Controllers/HealthController.cs`):
 
 | Endpoint | Touches DB? | Returns | Use for |

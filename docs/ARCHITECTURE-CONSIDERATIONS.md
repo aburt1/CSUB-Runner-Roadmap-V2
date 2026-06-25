@@ -15,6 +15,9 @@ where the original reasoning needed a correction, it's called out inline.
 Server, SQL Server, Azure AD SSO, nginx-fronted; an internal university admissions app
 serving hundreds to low-thousands of students; greenfield (no production student data yet).
 
+**In a hurry?** The [Summary](#summary) table is the whole picture at a glance; the
+[Bottom line](#bottom-line) lists the only items that need action before go-live.
+
 **Legend:** ⚠️ = warrants attention before go-live · ✅ = addressed in code · 📋 = documented
 trade-off, no action now · ⏳ = deferred, revisit on a specific trigger.
 
@@ -123,6 +126,15 @@ works without Azure AD SSO.**
 
 **Guidance:** for the production (Azure AD) deployment, use the **nginx-fronted** mode. Treat
 single-process as an escape hatch with caveats, not the default.
+
+```mermaid
+flowchart TD
+  q{Deployment mode?}
+  q -->|nginx-fronted web + api| ok["Supported<br/>nginx CSP allows login.microsoftonline.com<br/>SSO works"]
+  q -->|single-process| sso{Azure AD SSO?}
+  sso -->|yes| broken["BROKEN — .NET CSP omits<br/>login.microsoftonline.com"]
+  sso -->|no| okish[Works without SSO only]
+```
 
 **Revisit when:** you intend to ship single-process *with* SSO. → Add
 `connect-src https://login.microsoftonline.com` to the .NET CSP and add coverage for that path.
