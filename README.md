@@ -51,83 +51,57 @@ Throughout, the code favors explicit, low-abstraction style over cleverness, and
 
 ## Quick Start
 
-The fastest way to see the whole app is the three-container Docker stack. The `api` container runs in Production and refuses weak/missing secrets, so set them first:
+See the whole app running in one command — the three-container Docker stack:
 
 ```bash
-cp .env.example .env        # then set JWT_SECRET, ADMIN_DEFAULT_PASSWORD, API_CHECK_ENCRYPTION_KEY, MSSQL_SA_PASSWORD
-docker compose up --build   # -> http://localhost:3000
+cp .env.example .env        # set the 4 secrets it lists (see Configuration)
+docker compose up --build   # → http://localhost:3000
 ```
 
-Default admin login: `admin@csub.edu` with the `ADMIN_DEFAULT_PASSWORD` you set in `.env` — the containerized api runs as Production and **rejects** weak/default passwords like `admin123` (that default applies only to local `dotnet run` development).
+Sign in as `admin@csub.edu` with the `ADMIN_DEFAULT_PASSWORD` from your `.env`.
 
-See the [Development Setup Guide](docs/SETUP.md) for local (non-container) development and for running the frontend on its own (e.g. a Windows desktop).
+> The Docker stack runs the API in **Production**, so it requires real secrets and rejects weak ones. For the day-to-day local dev loop (`dotnet run` + `npm run dev`, no secrets needed) see **[SETUP](docs/SETUP.md)**; for the full dev-vs-prod picture see **[DEPLOYMENT](docs/DEPLOYMENT.md)**.
 
 ---
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Development Setup](docs/SETUP.md) | Prerequisites, running locally, running the frontend on Windows, environment variables, default credentials, the dev quality workflow (tests/lint/format), troubleshooting |
-| [Architecture](docs/ARCHITECTURE.md) | **How the app works and why** (terms, tag personalization, the progression cursor, roles, integrations), plus structure, request/data flow, startup, resilience, deployment topology |
-| [Deployment](docs/DEPLOYMENT.md) | **Production deployment to a Windows Server + SQL Server**: the connection-string model, least-privilege DBA-provisioned login, `Encrypt=True`, Windows/Integrated auth, the `Database:AutoCreate`/`Database:Seed` flags, container hardening, health probes, TLS, and a go-live checklist |
-| [API Integration](docs/API-GUIDE.md) | REST API reference for external system integration (inbound push + outbound API checks) + health endpoints |
-| [Architecture Considerations](docs/ARCHITECTURE-CONSIDERATIONS.md) | The deliberate trade-offs and their **"revisit when…"** triggers — what's correct now, what to watch, and the reasoning behind each boundary |
-| [docs/history/](docs/history/) | Historical records: the enterprise-readiness gap analysis and the audit reports |
+**Which doc do I need?** &nbsp; Run it locally → **[SETUP](docs/SETUP.md)** &nbsp;·&nbsp; Deploy to production → **[DEPLOYMENT](docs/DEPLOYMENT.md)** &nbsp;·&nbsp; Integrate an external system → **[API](docs/API-GUIDE.md)** &nbsp;·&nbsp; Understand how & why → **[Architecture](docs/ARCHITECTURE.md)**
+
+| Document | For |
+|----------|-----|
+| [Development Setup](docs/SETUP.md) | Running locally (dev loop, full Docker, or frontend-only), env vars, the test/lint/format workflow, troubleshooting |
+| [Architecture](docs/ARCHITECTURE.md) | How the app works and *why* — business logic, request/data flow, design decisions, topology |
+| [Deployment](docs/DEPLOYMENT.md) | Production runbook: the three run modes, DBA provisioning, secrets, TLS, health probes, go-live checklist |
+| [API Integration](docs/API-GUIDE.md) | REST contract for external systems (inbound push + outbound API checks) + health endpoints |
+| [Architecture Considerations](docs/ARCHITECTURE-CONSIDERATIONS.md) | Deliberate trade-offs and their "revisit when…" triggers |
+| [docs/history/](docs/history/) | Historical audit records |
 
 ---
 
-## Deployment
+## Running it: dev vs production
 
-> **Production deployment** (app in containers, SQL Server on a Windows Server) uses the dedicated **[`docker-compose.prod.yml`](docker-compose.prod.yml)** (web + api only, external database, no `CREATE DATABASE` rights) and is documented step-by-step in **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** — including the DBA-provisioned least-privilege login, `Encrypt=True`, Windows/Integrated auth, TLS, and a go-live checklist. The compose stack below is for local/testing.
+One switch — `ASPNETCORE_ENVIRONMENT` — decides everything (DB creation, seeding, required secrets). There are three run modes; **[DEPLOYMENT.md](docs/DEPLOYMENT.md)** has the full comparison table and a side-by-side diagram. In short:
 
-Three containers, defined in [`docker-compose.yml`](docker-compose.yml):
+- **Local dev** — `dotnet run` + `npm run dev`, or `docker compose up` for the full stack → **[SETUP](docs/SETUP.md)**
+- **Production** — `docker-compose.prod.yml`: **web + api** against an external, DBA-provisioned SQL Server (no `CREATE DATABASE`) → **[DEPLOYMENT](docs/DEPLOYMENT.md)**
 
-| Container | What it is | Published |
-|-----------|-----------|-----------|
-| **web** | Vue build served by a **non-root** nginx (uid 101, listens on 8080), reverse-proxying `/api` to the API (same-origin, no CORS) — built from `client/Dockerfile` | host `3000` → container `8080` |
-| **api** | ASP.NET Core API only, runs as a non-root user — built from `Api/Dockerfile` | `127.0.0.1:8080` (debug only) |
-| **sqlserver** | SQL Server 2022 (local/testing only — prod uses a real SQL Server) | `127.0.0.1:1433` |
-
-Both app containers declare a Docker `HEALTHCHECK` (api: `/api/health/live`, web: the SPA shell), and compose gates `web` startup on the `api` being healthy.
-
-```bash
-cp .env.example .env
-docker compose up --build         # full stack on http://localhost:3000
-```
-
-Each piece can also be launched on its own:
-
-```bash
-docker compose up -d sqlserver    # just the database
-docker compose up -d --build api  # database + API (depends_on starts sqlserver)
-docker compose up -d --build web  # full stack (depends_on pulls in api + sqlserver)
-```
-
-> Mac users: the SQL Server container needs one VM setting — see [SETUP troubleshooting](docs/SETUP.md#troubleshooting).
+The local Docker stack ([`docker-compose.yml`](docker-compose.yml)) is three containers — `web` (non-root nginx serving the SPA + proxying `/api`, same-origin so no CORS), `api` (ASP.NET Core, non-root), and `sqlserver` (2022, local/testing only). Both app containers declare a Docker `HEALTHCHECK`, and compose gates `web` on `api` being healthy. SETUP covers running each piece on its own.
 
 ---
 
 ## Configuration
 
-`Api/appsettings.Development.json` holds local dev settings. In production / containers, set these via `.env` or environment variables (double-underscore syntax):
+Local dev needs **no secrets** — `Api/appsettings.Development.json` supplies dev defaults. The Docker/production stack requires four, set in `.env` (`.env.example` lists every variable):
 
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `ConnectionStrings__Default` | Yes | SQL Server connection string. Drives **everything** about DB connectivity — SQL login or Windows/Integrated auth, container or bare metal, `Encrypt=True` for prod. See [Deployment](docs/DEPLOYMENT.md) |
-| `Jwt__Secret` | Yes | HS256 signing secret (≥ 32 chars); the API rejects weak/missing values in Production |
-| `Admin__DefaultEmail` / `Admin__DefaultPassword` | Yes (password) | Seeded default admin; the seeder rejects weak/default passwords in Production |
-| `ApiCheck__EncryptionKey` | Yes | 64-hex (32-byte) key to encrypt stored API-check credentials |
-| `Database__AutoCreate` | No | Whether the app runs `CREATE DATABASE` if the DB is missing. **Defaults to `false` in Production** (a DBA provisions it), `true` otherwise. Set explicitly to override |
-| `Database__Seed` | No | Whether to seed bootstrap data (default term, checklist, admin, integration client) on an empty DB. Defaults to `true`; set `false` if a DBA seeds out-of-band |
-| `LocalLogin__Username` / `LocalLogin__Password` | No | Break-glass local admin login (disabled unless both are set) |
-| `AzureAd__ClientId` / `AzureAd__TenantId` | No | Azure AD SSO (omit to disable; endpoints return 501) |
-| `Integration__DefaultName` / `Integration__DefaultKey` | No | Seeded integration client |
-| `Cors__Origin` | No | Allowed CORS origin (only if the client is served from a different origin) |
+| Secret (`.env`) | Purpose |
+|---|---|
+| `MSSQL_SA_PASSWORD` | SA password for the local SQL container (dev stack only) |
+| `JWT_SECRET` | HS256 signing secret, ≥ 32 random chars |
+| `ADMIN_DEFAULT_PASSWORD` | Seeded first-admin password — weak/default values are rejected in Production |
+| `API_CHECK_ENCRYPTION_KEY` | 64-hex (32-byte) key encrypting stored API-check credentials |
 
-Client config is **inlined by Vite at build time** (not runtime), so it is passed as Docker build args: `VITE_AZURE_AD_CLIENT_ID`, `VITE_AZURE_AD_TENANT_ID`, `VITE_AZURE_AD_REDIRECT_URI`, and `VITE_ALLOW_DEV_LOGIN` (keep `false` for real deployments). See [Deployment](docs/DEPLOYMENT.md) and `.env.example`.
-
-> The table above uses the ASP.NET `Section__Key` environment names. When configuring via the compose `.env` file, use the friendlier names from `.env.example` (e.g. `AZURE_AD_CLIENT_ID`, `CORS_ORIGIN`, `INTEGRATION_DEFAULT_KEY`, `PROD_CONNECTION_STRING`) — the compose files map them onto the `__` names.
+In production, `PROD_CONNECTION_STRING` replaces the SA password (the DB is external). The **full reference** — connection string, `Database:AutoCreate`/`Seed`, Azure AD SSO, the Vite build-time vars, and the production fail-fast rules — is in **[DEPLOYMENT.md §4](docs/DEPLOYMENT.md)**.
 
 ---
 

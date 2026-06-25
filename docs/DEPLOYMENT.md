@@ -11,22 +11,83 @@ app boots and talks to the database see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
+## At a glance: three run modes, one switch
+
+How the app runs is decided by **`ASPNETCORE_ENVIRONMENT`**, which cascades to database
+creation, seeding, and which secrets are required. There are exactly three modes — this
+table is the single source of truth the other docs point to:
+
+| | Dev — host process | Dev — full Docker | **Production** |
+|---|---|---|---|
+| For | active development | the whole stack locally | the real deployment |
+| Start with | `dotnet run` + `npm run dev` | `docker compose up` | `docker compose -f docker-compose.prod.yml up` |
+| Environment | `Development` | `Production` | `Production` |
+| Containers | SQL only | web + api + sqlserver | web + api (**DB is external**) |
+| Database | local SQL container | throwaway SQL container | **DBA-provisioned SQL Server** |
+| `Database:AutoCreate` | `true` (default) | `true` (set in compose) | **`false`** — the DBA provisions |
+| Secrets needed | none (dev defaults) | the 4 secrets | the 4 secrets + `PROD_CONNECTION_STRING` |
+| Guide | [SETUP.md](SETUP.md) | [SETUP.md](SETUP.md) | **this doc** |
+
+```mermaid
+flowchart LR
+  subgraph DEVHOST["Dev — dotnet run + vite"]
+    direction TB
+    B1([Browser :3000]) --> V[Vite :3000]
+    V -->|/api proxy| K["Kestrel API :3001<br/>ENV=Development<br/>AutoCreate+Seed on<br/>no secrets needed"]
+    K --> S1[("SQL container :1433<br/>sa / Csub_Local_Dev_2026!")]
+  end
+  subgraph DEVDOCK["Dev — docker-compose.yml"]
+    direction TB
+    B2([Browser :3000]) --> W2[web nginx]
+    W2 -->|/api| A2["api 127.0.0.1<br/>ENV=Production<br/>AutoCreate=true in compose<br/>4 secrets required"]
+    A2 --> S2[("sqlserver :1433<br/>throwaway volume")]
+  end
+  subgraph PROD["Prod — docker-compose.prod.yml"]
+    direction TB
+    B3([Browser HTTPS]) --> TLS[TLS terminator]
+    TLS --> W3[web nginx]
+    W3 -->|/api internal| A3["api — not published<br/>ENV=Production<br/>AutoCreate=false<br/>4 secrets + PROD_CONNECTION_STRING"]
+    A3 --> S3[("External SQL Server<br/>DBA-provisioned, Encrypt=True<br/>least-privilege login")]
+  end
+```
+
+> **Recommended production path** — the rest of this doc is the detail behind these three steps:
+> 1. **DBA** creates the database + a least-privilege login (§3) and hands over the connection string.
+> 2. **App admin** sets the 4 secrets + `PROD_CONNECTION_STRING` in `.env`, builds `web` with the `VITE_*` args (§4), and runs `docker compose -f docker-compose.prod.yml up -d` (§5).
+> 3. Terminate TLS in front of `web`, wire the health probes (§6–§7), and verify with the **go-live checklist** (§10).
+
+```mermaid
+flowchart TD
+  subgraph DBA["DBA — once"]
+    d1[Create csub_admissions DB] --> d2["Create least-privilege login<br/>db_owner scoped to the one DB"]
+    d2 --> d3[Hand over connection string]
+  end
+  subgraph ADMIN["App admin — each deploy"]
+    a1[Set 4 secrets in .env] --> a2[Set PROD_CONNECTION_STRING]
+    a2 --> a3[Build web with VITE_* args]
+    a3 --> a4[compose -f docker-compose.prod.yml up -d]
+    a4 --> a5[Wire TLS + health probes]
+  end
+  d3 -.connection string.-> a2
+  a5 --> go([Verify with §10 checklist])
+```
+
+---
+
 ## 1. Topology
 
-```
-                         Windows Server (or VM)
-   ┌─────────────────────────────────────────────────────────────┐
-   │                                                               │
-   │   ┌──────────────┐        ┌──────────────┐                    │
- ──┼──▶│  web (nginx) │ ─/api─▶ │  api (.NET)  │ ──TDS/1433──▶ SQL  │
-   │   │  Vue SPA     │        │  ASP.NET Core│              Server │
-   │   │  uid 101     │        │  non-root    │              (host) │
-   │   └──────────────┘        └──────────────┘                    │
-   │     container               container                         │
-   └─────────────────────────────────────────────────────────────┘
-        ▲
-        │ HTTPS (TLS terminated at a reverse proxy / load balancer in front)
-      users
+```mermaid
+flowchart LR
+  user([Users]) -->|HTTPS| tls[TLS terminator / reverse proxy]
+  tls -->|:3000| web
+  subgraph host["Container host"]
+    web["web — nginx + Vue SPA<br/>uid 101, non-root<br/>serves SPA, proxies /api"]
+    api["api — ASP.NET Core<br/>non-root, not published<br/>reached only via nginx"]
+    web -->|/api same-origin| api
+  end
+  api -->|"TDS/1433, Encrypt=True"| sql[("SQL Server<br/>on Windows host — DBA owned")]
+  classDef ext fill:#f4f4f4,stroke:#999,stroke-dasharray:5 4
+  class sql ext
 ```
 
 - **web** and **api** are stateless containers. They can be redeployed/scaled freely.
@@ -123,17 +184,13 @@ Server=SQLHOST;Database=csub_admissions;Integrated Security=True;Encrypt=True;Tr
 
 ### Encryption (`Encrypt` / `TrustServerCertificate`)
 
-`Microsoft.Data.SqlClient` defaults to `Encrypt=True`. Keep it on in production.
+`Microsoft.Data.SqlClient` defaults to `Encrypt=True` — keep it on in production.
 
-- **`Encrypt=True;TrustServerCertificate=False`** (recommended) — the connection is
-  encrypted **and** the server's TLS certificate is validated. Requires SQL Server to
-  present a certificate trusted by the app host (a cert from your CA, or the SQL Server
-  cert installed in the host's trust store).
-- **`Encrypt=True;TrustServerCertificate=True`** — encrypted but the certificate is *not*
-  validated. Acceptable as a stopgap if SQL Server only has a self-signed cert, but it
-  does not protect against man-in-the-middle. Plan to install a real cert.
-- The app never needs `Encrypt=False` in production. (The local compose stack uses
-  `Encrypt=False` only because it is a throwaway container on localhost.)
+| Setting | Encrypted | Cert validated | When to use |
+|---|---|---|---|
+| `Encrypt=True;TrustServerCertificate=False` | Yes | Yes | **Recommended.** Needs SQL Server to present a cert the app host trusts (your CA, or the SQL cert in the host's trust store). |
+| `Encrypt=True;TrustServerCertificate=True` | Yes | No | Stopgap for a self-signed cert — no protection against man-in-the-middle. Plan to install a real cert. |
+| `Encrypt=False` | No | — | Never in production. The local compose stack uses it only because SQL is a throwaway container on localhost. |
 
 ---
 
@@ -210,6 +267,12 @@ docker compose -f docker-compose.prod.yml up -d --build
 > with `docker compose up web api`. The prod file has none of that: AutoCreate stays
 > off (Production default), the api container is not published, and the database
 > stays **out** of the container set.
+
+> **Use the nginx-fronted topology (web + api) — not single-process.** The API *can*
+> serve the SPA itself, but that mode is unsupported for production: its in-process CSP
+> omits `login.microsoftonline.com`, so **Azure AD SSO breaks**. Also note the CSP lives
+> in **two files** — `Api/Program.cs` and `client/nginx.conf.template` — edit them as a
+> matched pair whenever you change it. (Reasoning: [ARCHITECTURE-CONSIDERATIONS.md](ARCHITECTURE-CONSIDERATIONS.md).)
 
 ### Option B — build images in CI, run with your orchestrator
 
