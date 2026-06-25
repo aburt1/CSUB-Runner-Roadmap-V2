@@ -1,5 +1,9 @@
 # Quality Audit — Triaged Fix Plan (2026-06-11)
 
+> **Historical record.** This plan was **subsequently executed** — the fixes below were
+> applied in later commits. It is kept as a snapshot of the triage; the status note below
+> reflects the doc's state when it was written, not today's.
+
 **Status: TRIAGED, NOT YET FIXED.** This is the output of the third audit pass
 (code cleanliness / readability / comprehensibility — new dimensions plus a
 re-audit of recent changes). Eight finder agents produced **117

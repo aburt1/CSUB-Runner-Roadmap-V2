@@ -7,9 +7,8 @@ scale or requirement. This document records each one — what it is, why it's th
 real trade-off, and the concrete trigger for revisiting — so the next maintainer inherits
 the reasoning, not a surprise.
 
-**None of these are bugs. They are intentional boundaries.** Every item below was verified
-against the actual code in an audit (file:line references are current as of that audit);
-where the original reasoning needed a correction, it's called out inline.
+**None of these are bugs. They are intentional boundaries.** Every item is grounded in the
+current code, with `file:line` references so you can verify it.
 
 **Target deployment** (all risk is calibrated to this): a single API instance, Windows
 Server, SQL Server, Azure AD SSO, nginx-fronted; an internal university admissions app
@@ -59,7 +58,7 @@ guarded by `IF OBJECT_ID(...) IS NULL` / `IF NOT EXISTS(sys.indexes...)`) and th
 greenfield app with no real data. Building a migration engine before any production data
 exists is precisely the premature abstraction the charter forbids.
 
-**The trade-offs to know (corrected & sharpened by the audit):**
+**The trade-offs to know:**
 - **The app applies DDL**, so its DB login needs DDL + data rights (`db_ddladmin` +
   `db_datareader`/`db_datawriter`) — not a pure read/write least-privilege account. *It does
   **not** need server-level `CREATE DATABASE`:* `EnsureDatabaseAsync` is gated by
@@ -160,10 +159,9 @@ the extra DB read.
 step-side `links`/`required_tags`/`excluded_tags`/`contact_info`, plus `audit_log.details`
 and `step_api_checks` credentials/headers.
 
-**Correction to the original note:** the claim "never filtered in SQL" is **not quite true** —
-`students.tags` *is* filtered in SQL via substring `LIKE` in two analytics paths (cohort
-comparison and tag drill-down). That `LIKE '%tag%'` is a full scan, which is fine at this
-scale but is the thing that would bite first.
+**Note:** `students.tags` *is* filtered in SQL via substring `LIKE` in two analytics paths
+(cohort comparison and tag drill-down). That `LIKE '%tag%'` is a full scan, which is fine at
+this scale but is the thing that would bite first.
 
 **Revisit when:** you must query/filter by JSON contents at scale — student count into the
 tens of thousands such that the `LIKE` scan is measurable, or a need to filter/join on a
@@ -174,10 +172,9 @@ with a computed indexed column.
 
 **What:** The tag-match predicate is implemented twice — C# `StepAppliesToStudent`
 (`Api/Controllers/StepsController.cs:43-57`) and TS `stepApplies`
-(`client/src/composables/useProgress.ts:20-32`). *(Correction: it lives in `StepsController`,
-not `StudentTags.cs` as the original note said.)* This lets the client filter steps without a
-round-trip. Both are ~13 lines, verified line-by-line identical (exclusion-wins; empty
-required-tags ⇒ applies; non-`all` mode ⇒ `any`), and the server stays authoritative.
+(`client/src/composables/useProgress.ts:20-32`). This lets the client filter steps without a
+round-trip. Both are ~13 lines and behave identically (exclusion-wins; empty required-tags ⇒
+applies; non-`all` mode ⇒ `any`), and the server stays authoritative.
 
 **Revisit when:** the rule gains real complexity (negation groups, tag hierarchies,
 date/term conditions) so hand-sync drift becomes likely or consequential. → Make the server
@@ -196,9 +193,8 @@ sides explicitly.
 ### 9. Progress updates via 30s polling, not push  📋
 
 **What:** `useProgress` polls every 30s (`POLL_INTERVAL = 30000`), started only when
-authenticated and torn down on logout/unmount. *(Correction: `GetProgress` issues up to
-**three** queries per poll, not the "single indexed query" the original note implied — still
-cheap at this scale.)* No SSE/WebSocket exists.
+authenticated and torn down on logout/unmount. Each poll's `GetProgress` issues up to
+**three** small queries (still cheap at this scale). No SSE/WebSocket exists.
 
 **Revisit when:** near-real-time updates become a requirement, or concurrent active students
 grow into the tens of thousands such that poll fan-out is measurable. → Consider a

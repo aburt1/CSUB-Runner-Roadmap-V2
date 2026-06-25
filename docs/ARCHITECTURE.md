@@ -22,12 +22,12 @@ it does** (the business logic). For specific topics it hands off to the sibling 
 
 | Layer | Technologies |
 |-------|-------------|
-| **Frontend** | Vue 3 (Single-File Components), TypeScript, Vite, Pinia (state), vue-router, Tailwind CSS 3, vuedraggable (step reorder), vue-chartjs + Chart.js (analytics), Tiptap (rich-text step content), vue3-emoji-picker, canvas-confetti, DOMPurify (HTML sanitization), a `safeUrl` scheme guard for admin-authored links (`utils/links.ts`) |
+| **Frontend** | Vue 3 (Single-File Components), TypeScript, Vite, Pinia (state), vue-router, Tailwind CSS 4, vuedraggable (step reorder), vue-chartjs + Chart.js (analytics), Tiptap (rich-text step content), vue3-emoji-picker, canvas-confetti, DOMPurify (HTML sanitization), a `safeUrl` scheme guard for admin-authored links (`utils/links.ts`) |
 | **Backend** | ASP.NET Core controllers (.NET 10), C#, Dapper + hand-written T-SQL, SQL Server 2022 |
 | **Auth** | App-issued JWT sessions (HS256), bcrypt password hashing (BCrypt.Net-Next), Azure AD SSO via MSAL (optional) |
 | **Security** | Helmet-equivalent security headers, CORS, ASP.NET Core rate limiting, AES-256-GCM credential encryption, SSRF-guarded outbound API checks, forwarded-headers handling behind a reverse proxy |
 | **Resilience** | Transient-fault retry with exponential backoff in the Dapper layer, idempotent app-managed schema, liveness/readiness health probes |
-| **Quality gates** | Backend: .NET analyzers (`EnableNETAnalyzers`, `AnalysisLevel=latest`, `TreatWarningsAsErrors`). Frontend: Vitest unit tests, ESLint flat config + Prettier. CI builds + tests both halves against a real SQL Server. |
+| **Quality gates** | Backend: .NET analyzers (`EnableNETAnalyzers`, `AnalysisLevel=latest`, `TreatWarningsAsErrors`). Frontend: Vitest unit tests, ESLint flat config + Prettier. A CI workflow that builds + tests both halves against a real SQL Server is committed but **parked** (`.github/workflows/ci.yml.disabled`). |
 | **Testing** | xUnit + `WebApplicationFactory` integration tests against a real SQL Server database |
 | **Deployment** | Docker Compose — three containers: **web** (Vue build served by nginx), **api** (ASP.NET Core), **sqlserver** (SQL Server 2022). nginx reverse-proxies `/api` to the API so the browser sees a single origin. See [DEPLOYMENT.md](DEPLOYMENT.md) for production. |
 
@@ -809,7 +809,7 @@ The `tests/Api.IntegrationTests` project hosts the **real application** via `Web
 - **Integration-test isolation.** `tests/Api.IntegrationTests` hosts the real app via `WebApplicationFactory` against a dedicated test database that is dropped and rebuilt per run — no mocks for the data layer, real SQL Server behavior under test.
 - **Split admin API.** The admin surface is split into focused controllers (`Analytics`, `Steps`, `Students`, `Terms`, `Users`, `ApiChecks`) under `/api/admin`, each declaring its own `[AdminAuth(...)]` role gates per action, so each concern stays small and independently authorized.
 - **Shared helpers.** Common patterns (`ParseTermId`, `ParsePagination`, `CountActiveStepsAsync`, the active-step SQL fragment) live in `Api/Services/QueryHelpers.cs` to eliminate duplication across controllers.
-- **Quality as a build contract.** Backend analyzers run with `TreatWarningsAsErrors`; the frontend lints, formats, and unit-tests; CI exercises both against a real SQL Server. See [Quality Gates & CI](#quality-gates--ci).
+- **Quality as a build contract.** Backend analyzers run with `TreatWarningsAsErrors`; the frontend lints, formats, and unit-tests; a CI workflow set up to exercise both against a real SQL Server is committed but parked. See [Quality Gates & CI](#quality-gates--ci).
 
 ---
 
