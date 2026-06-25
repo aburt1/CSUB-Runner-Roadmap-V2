@@ -110,24 +110,17 @@ public sealed class AuthController : ControllerBase
         }
         else
         {
-            // No azure_id match — this may be a student pre-staged by the SIS (PUT
-            // /api/integrations/v1/students) who hasn't signed in yet. LINK to that row
-            // (attach azure_id, reuse its id) rather than inserting a duplicate, preserving
-            // its provisioned term_id; the accepted step was already seeded on provisioning.
-            // Prefer matching by emplid — our primary identifier — when the token carries it
-            // (AzureAd:EmplidClaim); otherwise fall back to email. Only an UNCLAIMED row
-            // (azure_id IS NULL) so we never re-attach to a row already linked elsewhere.
+            // No azure_id match — the student may have been pre-staged by the SIS
+            // (PUT /api/integrations/v1/students) and not signed in before. Match them by
+            // their student ID number (the "studentId" token claim) and stamp the azure_id
+            // onto that record, rather than creating a duplicate. The match targets an
+            // unclaimed row (azure_id IS NULL) so we never overwrite an already-linked account.
             StudentLite? preStaged = null;
             if (!string.IsNullOrEmpty(emplid))
             {
                 var emplidNorm = emplid.Trim().ToLowerInvariant();
                 preStaged = await _db.QueryOneAsync<StudentLite>(
                     "SELECT id, display_name, email FROM students WHERE emplid_norm = @emplidNorm AND azure_id IS NULL", new { emplidNorm });
-            }
-            if (preStaged is null && !string.IsNullOrEmpty(email))
-            {
-                preStaged = await _db.QueryOneAsync<StudentLite>(
-                    "SELECT id, display_name, email FROM students WHERE email = @email AND azure_id IS NULL", new { email });
             }
 
             if (preStaged is not null)
@@ -139,8 +132,8 @@ public sealed class AuthController : ControllerBase
             }
             else
             {
-                // Genuinely new student. Record the emplid when present so a later SIS push
-                // (keyed on emplid) links to this row instead of creating a duplicate.
+                // Genuinely new student. Record their student ID number so a later SIS push
+                // (keyed on it) links to this row instead of creating a duplicate.
                 var studentId = Guid.NewGuid().ToString();
                 var termId = await _db.QueryOneAsync<int?>("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
                 await _db.ExecuteAsync(

@@ -51,12 +51,10 @@ public sealed class AzureAdTokenValidator
             ?? throw new SecurityTokenException("Azure AD token is missing the oid claim.");
         var email = principal.FindFirst("preferred_username")?.Value ?? principal.FindFirst("email")?.Value;
         var name = principal.FindFirst("name")?.Value;
-        // The student ID # (emplid) is our primary identifier. Read it from the configured
-        // token claim when the tenant emits it (e.g. "employeeId" or an extension attribute);
-        // when AzureAd:EmplidClaim is unset, sign-in falls back to matching by email.
-        var emplidClaim = _config["AzureAd:EmplidClaim"];
-        var emplid = string.IsNullOrWhiteSpace(emplidClaim) ? null : principal.FindFirst(emplidClaim)?.Value;
-        return (oid, email, name, emplid);
+        // The student ID number is our primary identifier; the login token carries it in the
+        // "studentId" claim. It's how we link a pre-staged student to their account on sign-in.
+        var studentId = principal.FindFirst("studentId")?.Value;
+        return (oid, email, name, emplid: studentId);
     }
 
     private ConfigurationManager<OpenIdConnectConfiguration> GetConfigManager(string authority)

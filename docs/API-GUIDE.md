@@ -388,7 +388,7 @@ Pre-stage (upsert) a single student into a cohort by emplid — **before** they 
 | `display_name` | string | Yes | Student display name. Blank → `missing_required_field`. |
 | `source_event_id` | string | Yes | Idempotency key. Blank → `invalid_source_event_id`. Not stored as a column. |
 | `term_id` | integer | No | Our numeric `terms.id` (the cohort). If omitted, falls back to the current active term. A non-existent id → `term_not_found`; omitted with no active term → `no_active_term`. |
-| `email` | string | Recommended | The **only** identifier shared with the Azure sign-in token, so it is what links this row when the student first logs in. Omit it and the student gets a *duplicate* row on sign-in instead of linking to the pre-staged one. |
+| `email` | string | No | Student email, stored on the record. |
 | `tags` | string | No | JSON array string (e.g. `"[\"first_gen\"]"`). |
 | `preferred_name` | string | No | |
 | `phone` | string | No | |
@@ -529,7 +529,7 @@ Pre-stage multiple students in a single request. Each item has the same fields a
 
 > **Important:** Like the completions batch, this endpoint always returns HTTP 200 at the envelope level even if individual items fail — the per-item HTTP status is folded into each item's body. Always check each item's `success` field. Items are processed **sequentially in array order**, and each is independently idempotent via its own `source_event_id`.
 
-> **Sign-in linking:** A pre-staged row has an emplid/email but no `azure_id`. When that student later signs in, the app matches the existing row and attaches the Azure id rather than inserting a duplicate, preserving the provisioned cohort — so a pushed student sees their seeded roadmap on first login. It matches by **emplid** (our primary identifier) when the Azure id-token carries it as the claim named by `AzureAd:EmplidClaim` (default `studentId`), and falls back to **email** otherwise. (Only an unclaimed row — `azure_id IS NULL` — is ever linked, so an already-linked account is never hijacked.)
+> **Sign-in linking:** A pre-staged row has a student ID number but no `azure_id` yet. On sign-in the app matches by `azure_id` first (returning users); if there's no match, it matches by the **student ID number** carried in the login token's `studentId` claim and stamps the `azure_id` onto that record — so a pushed student links to their seeded roadmap instead of getting a duplicate. (It only links a row that has no `azure_id` yet, so an already-linked account is never overwritten.)
 
 ---
 
