@@ -137,76 +137,33 @@ exact boot sequence and the flags that control it are described under
 
 ## What the API does on startup
 
-Everything the API needs from the database is created **idempotently on boot**,
-so there is no separate migration or provisioning step in development. The boot
-sequence in `Api/Program.cs` is:
+Everything the API needs from the database is created **idempotently on boot** — no
+separate migration or provisioning step in development. `Api/Program.cs` runs:
 
-```
-                   ┌─────────────────────────────────────────────┐
-  dotnet run  ───► │ 1. Read ConnectionStrings:Default            │
-                   │    (SQL or Windows auth — drives ALL DB I/O) │
-                   ├─────────────────────────────────────────────┤
-                   │ 2. Database:AutoCreate?                       │
-                   │      └─ yes ► CREATE DATABASE if absent       │
-                   │      └─ no  ► assume a DBA already made it    │
-                   ├─────────────────────────────────────────────┤
-                   │ 3. Apply Api/Data/schema.sql (idempotent)    │
-                   │    and record the version in schema_version  │
-                   ├─────────────────────────────────────────────┤
-                   │ 4. Database:Seed?                             │
-                   │      └─ yes ► seed defaults (idempotent)      │
-                   │      └─ no  ► skip (a DBA seeds out-of-band)  │
-                   └─────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+  start([dotnet run]) --> conn[Read ConnectionStrings:Default]
+  conn --> ac{Database:AutoCreate?<br/>default: on outside Production}
+  ac -->|on| create[CREATE DATABASE if absent]
+  ac -->|off| skip[Assume a DBA provisioned it]
+  create --> schema["Apply schema.sql idempotently<br/>+ record schema_version"]
+  skip --> schema
+  schema --> seed{Database:Seed?<br/>default: on}
+  seed -->|on| dosed["Seed defaults idempotently<br/>+ 50 sample students off-Production"]
+  seed -->|off| noop[Skip — a DBA seeds out-of-band]
+  dosed --> ready([Ready])
+  noop --> ready
 ```
 
-The two flags worth knowing as a developer are `Database:AutoCreate` and
-`Database:Seed`. Both follow the standard config layering — set them in
-`appsettings*.json`, or override per-process with the double-underscore env-var
-form (`Database__AutoCreate=false`).
+Two flags control this; set them in `appsettings*.json` or as `Database__AutoCreate` /
+`Database__Seed` env vars:
 
-### `Database:AutoCreate` — should the app run `CREATE DATABASE`?
+| Flag | Default | What it does |
+|------|---------|--------------|
+| `Database:AutoCreate` | on outside Production | Whether the app runs `CREATE DATABASE` when the DB is absent. Applying `schema.sql` runs either way. Set `false` locally to rehearse the production flow against a DB you pre-create. |
+| `Database:Seed` | on (everywhere) | Whether the idempotent seeder inserts the default term/checklist/admin/integration client (+ 50 sample students outside Production). Set `false` to test empty-state behavior. |
 
-```csharp
-// Api/Program.cs
-var autoCreateDatabase = app.Configuration.GetValue<bool?>("Database:AutoCreate")
-    ?? !app.Environment.IsProduction();
-if (autoCreateDatabase)
-    await SchemaInitializer.EnsureDatabaseAsync(connectionString);
-```
-
-| Environment | Default | Why |
-|-------------|---------|-----|
-| Development / test | **on** | Zero-setup. You don't have to pre-create `csub_admissions`; the app makes it. |
-| Production | **off** | The database is provisioned by a DBA, and the app's SQL login is *not* expected to have `CREATE DATABASE` rights — it only applies the schema into a database that already exists. |
-
-**When a developer would toggle it:** set `Database__AutoCreate=false` locally if
-you want to reproduce the production flow — i.e. point the API at a database you
-created yourself (or one a DBA handed you) and confirm the app is happy applying
-only the schema, without needing server-level create rights. Regardless of this
-flag, step 3 (apply `schema.sql`) always runs, so the tables/columns are kept in
-sync on every boot.
-
-### `Database:Seed` — should the app insert default data?
-
-```csharp
-// Api/Program.cs
-if (app.Configuration.GetValue<bool?>("Database:Seed") ?? true)
-    await Seeder.RunAsync(db, app.Configuration, app.Environment);
-```
-
-Defaults to **on** in every environment. The seeder is idempotent — it only
-inserts the default term, checklist, default admin, and integration client when
-they're missing — and it adds the 50 sample students **only when not running in
-Production**.
-
-**When a developer would toggle it:** set `Database__Seed=false` when you want a
-schema-only database with no default rows — for example when you're testing
-against data a DBA loaded out-of-band, or you want to verify a screen's
-empty-state behavior without the seeded checklist/students getting in the way.
-
-> Both flags are equally relevant to deployment. For how they're set on a real
-> Windows Server / SQL Server install (typically `AutoCreate=false`, with the
-> schema and seed applied deliberately), see [Deployment](DEPLOYMENT.md).
+In production both are typically off or DBA-handled — see [Deployment](DEPLOYMENT.md).
 
 ## Database Setup
 
