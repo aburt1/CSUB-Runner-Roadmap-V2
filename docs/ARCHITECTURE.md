@@ -13,6 +13,7 @@ it does** (the business logic). For specific topics it hands off to the sibling 
 - Getting a dev environment running → [SETUP.md](SETUP.md)
 - Shipping to a Windows Server + SQL Server box → [DEPLOYMENT.md](DEPLOYMENT.md)
 - Endpoint-by-endpoint reference → [API-GUIDE.md](API-GUIDE.md)
+- Deliberate trade-offs and their "revisit when…" triggers → [ARCHITECTURE-CONSIDERATIONS.md](ARCHITECTURE-CONSIDERATIONS.md)
 - Historical audit records → [history/](history/)
 
 ---

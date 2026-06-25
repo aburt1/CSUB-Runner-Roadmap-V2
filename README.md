@@ -70,6 +70,7 @@ See the [Development Setup Guide](docs/SETUP.md) for local (non-container) devel
 | [Architecture](docs/ARCHITECTURE.md) | **How the app works and why** (terms, tag personalization, the progression cursor, roles, integrations), plus structure, request/data flow, startup, resilience, deployment topology |
 | [Deployment](docs/DEPLOYMENT.md) | **Production deployment to a Windows Server + SQL Server**: the connection-string model, least-privilege DBA-provisioned login, `Encrypt=True`, Windows/Integrated auth, the `Database:AutoCreate`/`Database:Seed` flags, container hardening, health probes, TLS, and a go-live checklist |
 | [API Integration](docs/API-GUIDE.md) | REST API reference for external system integration (inbound push + outbound API checks) + health endpoints |
+| [Architecture Considerations](docs/ARCHITECTURE-CONSIDERATIONS.md) | The deliberate trade-offs and their **"revisit when…"** triggers — what's correct now, what to watch, and the reasoning behind each boundary |
 | [docs/history/](docs/history/) | Historical records: the enterprise-readiness gap analysis and the audit reports |
 
 ---
