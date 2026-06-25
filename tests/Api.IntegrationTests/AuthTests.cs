@@ -214,4 +214,33 @@ public class AuthTests
             $"SELECT term_id FROM students WHERE id = '{preStagedId}'"));
         Assert.Equal(preStagedTerm, termAfter);
     }
+
+    [Fact]
+    public async Task Signin_links_pre_staged_student_by_emplid_not_email()
+    {
+        // Pre-stage a student via the provisioning push: emplid + one email, NO azure_id.
+        var emplid = "9" + Guid.NewGuid().ToString("N")[..8];
+        var provisionedEmail = $"prestaged-{Guid.NewGuid():N}@t.edu";
+
+        var integration = _fx.Anonymous();
+        integration.DefaultRequestHeaders.Add("X-Integration-Key", "dev-integration-key");
+        var push = await integration.PutAsJsonAsync(
+            "/api/integrations/v1/students",
+            new { emplid, display_name = "Pre Staged Student", email = provisionedEmail, source_event_id = Guid.NewGuid().ToString() });
+        push.EnsureSuccessStatusCode();
+        var preStagedId = (await push.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("student_id").GetString();
+
+        // Sign in with the SAME emplid but a DIFFERENT email — so ONLY emplid can match.
+        // emplid is our primary identifier, so the pre-staged row MUST be reused (no duplicate).
+        var differentEmail = $"signin-{Guid.NewGuid():N}@t.edu";
+        var signIn = await _fx.Anonymous().PostAsJsonAsync(
+            "/api/auth/dev-login", new { name = "Signed In Name", email = differentEmail, emplid });
+        signIn.EnsureSuccessStatusCode();
+        var signedInId = (await signIn.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("student").GetProperty("id").GetString();
+
+        Assert.Equal(preStagedId, signedInId);
+        var rowCount = Convert.ToInt32(await _fx.ScalarAsync(
+            $"SELECT COUNT(*) FROM students WHERE emplid_norm = '{emplid.ToLowerInvariant()}'"));
+        Assert.Equal(1, rowCount);
+    }
 }

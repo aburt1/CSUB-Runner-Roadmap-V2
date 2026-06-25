@@ -25,7 +25,7 @@ public sealed class AzureAdTokenValidator
         !string.IsNullOrWhiteSpace(_config["AzureAd:ClientId"]) &&
         !string.IsNullOrWhiteSpace(_config["AzureAd:TenantId"]);
 
-    public async Task<(string oid, string? email, string? name)> ValidateAsync(string idToken)
+    public async Task<(string oid, string? email, string? name, string? emplid)> ValidateAsync(string idToken)
     {
         var tenantId = _config["AzureAd:TenantId"];
         var clientId = _config["AzureAd:ClientId"];
@@ -51,7 +51,12 @@ public sealed class AzureAdTokenValidator
             ?? throw new SecurityTokenException("Azure AD token is missing the oid claim.");
         var email = principal.FindFirst("preferred_username")?.Value ?? principal.FindFirst("email")?.Value;
         var name = principal.FindFirst("name")?.Value;
-        return (oid, email, name);
+        // The student ID # (emplid) is our primary identifier. Read it from the configured
+        // token claim when the tenant emits it (e.g. "employeeId" or an extension attribute);
+        // when AzureAd:EmplidClaim is unset, sign-in falls back to matching by email.
+        var emplidClaim = _config["AzureAd:EmplidClaim"];
+        var emplid = string.IsNullOrWhiteSpace(emplidClaim) ? null : principal.FindFirst(emplidClaim)?.Value;
+        return (oid, email, name, emplid);
     }
 
     private ConfigurationManager<OpenIdConnectConfiguration> GetConfigManager(string authority)

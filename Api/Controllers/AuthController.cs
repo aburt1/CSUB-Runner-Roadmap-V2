@@ -24,7 +24,7 @@ public sealed class AuthController : ControllerBase
         _logger = logger;
     }
 
-    public sealed record DevLoginRequest(string? Name, string? Email);
+    public sealed record DevLoginRequest(string? Name, string? Email, string? Emplid);
     public sealed record SsoRequest(string? IdToken);
 
     // POST /api/auth/dev-login — dev/POC login (disabled in production).
@@ -36,10 +36,20 @@ public sealed class AuthController : ControllerBase
 
         var name = body?.Name;
         var email = body?.Email;
+        var emplid = body?.Emplid;
         if (string.IsNullOrEmpty(name) || string.IsNullOrEmpty(email))
             return BadRequest(new { error = "Name and email are required" });
 
-        var student = await _db.QueryOneAsync<StudentLite>(
+        // Match an existing/pre-staged row — prefer emplid (our primary identifier) when
+        // supplied, else email — so dev-login links to a pushed student instead of duplicating.
+        StudentLite? student = null;
+        if (!string.IsNullOrEmpty(emplid))
+        {
+            var emplidNorm = emplid.Trim().ToLowerInvariant();
+            student = await _db.QueryOneAsync<StudentLite>(
+                "SELECT id, display_name, email FROM students WHERE emplid_norm = @emplidNorm", new { emplidNorm });
+        }
+        student ??= await _db.QueryOneAsync<StudentLite>(
             "SELECT id, display_name, email FROM students WHERE email = @email", new { email });
 
         if (student is null)
@@ -47,8 +57,8 @@ public sealed class AuthController : ControllerBase
             var studentId = Guid.NewGuid().ToString();
             var termId = await _db.QueryOneAsync<int?>("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
             await _db.ExecuteAsync(
-                "INSERT INTO students (id, display_name, email, term_id) VALUES (@studentId, @name, @email, @termId)",
-                new { studentId, name, email, termId });
+                "INSERT INTO students (id, display_name, email, emplid, term_id) VALUES (@studentId, @name, @email, @emplid, @termId)",
+                new { studentId, name, email, emplid = string.IsNullOrWhiteSpace(emplid) ? null : emplid.Trim(), termId });
             await AutoCompleteAcceptedStepAsync(studentId, termId);
             student = new StudentLite { id = studentId, display_name = name, email = email };
         }
@@ -67,12 +77,14 @@ public sealed class AuthController : ControllerBase
             return BadRequest(new { error = "idToken is required" });
 
         string oid, email, name;
+        string? emplid;
         try
         {
             var claims = await _azure.ValidateAsync(body.IdToken);
             oid = claims.oid;
             email = claims.email ?? "";
             name = claims.name ?? "";
+            emplid = claims.emplid;
         }
         catch (Exception ex)
         {
@@ -98,17 +110,22 @@ public sealed class AuthController : ControllerBase
         }
         else
         {
-            // No azure_id match. A student may have been pre-staged (e.g. pushed by the SIS
-            // via PUT /api/integrations/v1/students) with an email but no azure_id yet — the
-            // id token only carries oid/email/name, so email is the only shared identifier at
-            // sign-in. If such a row exists, LINK it (attach azure_id, reuse its id) rather
-            // than inserting a duplicate. Preserve its provisioned term_id; the accepted step
-            // was already seeded on provisioning, so do not re-run AutoCompleteAcceptedStep.
+            // No azure_id match — this may be a student pre-staged by the SIS (PUT
+            // /api/integrations/v1/students) who hasn't signed in yet. LINK to that row
+            // (attach azure_id, reuse its id) rather than inserting a duplicate, preserving
+            // its provisioned term_id; the accepted step was already seeded on provisioning.
+            // Prefer matching by emplid — our primary identifier — when the token carries it
+            // (AzureAd:EmplidClaim); otherwise fall back to email. Only an UNCLAIMED row
+            // (azure_id IS NULL) so we never re-attach to a row already linked elsewhere.
             StudentLite? preStaged = null;
-            if (!string.IsNullOrEmpty(email))
+            if (!string.IsNullOrEmpty(emplid))
             {
-                // Only an UNCLAIMED row (azure_id IS NULL) — never re-attach to a row already
-                // linked to a different account (email is not unique), which would hijack it.
+                var emplidNorm = emplid.Trim().ToLowerInvariant();
+                preStaged = await _db.QueryOneAsync<StudentLite>(
+                    "SELECT id, display_name, email FROM students WHERE emplid_norm = @emplidNorm AND azure_id IS NULL", new { emplidNorm });
+            }
+            if (preStaged is null && !string.IsNullOrEmpty(email))
+            {
                 preStaged = await _db.QueryOneAsync<StudentLite>(
                     "SELECT id, display_name, email FROM students WHERE email = @email AND azure_id IS NULL", new { email });
             }
@@ -122,11 +139,13 @@ public sealed class AuthController : ControllerBase
             }
             else
             {
+                // Genuinely new student. Record the emplid when present so a later SIS push
+                // (keyed on emplid) links to this row instead of creating a duplicate.
                 var studentId = Guid.NewGuid().ToString();
                 var termId = await _db.QueryOneAsync<int?>("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
                 await _db.ExecuteAsync(
-                    "INSERT INTO students (id, display_name, email, azure_id, term_id) VALUES (@studentId, @name, @email, @oid, @termId)",
-                    new { studentId, name, email, oid, termId });
+                    "INSERT INTO students (id, display_name, email, azure_id, emplid, term_id) VALUES (@studentId, @name, @email, @oid, @emplid, @termId)",
+                    new { studentId, name, email, oid, emplid = string.IsNullOrWhiteSpace(emplid) ? null : emplid.Trim(), termId });
                 await AutoCompleteAcceptedStepAsync(studentId, termId);
                 student = new StudentLite { id = studentId, display_name = name, email = email };
             }
