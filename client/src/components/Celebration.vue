@@ -88,7 +88,7 @@ onUnmounted(() => {
     role="dialog"
     aria-modal="true"
     aria-label="Celebration — all steps complete"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-csub-blue-dark/60 backdrop-blur-sm focus:outline-none"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-csub-blue-dark/60 backdrop-blur-xs focus:outline-hidden"
     :class="prefersReducedMotion ? '' : ['celebration-overlay', { 'is-entered': entered }]"
     @click="onClose"
   >
@@ -159,7 +159,7 @@ onUnmounted(() => {
 
       <button
         @click="onClose"
-        class="bg-csub-blue text-white font-display font-bold uppercase tracking-wider py-3 px-10 rounded hover:bg-csub-blue-dark transition-colors shadow-lg hover:shadow-xl active:scale-95 transform text-sm"
+        class="bg-csub-blue text-white font-display font-bold uppercase tracking-wider py-3 px-10 rounded-sm hover:bg-csub-blue-dark transition-colors shadow-lg hover:shadow-xl active:scale-95 transform text-sm"
       >
         Continue
       </button>

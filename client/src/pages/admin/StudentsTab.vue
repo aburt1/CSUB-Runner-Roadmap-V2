@@ -174,7 +174,7 @@ const rangeEnd = computed(() => Math.min(page.value * PER_PAGE, totalStudents.va
             v-model="search"
             @keydown.enter="handleSearch"
             placeholder="Search by name or email..."
-            class="w-full pl-10 pr-24 py-2.5 rounded-xl border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent"
+            class="w-full pl-10 pr-24 py-2.5 rounded-xl border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue focus:border-transparent"
           />
           <div class="absolute inset-y-0 right-0 pr-1.5 flex items-center gap-1">
             <button
@@ -196,7 +196,7 @@ const rangeEnd = computed(() => Math.min(page.value * PER_PAGE, totalStudents.va
             <button
               @click="handleSearch"
               :disabled="loading"
-              class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg shadow transition-colors text-xs disabled:opacity-50"
+              class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg shadow-sm transition-colors text-xs disabled:opacity-50"
             >
               {{ loading ? '...' : 'Search' }}
             </button>
@@ -208,7 +208,7 @@ const rangeEnd = computed(() => Math.min(page.value * PER_PAGE, totalStudents.va
           <select
             :value="sortBy"
             @change="handleSortChange(($event.target as HTMLSelectElement).value)"
-            class="px-3 py-1.5 rounded-lg border border-gray-300 font-body text-xs focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent bg-white"
+            class="px-3 py-1.5 rounded-lg border border-gray-300 font-body text-xs focus:outline-hidden focus:ring-2 focus:ring-csub-blue focus:border-transparent bg-white"
           >
             <option v-for="opt in SORT_OPTIONS" :key="opt.value" :value="opt.value">
               {{ opt.label }}
@@ -253,11 +253,11 @@ const rangeEnd = computed(() => Math.min(page.value * PER_PAGE, totalStudents.va
             v-for="s in students"
             :key="s.id"
             @click="selectedStudent = s"
-            :class="`w-full text-left px-4 py-3 rounded-xl border transition-all duration-150 group ${selectedStudent?.id === s.id ? 'border-csub-blue bg-csub-blue/5 shadow-sm' : 'border-gray-200 bg-white hover:border-csub-blue/30 hover:shadow-sm'}`"
+            :class="`w-full text-left px-4 py-3 rounded-xl border transition-all duration-150 group ${selectedStudent?.id === s.id ? 'border-csub-blue bg-csub-blue/5 shadow-xs' : 'border-gray-200 bg-white hover:border-csub-blue/30 hover:shadow-xs'}`"
           >
             <div class="flex items-center gap-3">
               <div
-                class="w-8 h-8 rounded-full bg-csub-blue/10 flex items-center justify-center text-csub-blue font-display text-xs font-bold flex-shrink-0"
+                class="w-8 h-8 rounded-full bg-csub-blue/10 flex items-center justify-center text-csub-blue font-display text-xs font-bold shrink-0"
               >
                 {{ getInitials(s.display_name) }}
               </div>
@@ -282,7 +282,7 @@ const rangeEnd = computed(() => Math.min(page.value * PER_PAGE, totalStudents.va
                   >
                 </div>
               </div>
-              <div class="flex items-center gap-2 flex-shrink-0">
+              <div class="flex items-center gap-2 shrink-0">
                 <span
                   v-if="s.overdue_step_count > 0"
                   class="inline-flex items-center text-[10px] font-body font-semibold text-red-600 bg-red-50 rounded-full px-1.5 py-0.5"

@@ -153,7 +153,7 @@ const handleSubmit = async () => {
             <select
               :value="sourceTermId || ''"
               @change="(e) => (sourceTermId = parseInt((e.target as HTMLSelectElement).value, 10))"
-              class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue bg-white"
+              class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue bg-white"
             >
               <option v-for="term in terms" :key="term.id" :value="term.id">{{ term.name }}</option>
             </select>
@@ -166,7 +166,7 @@ const handleSubmit = async () => {
               type="text"
               required
               v-model="name"
-              class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue"
+              class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue"
               placeholder="Fall 2027"
             />
           </div>
@@ -178,7 +178,7 @@ const handleSubmit = async () => {
               <input
                 type="date"
                 v-model="startDate"
-                class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue"
+                class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue"
               />
             </div>
             <div>
@@ -188,7 +188,7 @@ const handleSubmit = async () => {
               <input
                 type="date"
                 v-model="endDate"
-                class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue"
+                class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue"
               />
             </div>
           </div>
@@ -228,7 +228,7 @@ const handleSubmit = async () => {
                 type="checkbox"
                 :checked="selectedStepIds.has(step.id)"
                 @change="toggleStep(step.id)"
-                class="mt-1 rounded"
+                class="mt-1 rounded-sm"
               />
               <div class="min-w-0">
                 <p class="font-body text-sm font-semibold text-csub-blue-dark">
@@ -248,7 +248,7 @@ const handleSubmit = async () => {
           <button
             type="submit"
             :disabled="saving || selectedCount === 0"
-            class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display text-sm font-bold uppercase tracking-wider px-5 py-2 rounded-lg shadow transition-colors disabled:opacity-50"
+            class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display text-sm font-bold uppercase tracking-wider px-5 py-2 rounded-lg shadow-sm transition-colors disabled:opacity-50"
           >
             {{
               saving ? 'Cloning...' : `Clone ${selectedCount} Step${selectedCount === 1 ? '' : 's'}`

@@ -56,7 +56,7 @@ const config = ACTION_CONFIG[props.action] || ACTION_CONFIG.complete
         v-model="note"
         :rows="2"
         :placeholder="action === 'waive' ? 'Reason for waiving...' : 'Reason for this change...'"
-        class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-1 focus:ring-csub-blue mb-4 resize-none"
+        class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-1 focus:ring-csub-blue mb-4 resize-none"
       />
       <div class="flex gap-2 justify-end">
         <button
@@ -67,7 +67,7 @@ const config = ACTION_CONFIG[props.action] || ACTION_CONFIG.complete
         </button>
         <button
           @click="emit('confirm', note.trim() || null)"
-          :class="`font-display font-bold text-sm uppercase tracking-wider px-4 py-2 rounded-lg shadow transition-colors ${config.buttonClass}`"
+          :class="`font-display font-bold text-sm uppercase tracking-wider px-4 py-2 rounded-lg shadow-sm transition-colors ${config.buttonClass}`"
         >
           Confirm
         </button>

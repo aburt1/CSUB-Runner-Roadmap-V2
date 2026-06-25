@@ -28,10 +28,10 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="p-5 sm:p-6 bg-white rounded-xl border-2 border-csub-blue/20 shadow-sm">
+  <div class="p-5 sm:p-6 bg-white rounded-xl border-2 border-csub-blue/20 shadow-xs">
     <div class="flex items-center gap-2 mb-1">
       <svg
-        class="w-5 h-5 text-csub-blue flex-shrink-0"
+        class="w-5 h-5 text-csub-blue shrink-0"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
@@ -104,7 +104,7 @@ const emit = defineEmits<{
             :value="loginName"
             @input="emit('update:loginName', ($event.target as HTMLInputElement).value)"
             placeholder="Jane Doe"
-            class="w-full px-3 py-3 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent"
+            class="w-full px-3 py-3 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue focus:border-transparent"
           />
         </div>
         <div class="flex-1 min-w-[160px]">
@@ -120,7 +120,7 @@ const emit = defineEmits<{
             :value="loginEmail"
             @input="emit('update:loginEmail', ($event.target as HTMLInputElement).value)"
             placeholder="jdoe@csub.edu"
-            class="w-full px-3 py-3 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent"
+            class="w-full px-3 py-3 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue focus:border-transparent"
           />
         </div>
         <button

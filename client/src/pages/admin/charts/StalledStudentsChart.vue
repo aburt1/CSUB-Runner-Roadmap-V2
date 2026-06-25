@@ -149,7 +149,7 @@ const ariaLabel = computed(
 
 <template>
   <div v-if="loading" class="h-40 bg-gray-50 rounded-xl animate-pulse" />
-  <div v-else class="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+  <div v-else class="bg-white border border-gray-200 rounded-xl shadow-xs p-5">
     <div class="mb-4">
       <h3 class="font-display text-sm font-bold uppercase tracking-wide text-csub-blue-dark">
         Stalled Students

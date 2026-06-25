@@ -5,7 +5,7 @@
     <div class="bg-white rounded-xl border border-gray-200 p-5 sm:p-6">
       <div class="flex items-start gap-4">
         <div
-          class="flex-shrink-0 w-10 h-10 rounded-full bg-csub-blue/10 flex items-center justify-center"
+          class="shrink-0 w-10 h-10 rounded-full bg-csub-blue/10 flex items-center justify-center"
         >
           <svg class="w-5 h-5 text-csub-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
@@ -30,7 +30,7 @@
           <div class="grid sm:grid-cols-2 gap-3">
             <div class="flex items-start gap-3 p-3 rounded-lg bg-gray-50">
               <svg
-                class="w-4 h-4 text-csub-blue flex-shrink-0 mt-0.5"
+                class="w-4 h-4 text-csub-blue shrink-0 mt-0.5"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -55,7 +55,7 @@
 
             <div class="flex items-start gap-3 p-3 rounded-lg bg-gray-50">
               <svg
-                class="w-4 h-4 text-csub-blue flex-shrink-0 mt-0.5"
+                class="w-4 h-4 text-csub-blue shrink-0 mt-0.5"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"

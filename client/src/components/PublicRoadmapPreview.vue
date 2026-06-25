@@ -240,7 +240,7 @@ function asLocked(step: Step): StepWithStatus {
             </ol>
             <!-- Fade-out gradient -->
             <div
-              class="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-gray-50 to-transparent pointer-events-none"
+              class="absolute bottom-0 left-0 right-0 h-24 bg-linear-to-t from-gray-50 to-transparent pointer-events-none"
             />
           </div>
         </section>

@@ -201,7 +201,7 @@ const onTermSelectChange = (e: Event) => {
               <select
                 :value="selectedTermId || ''"
                 @change="onTermSelectChange"
-                class="bg-white/10 text-white border border-white/20 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-csub-gold"
+                class="bg-white/10 text-white border border-white/20 rounded-md px-2 py-1 text-xs focus:outline-hidden focus:ring-2 focus:ring-csub-gold"
                 aria-label="Selected term"
               >
                 <option v-for="t in terms" :key="t.id" :value="t.id" class="text-gray-900">
@@ -224,7 +224,7 @@ const onTermSelectChange = (e: Event) => {
     </div>
 
     <!-- Tab nav -->
-    <div class="bg-white border-b border-gray-200 shadow-sm">
+    <div class="bg-white border-b border-gray-200 shadow-xs">
       <div
         class="max-w-5xl mx-auto px-4 sm:px-6 flex gap-1 py-1.5 overflow-x-auto"
         role="tablist"

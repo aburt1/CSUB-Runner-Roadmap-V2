@@ -319,7 +319,7 @@ const draggableSteps = computed<StepItem[]>({
       :on-delete="handleDeleteTerm"
     />
 
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <div class="bg-white rounded-xl border border-gray-200 shadow-xs p-5">
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
           <h2 class="font-display text-lg font-bold text-csub-blue-dark uppercase tracking-wide">
@@ -331,14 +331,14 @@ const draggableSteps = computed<StepItem[]>({
         </div>
         <div class="flex items-center gap-3">
           <label class="flex items-center gap-2 font-body text-xs text-csub-gray cursor-pointer">
-            <input type="checkbox" v-model="showInactive" class="rounded" />
+            <input type="checkbox" v-model="showInactive" class="rounded-sm" />
             Show inactive
           </label>
           <button
             v-if="canEdit"
             @click="editingStep = { term_id: selectedTermId ?? undefined }"
             :disabled="!selectedTermId"
-            class="flex items-center gap-1.5 bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-4 py-2 rounded-lg shadow transition-colors text-sm disabled:opacity-40"
+            class="flex items-center gap-1.5 bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-4 py-2 rounded-lg shadow-sm transition-colors text-sm disabled:opacity-40"
           >
             <svg
               class="w-4 h-4"
@@ -402,7 +402,7 @@ const draggableSteps = computed<StepItem[]>({
             type="checkbox"
             :checked="selected.size === visibleSteps.length && visibleSteps.length > 0"
             @change="toggleSelectAll"
-            class="rounded"
+            class="rounded-sm"
           />
           <span class="font-body text-xs text-csub-gray">Select all</span>
           <span class="font-body text-[10px] text-csub-gray/60 ml-2"
@@ -423,14 +423,14 @@ const draggableSteps = computed<StepItem[]>({
             <template #item="{ element: step, index }">
               <div>
                 <div
-                  :class="`flex items-center gap-3 px-4 py-3.5 rounded-xl border shadow-sm transition-all hover:shadow-md ${
+                  :class="`flex items-center gap-3 px-4 py-3.5 rounded-xl border shadow-xs transition-all hover:shadow-md ${
                     step.is_active === 0
                       ? 'border-gray-200 bg-gray-50 opacity-60'
                       : 'border-gray-200 bg-white'
                   }`"
                 >
                   <div
-                    class="drag-handle cursor-grab active:cursor-grabbing touch-none text-gray-300 hover:text-csub-blue transition-colors flex-shrink-0"
+                    class="drag-handle cursor-grab active:cursor-grabbing touch-none text-gray-300 hover:text-csub-blue transition-colors shrink-0"
                     title="Drag to reorder"
                   >
                     <svg class="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
@@ -447,7 +447,7 @@ const draggableSteps = computed<StepItem[]>({
                     type="checkbox"
                     :checked="selected.has(step.id)"
                     @change="toggleSelect(step.id)"
-                    class="rounded flex-shrink-0"
+                    class="rounded-sm shrink-0"
                   />
 
                   <div class="flex flex-col gap-0.5">
@@ -470,7 +470,7 @@ const draggableSteps = computed<StepItem[]>({
                   </div>
 
                   <div
-                    class="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-xl flex-shrink-0"
+                    class="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-xl shrink-0"
                   >
                     {{ step.icon || '📋' }}
                   </div>
@@ -527,30 +527,30 @@ const draggableSteps = computed<StepItem[]>({
                     </div>
                   </div>
 
-                  <div class="flex items-center gap-1 flex-shrink-0">
+                  <div class="flex items-center gap-1 shrink-0">
                     <button
                       @click="editingStep = step"
-                      class="font-body text-xs text-csub-blue hover:text-csub-blue-dark px-2 py-1 rounded hover:bg-csub-blue/5 transition-colors"
+                      class="font-body text-xs text-csub-blue hover:text-csub-blue-dark px-2 py-1 rounded-sm hover:bg-csub-blue/5 transition-colors"
                     >
                       Edit
                     </button>
                     <button
                       @click="handleDuplicateStep(step.id)"
-                      class="font-body text-xs text-csub-blue hover:text-csub-blue-dark px-2 py-1 rounded hover:bg-csub-blue/5 transition-colors"
+                      class="font-body text-xs text-csub-blue hover:text-csub-blue-dark px-2 py-1 rounded-sm hover:bg-csub-blue/5 transition-colors"
                     >
                       Duplicate
                     </button>
                     <button
                       v-if="step.is_active === 0"
                       @click="handleRestoreStep(step.id)"
-                      class="font-body text-xs text-green-600 hover:text-green-800 px-2 py-1 rounded hover:bg-green-50 transition-colors"
+                      class="font-body text-xs text-green-600 hover:text-green-800 px-2 py-1 rounded-sm hover:bg-green-50 transition-colors"
                     >
                       Restore
                     </button>
                     <button
                       v-else
                       @click="handleDeleteStep(step.id)"
-                      class="font-body text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                      class="font-body text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded-sm hover:bg-red-50 transition-colors"
                     >
                       Delete
                     </button>
@@ -574,14 +574,14 @@ const draggableSteps = computed<StepItem[]>({
           <div v-else class="space-y-2">
             <div v-for="step in visibleSteps" :key="step.id">
               <div
-                :class="`flex items-center gap-3 px-4 py-3.5 rounded-xl border shadow-sm transition-all hover:shadow-md ${
+                :class="`flex items-center gap-3 px-4 py-3.5 rounded-xl border shadow-xs transition-all hover:shadow-md ${
                   step.is_active === 0
                     ? 'border-gray-200 bg-gray-50 opacity-60'
                     : 'border-gray-200 bg-white'
                 }`"
               >
                 <div
-                  class="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-xl flex-shrink-0"
+                  class="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-xl shrink-0"
                 >
                   {{ step.icon || '📋' }}
                 </div>

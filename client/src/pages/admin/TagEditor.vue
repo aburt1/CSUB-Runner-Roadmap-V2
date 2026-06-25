@@ -38,7 +38,7 @@ const handleKeydown = (e: KeyboardEvent) => {
   <div>
     <div class="flex gap-2">
       <div
-        class="flex-1 min-h-[42px] px-3 py-2 rounded border border-gray-300 bg-white focus-within:ring-1 focus-within:ring-csub-blue"
+        class="flex-1 min-h-[42px] px-3 py-2 rounded-sm border border-gray-300 bg-white focus-within:ring-1 focus-within:ring-csub-blue"
       >
         <div class="flex flex-wrap gap-1.5 items-center">
           <span
@@ -61,14 +61,14 @@ const handleKeydown = (e: KeyboardEvent) => {
             v-model="input"
             @keydown="handleKeydown"
             :placeholder="tags.length === 0 ? 'Add tag...' : 'Add another tag...'"
-            class="flex-1 min-w-[120px] border-0 p-0 font-body text-xs focus:outline-none focus:ring-0"
+            class="flex-1 min-w-[120px] border-0 p-0 font-body text-xs focus:outline-hidden focus:ring-0"
           />
         </div>
       </div>
       <button
         type="button"
         @click="addTag"
-        class="bg-csub-blue text-white font-body text-xs px-3 py-1.5 rounded hover:bg-csub-blue-dark transition-colors"
+        class="bg-csub-blue text-white font-body text-xs px-3 py-1.5 rounded-sm hover:bg-csub-blue-dark transition-colors"
       >
         Add
       </button>

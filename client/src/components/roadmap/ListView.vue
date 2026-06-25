@@ -61,19 +61,19 @@ function configFor(status: string): StatusConfigEntry {
     <li v-for="(step, index) in props.steps" :key="step.id">
       <button
         @click="emit('selectStep', step)"
-        class="w-full text-left flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-gray-200 hover:shadow-md hover:border-csub-blue/20 transition-all focus:outline-none focus:ring-2 focus:ring-csub-blue focus:ring-offset-2 group"
+        class="w-full text-left flex items-center gap-3 px-4 py-3 bg-white rounded-xl border border-gray-200 hover:shadow-md hover:border-csub-blue/20 transition-all focus:outline-hidden focus:ring-2 focus:ring-csub-blue focus:ring-offset-2 group"
         :aria-label="`Step ${index + 1}, ${step.title}, ${configFor(step.status).badgeLabel}`"
       >
         <!-- Status circle -->
         <div
-          :class="`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold flex-shrink-0 ${configFor(step.status).iconClass}`"
+          :class="`w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold shrink-0 ${configFor(step.status).iconClass}`"
         >
           <template v-if="configFor(step.status).icon">{{ configFor(step.status).icon }}</template>
           <span v-else class="text-xs">{{ index + 1 }}</span>
         </div>
 
         <!-- Icon -->
-        <span class="text-lg flex-shrink-0" aria-hidden="true">{{ step.icon }}</span>
+        <span class="text-lg shrink-0" aria-hidden="true">{{ step.icon }}</span>
 
         <!-- Title + description -->
         <div class="flex-1 min-w-0">
@@ -95,7 +95,7 @@ function configFor(status: string): StatusConfigEntry {
         </div>
 
         <!-- Badges -->
-        <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+        <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <span
             v-if="step.deadline"
             class="hidden sm:inline text-xs font-body font-medium text-amber-700 bg-amber-50 rounded-full px-2 py-0.5"
@@ -112,7 +112,7 @@ function configFor(status: string): StatusConfigEntry {
 
         <!-- Chevron -->
         <svg
-          class="w-4 h-4 text-gray-300 group-hover:text-csub-blue transition-colors flex-shrink-0"
+          class="w-4 h-4 text-gray-300 group-hover:text-csub-blue transition-colors shrink-0"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"

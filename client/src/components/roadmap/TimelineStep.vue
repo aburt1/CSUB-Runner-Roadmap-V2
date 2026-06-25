@@ -215,7 +215,7 @@ const handleClick = () => {
     <!-- Filled spine for completed steps -->
     <div
       v-if="step.status === 'completed' && !isLast"
-      class="absolute left-5 sm:left-6 top-5 sm:top-6 bottom-0 w-0.5 bg-csub-gold z-[1]"
+      class="absolute left-5 sm:left-6 top-5 sm:top-6 bottom-0 w-0.5 bg-csub-gold z-1"
       aria-hidden="true"
     />
 
@@ -225,7 +225,7 @@ const handleClick = () => {
       @click="handleClick"
       :class="`w-full text-left rounded-xl border transition-all duration-200 group
         ${compact ? 'px-4 py-3' : 'p-4 sm:p-5'}
-        ${step.status === 'locked' ? 'cursor-default' : 'hover:shadow-md focus:outline-none focus:ring-2 focus:ring-csub-blue focus:ring-offset-2'}
+        ${step.status === 'locked' ? 'cursor-default' : 'hover:shadow-md focus:outline-hidden focus:ring-2 focus:ring-csub-blue focus:ring-offset-2'}
         ${config.cardClass}
         ${leftBorderClass}
         ${isActive ? 'ring-1 ring-csub-blue/20' : ''}
@@ -234,7 +234,7 @@ const handleClick = () => {
     >
       <!-- Compact layout — title only for locked preview -->
       <div v-if="compact" class="flex items-center gap-2.5">
-        <span class="text-lg flex-shrink-0" aria-hidden="true">
+        <span class="text-lg shrink-0" aria-hidden="true">
           {{ step.icon }}
         </span>
         <h3
@@ -244,11 +244,11 @@ const handleClick = () => {
         </h3>
         <span
           v-if="step.is_optional === 1"
-          class="text-[10px] font-body font-semibold text-csub-blue bg-csub-blue/10 rounded-full px-1.5 py-0.5 flex-shrink-0"
+          class="text-[10px] font-body font-semibold text-csub-blue bg-csub-blue/10 rounded-full px-1.5 py-0.5 shrink-0"
         >
           Optional
         </span>
-        <span class="text-[11px] font-body text-gray-500 flex-shrink-0 hidden sm:inline">
+        <span class="text-[11px] font-body text-gray-500 shrink-0 hidden sm:inline">
           Sign in to unlock
         </span>
       </div>
@@ -256,7 +256,7 @@ const handleClick = () => {
       <!-- Full layout -->
       <div v-else class="flex items-start gap-3">
         <!-- Icon -->
-        <span class="text-xl sm:text-2xl flex-shrink-0 mt-0.5" aria-hidden="true">
+        <span class="text-xl sm:text-2xl shrink-0 mt-0.5" aria-hidden="true">
           {{ step.icon }}
         </span>
 
@@ -280,7 +280,7 @@ const handleClick = () => {
             <!-- View details arrow -->
             <svg
               v-if="step.status !== 'locked'"
-              class="w-4 h-4 text-gray-300 group-hover:text-csub-blue transition-colors flex-shrink-0 mt-0.5"
+              class="w-4 h-4 text-gray-300 group-hover:text-csub-blue transition-colors shrink-0 mt-0.5"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"

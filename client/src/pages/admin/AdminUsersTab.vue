@@ -102,7 +102,7 @@ const toggleActive = async (user: User) => {
     <form
       v-if="editingId !== null"
       @submit.prevent="handleSubmit"
-      class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4"
+      class="bg-white rounded-xl border border-gray-200 shadow-xs p-5 space-y-4"
     >
       <h3 class="font-display text-sm font-bold uppercase tracking-wide text-csub-blue-dark">
         Edit User
@@ -113,18 +113,18 @@ const toggleActive = async (user: User) => {
           required
           placeholder="Display Name"
           v-model="form.displayName"
-          class="px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue"
+          class="px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue"
         />
         <input
           type="email"
           disabled
           placeholder="Email"
           v-model="form.email"
-          class="px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue disabled:bg-gray-100"
+          class="px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue disabled:bg-gray-100"
         />
         <select
           v-model="form.role"
-          class="px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue"
+          class="px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue"
         >
           <option v-for="r in ROLE_OPTIONS" :key="r" :value="r">{{ ROLES[r]?.label || r }}</option>
         </select>
@@ -134,7 +134,7 @@ const toggleActive = async (user: User) => {
         <button
           type="submit"
           :disabled="saving"
-          class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display text-sm font-bold uppercase tracking-wider px-5 py-2 rounded-lg shadow transition-colors disabled:opacity-50"
+          class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display text-sm font-bold uppercase tracking-wider px-5 py-2 rounded-lg shadow-sm transition-colors disabled:opacity-50"
         >
           {{ saving ? 'Saving...' : 'Update' }}
         </button>
@@ -152,7 +152,7 @@ const toggleActive = async (user: User) => {
       <div
         v-for="user in users"
         :key="user.id"
-        :class="`flex items-center justify-between bg-white rounded-xl border border-gray-200 shadow-sm px-5 py-4 ${
+        :class="`flex items-center justify-between bg-white rounded-xl border border-gray-200 shadow-xs px-5 py-4 ${
           !user.is_active ? 'opacity-50' : ''
         }`"
       >

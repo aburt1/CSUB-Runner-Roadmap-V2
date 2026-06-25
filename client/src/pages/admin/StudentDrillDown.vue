@@ -137,7 +137,7 @@ onUnmounted(() => {
             aria-modal="true"
             aria-labelledby="drill-down-title"
             :tabindex="-1"
-            class="absolute right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-xl z-50 flex flex-col focus:outline-none"
+            class="absolute right-0 top-0 bottom-0 w-full max-w-md bg-white shadow-xl z-50 flex flex-col focus:outline-hidden"
           >
             <!-- Header -->
             <div class="flex items-start justify-between p-5 border-b border-gray-200">
@@ -194,7 +194,7 @@ onUnmounted(() => {
                       </p>
                       <p class="font-body text-xs text-csub-gray truncate">{{ s.email }}</p>
                     </div>
-                    <div class="flex items-center gap-2 flex-shrink-0">
+                    <div class="flex items-center gap-2 shrink-0">
                       <div class="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
                         <div
                           class="h-full bg-csub-blue rounded-full"

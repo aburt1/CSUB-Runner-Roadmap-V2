@@ -65,7 +65,7 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div v-if="term" class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+  <div v-if="term" class="bg-white rounded-xl border border-gray-200 shadow-xs p-5">
     <form v-if="editing" @submit.prevent="handleSubmit" class="space-y-4">
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
@@ -76,7 +76,7 @@ const handleSubmit = async () => {
             type="text"
             required
             v-model="form.name"
-            class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue"
+            class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue"
           />
         </div>
         <div>
@@ -86,7 +86,7 @@ const handleSubmit = async () => {
           <input
             type="date"
             v-model="form.start_date"
-            class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue"
+            class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue"
           />
         </div>
         <div>
@@ -96,7 +96,7 @@ const handleSubmit = async () => {
           <input
             type="date"
             v-model="form.end_date"
-            class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue"
+            class="w-full px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue"
           />
         </div>
       </div>
@@ -105,7 +105,7 @@ const handleSubmit = async () => {
         <button
           type="submit"
           :disabled="saving"
-          class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display text-sm font-bold uppercase tracking-wider px-5 py-2 rounded-lg shadow transition-colors disabled:opacity-50"
+          class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display text-sm font-bold uppercase tracking-wider px-5 py-2 rounded-lg shadow-sm transition-colors disabled:opacity-50"
         >
           {{ saving ? 'Saving...' : 'Save Term' }}
         </button>
@@ -146,19 +146,19 @@ const handleSubmit = async () => {
         <button
           v-if="!term.is_active"
           @click="onSave(term.id, { is_active: 1 })"
-          class="font-body text-xs font-semibold text-green-700 hover:text-green-900 px-2 py-1 rounded transition-colors"
+          class="font-body text-xs font-semibold text-green-700 hover:text-green-900 px-2 py-1 rounded-sm transition-colors"
         >
           Set Active
         </button>
         <button
           @click="editing = true"
-          class="font-body text-xs text-csub-blue hover:text-csub-blue-dark px-2 py-1 rounded transition-colors"
+          class="font-body text-xs text-csub-blue hover:text-csub-blue-dark px-2 py-1 rounded-sm transition-colors"
         >
           Edit Term
         </button>
         <button
           @click="onDelete(term)"
-          class="font-body text-xs text-red-600 hover:text-red-800 px-2 py-1 rounded transition-colors"
+          class="font-body text-xs text-red-600 hover:text-red-800 px-2 py-1 rounded-sm transition-colors"
         >
           Delete Term
         </button>

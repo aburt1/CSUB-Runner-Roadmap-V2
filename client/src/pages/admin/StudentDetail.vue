@@ -229,10 +229,10 @@ const pct = computed(() =>
   </div>
 
   <div v-else>
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-5">
+    <div class="bg-white rounded-xl border border-gray-200 shadow-xs p-5 mb-5">
       <div class="flex items-center gap-4">
         <div
-          class="w-12 h-12 rounded-full bg-csub-blue flex items-center justify-center text-white font-display font-bold text-lg flex-shrink-0"
+          class="w-12 h-12 rounded-full bg-csub-blue flex items-center justify-center text-white font-display font-bold text-lg shrink-0"
         >
           {{ getInitials(student.display_name) }}
         </div>
@@ -266,7 +266,7 @@ const pct = computed(() =>
       </div>
     </div>
 
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-5">
+    <div class="bg-white rounded-xl border border-gray-200 shadow-xs p-5 mb-5">
       <div class="flex items-center justify-between mb-4">
         <div>
           <h3 class="font-display text-sm font-bold text-csub-blue-dark uppercase tracking-wide">
@@ -286,7 +286,7 @@ const pct = computed(() =>
           class="bg-gray-50 rounded-lg px-3 py-3 border border-gray-200"
         >
           <p class="font-body text-[10px] uppercase tracking-wide text-csub-gray">{{ f.label }}</p>
-          <p class="font-body text-sm text-csub-blue-dark mt-1 break-words">
+          <p class="font-body text-sm text-csub-blue-dark mt-1 wrap-break-word">
             {{ studentProfile?.[f.key] || 'Not set' }}
           </p>
         </div>

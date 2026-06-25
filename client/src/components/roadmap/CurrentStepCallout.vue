@@ -39,13 +39,13 @@ onMounted(() => {
   >
     <div class="bg-white rounded-xl border-2 border-csub-blue shadow-lg overflow-hidden">
       <!-- Blue accent bar -->
-      <div class="h-1.5 bg-gradient-to-r from-csub-blue to-csub-gold" aria-hidden="true" />
+      <div class="h-1.5 bg-linear-to-r from-csub-blue to-csub-gold" aria-hidden="true" />
 
       <div class="p-5 sm:p-6">
         <div class="flex items-start gap-4">
           <!-- Step icon -->
           <div
-            class="flex-shrink-0 w-12 h-12 rounded-full bg-csub-blue/10 flex items-center justify-center"
+            class="shrink-0 w-12 h-12 rounded-full bg-csub-blue/10 flex items-center justify-center"
           >
             <span class="text-2xl" aria-hidden="true">{{ step.icon }}</span>
           </div>
@@ -85,7 +85,7 @@ onMounted(() => {
                 :href="safeUrl(primaryAction.url)"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="inline-flex items-center gap-2 bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider text-sm px-5 py-2.5 rounded-lg shadow transition-colors"
+                class="inline-flex items-center gap-2 bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider text-sm px-5 py-2.5 rounded-lg shadow-sm transition-colors"
               >
                 {{ step.actionLabel || primaryAction.label || 'Get Started' }}
                 <svg

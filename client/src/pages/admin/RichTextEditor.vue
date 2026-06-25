@@ -36,7 +36,7 @@ const editor = useEditor({
   editorProps: {
     attributes: {
       class:
-        'prose prose-sm max-w-none font-body text-sm text-csub-blue-dark px-3 py-2 min-h-[150px] focus:outline-none',
+        'prose prose-sm max-w-none font-body text-sm text-csub-blue-dark px-3 py-2 min-h-[150px] focus:outline-hidden',
     },
   },
 })
@@ -335,7 +335,7 @@ const handleLinkKeydown = (e: KeyboardEvent) => {
           type="button"
           @click="editor.chain().focus().setHorizontalRule().run()"
           title="Horizontal Rule"
-          class="px-2 py-1 rounded text-sm font-body transition-colors text-csub-gray hover:bg-gray-100 hover:text-csub-blue-dark"
+          class="px-2 py-1 rounded-sm text-sm font-body transition-colors text-csub-gray hover:bg-gray-100 hover:text-csub-blue-dark"
         >
           <svg
             class="w-4 h-4"
@@ -381,7 +381,7 @@ const handleLinkKeydown = (e: KeyboardEvent) => {
           type="button"
           @click="editor.chain().focus().unsetLink().run()"
           title="Remove Link"
-          class="px-2 py-1 rounded text-sm font-body transition-colors text-csub-gray hover:bg-gray-100 hover:text-csub-blue-dark"
+          class="px-2 py-1 rounded-sm text-sm font-body transition-colors text-csub-gray hover:bg-gray-100 hover:text-csub-blue-dark"
         >
           <svg
             class="w-4 h-4 text-red-500"
@@ -403,7 +403,7 @@ const handleLinkKeydown = (e: KeyboardEvent) => {
         class="flex items-center gap-2 px-2 py-1.5 border-b border-gray-200 bg-blue-50/80"
       >
         <svg
-          class="w-4 h-4 text-csub-blue flex-shrink-0"
+          class="w-4 h-4 text-csub-blue shrink-0"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -421,12 +421,12 @@ const handleLinkKeydown = (e: KeyboardEvent) => {
           v-model="url"
           @keydown="handleLinkKeydown"
           placeholder="https://example.com"
-          class="flex-1 px-2 py-1 rounded border border-gray-300 font-body text-sm focus:outline-none focus:ring-1 focus:ring-csub-blue"
+          class="flex-1 px-2 py-1 rounded-sm border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-1 focus:ring-csub-blue"
         />
         <button
           type="button"
           @click="applyLink"
-          class="px-3 py-1 bg-csub-blue text-white text-xs font-body font-semibold rounded hover:bg-csub-blue-dark transition-colors"
+          class="px-3 py-1 bg-csub-blue text-white text-xs font-body font-semibold rounded-sm hover:bg-csub-blue-dark transition-colors"
         >
           Apply
         </button>

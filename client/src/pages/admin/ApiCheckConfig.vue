@@ -60,7 +60,7 @@ const responseFieldPath = ref('')
 const testStudentId = ref('')
 
 const field =
-  'w-full px-3 py-2 rounded-lg border border-gray-300 bg-white font-body text-sm focus:outline-none focus:ring-1 focus:ring-csub-blue'
+  'w-full px-3 py-2 rounded-lg border border-gray-300 bg-white font-body text-sm focus:outline-hidden focus:ring-1 focus:ring-csub-blue'
 const label = 'block font-body text-xs font-semibold text-csub-blue-dark mb-1'
 
 const fetchConfig = async () => {
@@ -237,7 +237,7 @@ const handleTestKeydown = (e: KeyboardEvent) => {
           :class="`relative w-10 h-5 rounded-full transition-colors ${enabled ? 'bg-csub-blue' : 'bg-gray-300'}`"
         >
           <span
-            :class="`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-5' : ''}`"
+            :class="`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${enabled ? 'translate-x-5' : ''}`"
           />
         </button>
       </div>
@@ -349,7 +349,7 @@ const handleTestKeydown = (e: KeyboardEvent) => {
           type="button"
           @click="handleSave"
           :disabled="saving || !url || !responseFieldPath"
-          class="bg-csub-blue hover:bg-csub-blue-dark disabled:opacity-50 text-white font-display font-bold uppercase tracking-wider px-4 py-2 rounded-lg shadow transition-colors text-xs"
+          class="bg-csub-blue hover:bg-csub-blue-dark disabled:opacity-50 text-white font-display font-bold uppercase tracking-wider px-4 py-2 rounded-lg shadow-sm transition-colors text-xs"
         >
           {{ saving ? 'Saving...' : 'Save API Check' }}
         </button>
@@ -400,7 +400,7 @@ const handleTestKeydown = (e: KeyboardEvent) => {
                 Raw Response
               </summary>
               <pre
-                class="mt-1 p-2 bg-white rounded border text-xs overflow-x-auto max-h-40 overflow-y-auto"
+                class="mt-1 p-2 bg-white rounded-sm border text-xs overflow-x-auto max-h-40 overflow-y-auto"
                 >{{ testResult.responseBody }}</pre
               >
             </details>

@@ -13,7 +13,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+  <div class="bg-white rounded-xl border border-gray-200 shadow-xs p-4">
     <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <p class="font-display text-sm font-bold text-csub-blue-dark uppercase tracking-wide">
@@ -31,7 +31,7 @@ const emit = defineEmits<{
       <div v-if="canEdit" class="flex items-center gap-2">
         <button
           @click="emit('new-term')"
-          class="flex items-center gap-1.5 bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-4 py-2 rounded-lg shadow transition-colors text-sm"
+          class="flex items-center gap-1.5 bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-4 py-2 rounded-lg shadow-sm transition-colors text-sm"
         >
           <svg
             class="w-4 h-4"

@@ -85,7 +85,7 @@ const handleConfirm = async (note: string | null) => {
     <div class="flex items-center gap-3 px-4 py-3">
       <!-- Status indicator -->
       <div
-        :class="`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+        :class="`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold shrink-0 ${
           status === 'completed'
             ? 'bg-csub-gold border-csub-gold text-csub-blue-dark'
             : status === 'waived'
@@ -96,7 +96,7 @@ const handleConfirm = async (note: string | null) => {
         {{ status === 'completed' ? '✓' : status === 'waived' ? '—' : '' }}
       </div>
 
-      <span class="text-base flex-shrink-0" aria-hidden="true">{{ stepIcon }}</span>
+      <span class="text-base shrink-0" aria-hidden="true">{{ stepIcon }}</span>
 
       <div class="flex-1 min-w-0">
         <span
@@ -107,19 +107,19 @@ const handleConfirm = async (note: string | null) => {
         <div class="flex items-center gap-2 mt-0.5">
           <span
             v-if="isOptional"
-            class="inline-flex items-center text-[10px] font-body font-semibold text-csub-blue bg-csub-blue/10 rounded px-1.5 py-0.5"
+            class="inline-flex items-center text-[10px] font-body font-semibold text-csub-blue bg-csub-blue/10 rounded-sm px-1.5 py-0.5"
           >
             Optional
           </span>
           <span
             v-if="status === 'completed'"
-            class="inline-flex items-center text-[10px] font-body font-semibold text-emerald-600 bg-emerald-50 rounded px-1.5 py-0.5"
+            class="inline-flex items-center text-[10px] font-body font-semibold text-emerald-600 bg-emerald-50 rounded-sm px-1.5 py-0.5"
           >
             Completed
           </span>
           <span
             v-if="status === 'waived'"
-            class="inline-flex items-center text-[10px] font-body font-semibold text-slate-500 bg-slate-100 rounded px-1.5 py-0.5"
+            class="inline-flex items-center text-[10px] font-body font-semibold text-slate-500 bg-slate-100 rounded-sm px-1.5 py-0.5"
           >
             Waived
           </span>
@@ -133,12 +133,12 @@ const handleConfirm = async (note: string | null) => {
       </div>
 
       <!-- Action buttons -->
-      <div v-if="!readOnly" class="flex items-center gap-1 flex-shrink-0">
+      <div v-if="!readOnly" class="flex items-center gap-1 shrink-0">
         <button
           v-if="isDone"
           @click="showModal = 'uncomplete'"
           :disabled="loading"
-          class="font-body text-xs text-red-500 hover:text-red-700 font-semibold px-2 py-1 rounded hover:bg-red-50 transition-colors disabled:opacity-50"
+          class="font-body text-xs text-red-500 hover:text-red-700 font-semibold px-2 py-1 rounded-sm hover:bg-red-50 transition-colors disabled:opacity-50"
         >
           Undo
         </button>
@@ -146,14 +146,14 @@ const handleConfirm = async (note: string | null) => {
           <button
             @click="showModal = 'complete'"
             :disabled="loading"
-            class="font-body text-xs text-csub-blue hover:text-csub-blue-dark font-semibold px-2 py-1 rounded hover:bg-csub-blue/5 transition-colors disabled:opacity-50"
+            class="font-body text-xs text-csub-blue hover:text-csub-blue-dark font-semibold px-2 py-1 rounded-sm hover:bg-csub-blue/5 transition-colors disabled:opacity-50"
           >
             Complete
           </button>
           <button
             @click="showModal = 'waive'"
             :disabled="loading"
-            class="font-body text-xs text-slate-500 hover:text-slate-700 font-semibold px-2 py-1 rounded hover:bg-slate-50 transition-colors disabled:opacity-50"
+            class="font-body text-xs text-slate-500 hover:text-slate-700 font-semibold px-2 py-1 rounded-sm hover:bg-slate-50 transition-colors disabled:opacity-50"
           >
             Waive
           </button>

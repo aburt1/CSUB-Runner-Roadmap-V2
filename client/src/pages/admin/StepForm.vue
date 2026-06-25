@@ -102,7 +102,7 @@ onUnmounted(() => {
 })
 
 const field =
-  'w-full px-3 py-2 rounded-lg border border-gray-300 bg-white font-body text-sm focus:outline-none focus:ring-1 focus:ring-csub-blue'
+  'w-full px-3 py-2 rounded-lg border border-gray-300 bg-white font-body text-sm focus:outline-hidden focus:ring-1 focus:ring-csub-blue'
 const label = 'block font-body text-xs font-semibold text-csub-blue-dark mb-1'
 
 const visibilitySummary = computed(() => {
@@ -402,7 +402,7 @@ const handleSubmit = () => {
         <input
           type="checkbox"
           v-model="isPublic"
-          class="w-4 h-4 rounded border-gray-300 text-csub-blue focus:ring-csub-blue"
+          class="w-4 h-4 rounded-sm border-gray-300 text-csub-blue focus:ring-csub-blue"
         />
         <span class="font-body text-sm text-csub-blue-dark"
           >Show in the public preview before login</span
@@ -412,7 +412,7 @@ const handleSubmit = () => {
         <input
           type="checkbox"
           v-model="isOptional"
-          class="w-4 h-4 rounded border-gray-300 text-csub-blue focus:ring-csub-blue"
+          class="w-4 h-4 rounded-sm border-gray-300 text-csub-blue focus:ring-csub-blue"
         />
         <span class="font-body text-sm text-csub-blue-dark">Optional opportunity</span>
       </label>
@@ -468,7 +468,7 @@ const handleSubmit = () => {
       <button
         type="submit"
         :disabled="saving"
-        class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-6 py-2.5 rounded-lg shadow transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+        class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-6 py-2.5 rounded-lg shadow-sm transition-colors text-sm disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {{ step ? 'Save Changes' : 'Create Step' }}
       </button>

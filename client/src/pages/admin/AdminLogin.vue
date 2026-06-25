@@ -167,7 +167,7 @@ const handlePasswordLogin = async () => {
         <button
           @click="handleSsoLogin"
           :disabled="ssoLoading || !msalInitialized"
-          class="w-full bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-6 py-3 rounded-lg shadow transition-colors duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
+          class="w-full bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-6 py-3 rounded-lg shadow-sm transition-colors duration-200 disabled:opacity-50 flex items-center justify-center gap-2"
         >
           <template v-if="ssoLoading">
             <svg class="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
@@ -200,7 +200,7 @@ const handlePasswordLogin = async () => {
           v-model="email"
           placeholder="Email"
           autocomplete="email"
-          class="w-full px-4 py-3 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent"
+          class="w-full px-4 py-3 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue focus:border-transparent"
         />
         <input
           type="password"
@@ -208,13 +208,13 @@ const handlePasswordLogin = async () => {
           v-model="password"
           placeholder="Password"
           autocomplete="current-password"
-          class="w-full px-4 py-3 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent"
+          class="w-full px-4 py-3 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue focus:border-transparent"
         />
         <p v-if="error" class="text-red-600 text-sm font-body">{{ error }}</p>
         <button
           type="submit"
           :disabled="loading"
-          class="w-full bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-6 py-3 rounded-lg shadow transition-colors duration-200 disabled:opacity-50"
+          class="w-full bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-6 py-3 rounded-lg shadow-sm transition-colors duration-200 disabled:opacity-50"
         >
           {{ loading ? 'Signing in...' : 'Sign In' }}
         </button>

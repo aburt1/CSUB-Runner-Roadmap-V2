@@ -203,7 +203,7 @@ const resetAll = () => {
       </div>
     </div>
 
-    <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-4 mb-5 space-y-4">
+    <div class="bg-white border border-gray-200 rounded-xl shadow-xs p-4 mb-5 space-y-4">
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="relative">
           <label class="block font-body text-xs font-semibold text-csub-blue-dark mb-1"
@@ -215,11 +215,11 @@ const resetAll = () => {
               v-model="studentSearch"
               @keydown="(e) => e.key === 'Enter' && handleStudentSearch()"
               placeholder="Search by student name or email..."
-              class="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent"
+              class="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue focus:border-transparent"
             />
             <button
               @click="handleStudentSearch"
-              class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg shadow transition-colors text-sm"
+              class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg shadow-sm transition-colors text-sm"
             >
               Search
             </button>
@@ -252,7 +252,7 @@ const resetAll = () => {
             v-model="query"
             @keydown="(e) => e.key === 'Enter' && handleApplyFilters()"
             placeholder="Search notes, titles, actors, and details..."
-            class="w-full px-4 py-2.5 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent"
+            class="w-full px-4 py-2.5 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue focus:border-transparent"
           />
         </div>
       </div>
@@ -265,7 +265,7 @@ const resetAll = () => {
           <select
             :value="entityFilter"
             @change="onEntityChange"
-            class="w-full px-4 py-2.5 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent bg-white"
+            class="w-full px-4 py-2.5 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue focus:border-transparent bg-white"
           >
             <option v-for="option in ENTITY_OPTIONS" :key="option.value" :value="option.value">
               {{ option.label }}
@@ -280,7 +280,7 @@ const resetAll = () => {
           <select
             :value="actionFilter"
             @change="onActionChange"
-            class="w-full px-4 py-2.5 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent bg-white"
+            class="w-full px-4 py-2.5 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue focus:border-transparent bg-white"
           >
             <option v-for="option in ACTION_OPTIONS" :key="option.value" :value="option.value">
               {{ option.label }}
@@ -297,7 +297,7 @@ const resetAll = () => {
             v-model="actorFilter"
             @keydown="(e) => e.key === 'Enter' && handleApplyFilters()"
             placeholder="Admin name or email..."
-            class="w-full px-4 py-2.5 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue focus:border-transparent"
+            class="w-full px-4 py-2.5 rounded-lg border border-gray-300 font-body text-sm focus:outline-hidden focus:ring-2 focus:ring-csub-blue focus:border-transparent"
           />
         </div>
       </div>
@@ -306,7 +306,7 @@ const resetAll = () => {
         <button
           v-if="query.trim() || actorFilter.trim()"
           @click="handleApplyFilters"
-          class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-5 py-2.5 rounded-lg shadow transition-colors text-sm"
+          class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-5 py-2.5 rounded-lg shadow-sm transition-colors text-sm"
         >
           Apply
         </button>

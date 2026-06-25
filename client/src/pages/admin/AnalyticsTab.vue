@@ -95,7 +95,7 @@ watch(
     <SummaryStats :api="api" :termId="termId" />
 
     <!-- Step Completion Rates -->
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <div class="bg-white rounded-xl border border-gray-200 shadow-xs p-5">
       <h3 class="font-display text-sm font-bold text-csub-blue-dark uppercase tracking-wide mb-1">
         Step Completion Rates
       </h3>
@@ -107,7 +107,7 @@ watch(
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- Completion Trend -->
-      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-xs p-5">
         <div class="flex items-center justify-between mb-4">
           <div>
             <h3 class="font-display text-sm font-bold text-csub-blue-dark uppercase tracking-wide">
@@ -134,7 +134,7 @@ watch(
       </div>
 
       <!-- Bottlenecks -->
-      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-xs p-5">
         <h3 class="font-display text-sm font-bold text-csub-blue-dark uppercase tracking-wide mb-1">
           Bottleneck Steps
         </h3>
@@ -146,7 +146,7 @@ watch(
     </div>
 
     <!-- Cohort Distribution -->
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+    <div class="bg-white rounded-xl border border-gray-200 shadow-xs p-5">
       <h3 class="font-display text-sm font-bold text-csub-blue-dark uppercase tracking-wide mb-1">
         Student Progress Distribution
       </h3>

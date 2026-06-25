@@ -218,7 +218,7 @@ function handleNavigate(direction: 'prev' | 'next') {
       <p class="font-body text-csub-gray mb-6">{{ error }}</p>
       <button
         @click="retry"
-        class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-6 py-3 rounded-lg shadow transition-colors text-sm"
+        class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider px-6 py-3 rounded-lg shadow-sm transition-colors text-sm"
       >
         Try Again
       </button>
@@ -273,7 +273,7 @@ function handleNavigate(direction: 'prev' | 'next') {
               Your step-by-step guide to becoming a Roadrunner
             </p>
           </div>
-          <div class="flex items-center gap-3 flex-shrink-0 mt-1">
+          <div class="flex items-center gap-3 shrink-0 mt-1">
             <HighContrastToggle />
             <span class="text-white/30">&middot;</span>
             <button
@@ -324,7 +324,7 @@ function handleNavigate(direction: 'prev' | 'next') {
             <input
               type="checkbox"
               v-model="showOnlyIncomplete"
-              class="w-5 h-5 rounded border-gray-300 text-csub-blue focus:ring-csub-blue"
+              class="w-5 h-5 rounded-sm border-gray-300 text-csub-blue focus:ring-csub-blue"
             />
             <span class="font-body text-xs text-csub-gray">Incomplete only</span>
           </label>
@@ -335,7 +335,7 @@ function handleNavigate(direction: 'prev' | 'next') {
               @click="viewMode = 'timeline'"
               :class="`p-2.5 rounded-md transition-colors ${
                 viewMode === 'timeline'
-                  ? 'bg-white shadow-sm text-csub-blue'
+                  ? 'bg-white shadow-xs text-csub-blue'
                   : 'text-gray-400 hover:text-gray-600'
               }`"
               aria-label="Timeline view"
@@ -358,7 +358,7 @@ function handleNavigate(direction: 'prev' | 'next') {
               @click="viewMode = 'list'"
               :class="`p-2.5 rounded-md transition-colors ${
                 viewMode === 'list'
-                  ? 'bg-white shadow-sm text-csub-blue'
+                  ? 'bg-white shadow-xs text-csub-blue'
                   : 'text-gray-400 hover:text-gray-600'
               }`"
               aria-label="List view"

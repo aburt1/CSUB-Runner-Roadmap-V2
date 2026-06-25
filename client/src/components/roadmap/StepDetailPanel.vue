@@ -151,7 +151,7 @@ function formatCompletedAt(value: string): string {
       role="dialog"
       aria-modal="true"
       :aria-label="`Step ${stepNumber}: ${step.title}`"
-      class="relative bg-white w-full sm:max-w-lg sm:rounded-xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto focus:outline-none sdp-panel"
+      class="relative bg-white w-full sm:max-w-lg sm:rounded-xl rounded-t-2xl shadow-2xl max-h-[90vh] overflow-y-auto focus:outline-hidden sdp-panel"
       :class="{ 'is-entered': entered }"
     >
       <!-- Status accent bar -->
@@ -159,9 +159,9 @@ function formatCompletedAt(value: string): string {
         aria-hidden="true"
         :class="`h-1.5 ${
           step.status === 'completed'
-            ? 'bg-gradient-to-r from-csub-gold to-amber-300'
+            ? 'bg-linear-to-r from-csub-gold to-amber-300'
             : step.status === 'in_progress'
-              ? 'bg-gradient-to-r from-csub-blue to-blue-400'
+              ? 'bg-linear-to-r from-csub-blue to-blue-400'
               : 'bg-gray-200'
         } sm:rounded-t-xl`"
       />
@@ -226,9 +226,7 @@ function formatCompletedAt(value: string): string {
 
         <!-- Step header -->
         <div class="flex items-start gap-3">
-          <div
-            class="flex-shrink-0 w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center"
-          >
+          <div class="shrink-0 w-12 h-12 rounded-xl bg-gray-50 flex items-center justify-center">
             <span class="text-2xl" aria-hidden="true">{{ step.icon }}</span>
           </div>
           <div class="flex-1 min-w-0">
@@ -319,7 +317,7 @@ function formatCompletedAt(value: string): string {
         >
           <p class="font-body text-sm text-gray-500 flex items-start gap-2">
             <svg
-              class="w-4 h-4 text-gray-400 flex-shrink-0 mt-0.5"
+              class="w-4 h-4 text-gray-400 shrink-0 mt-0.5"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -388,7 +386,7 @@ function formatCompletedAt(value: string): string {
           </h3>
           <div class="flex items-start gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100">
             <svg
-              class="w-4 h-4 text-csub-blue flex-shrink-0 mt-0.5"
+              class="w-4 h-4 text-csub-blue shrink-0 mt-0.5"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -456,7 +454,7 @@ function formatCompletedAt(value: string): string {
           :href="safeUrl(links[0]!.url)"
           target="_blank"
           rel="noopener noreferrer"
-          class="flex items-center justify-center gap-2 w-full bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider text-sm px-6 py-3.5 rounded-xl shadow transition-colors mb-3"
+          class="flex items-center justify-center gap-2 w-full bg-csub-blue hover:bg-csub-blue-dark text-white font-display font-bold uppercase tracking-wider text-sm px-6 py-3.5 rounded-xl shadow-sm transition-colors mb-3"
         >
           {{ links[0]!.label || 'Get Started' }}
           <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

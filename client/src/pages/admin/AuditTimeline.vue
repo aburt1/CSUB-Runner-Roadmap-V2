@@ -160,10 +160,10 @@ const rows = computed<LogRow[]>(() =>
   <div v-else class="space-y-3">
     <!-- rows is pre-computed so parseDetails is called once per log, not 3x per render -->
     <template v-for="{ log, summary, detailRows } in rows" :key="log.id">
-      <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-4">
+      <div class="bg-white border border-gray-200 rounded-xl shadow-xs p-4">
         <div class="flex gap-3 items-start">
           <div
-            :class="`w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0 ${(ACTION_META[log.action] || { label: log.action, color: 'bg-gray-400' }).color}`"
+            :class="`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ${(ACTION_META[log.action] || { label: log.action, color: 'bg-gray-400' }).color}`"
           />
           <div class="flex-1 min-w-0">
             <div class="flex flex-wrap items-center gap-2 mb-1.5">
@@ -198,7 +198,9 @@ const rows = computed<LogRow[]>(() =>
                 <p class="font-body text-[10px] uppercase tracking-wide text-csub-gray">
                   {{ label }}
                 </p>
-                <p class="font-body text-xs text-csub-blue-dark mt-0.5 break-words">{{ value }}</p>
+                <p class="font-body text-xs text-csub-blue-dark mt-0.5 wrap-break-word">
+                  {{ value }}
+                </p>
               </div>
             </div>
           </div>

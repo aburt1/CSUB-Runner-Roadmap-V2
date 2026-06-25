@@ -43,7 +43,7 @@ const avgColor = computed(() =>
 <template>
   <div v-if="stats" class="grid grid-cols-3 gap-4 md:grid-cols-[1fr_2fr] md:gap-6 mb-6">
     <!-- Left column: first stat — aligns with student list -->
-    <div class="bg-white border border-gray-200 rounded-xl shadow-sm px-4 py-4 text-center">
+    <div class="bg-white border border-gray-200 rounded-xl shadow-xs px-4 py-4 text-center">
       <p class="font-display text-2xl font-bold text-csub-blue-dark">
         {{ stats.totalStudents }}
       </p>
@@ -51,13 +51,13 @@ const avgColor = computed(() =>
     </div>
     <!-- Right column: remaining stats — aligns with detail panel -->
     <div class="col-span-2 md:col-span-1 grid grid-cols-2 gap-4 md:gap-6">
-      <div class="bg-white border border-gray-200 rounded-xl shadow-sm px-4 py-4 text-center">
+      <div class="bg-white border border-gray-200 rounded-xl shadow-xs px-4 py-4 text-center">
         <p :class="`font-display text-2xl font-bold ${avgColor}`">
           {{ `${stats.avgCompletionPercent}%` }}
         </p>
         <p class="font-body text-xs text-csub-gray mt-1 uppercase tracking-wide">Avg. Completion</p>
       </div>
-      <div class="bg-white border border-gray-200 rounded-xl shadow-sm px-4 py-4 text-center">
+      <div class="bg-white border border-gray-200 rounded-xl shadow-xs px-4 py-4 text-center">
         <p class="font-display text-2xl font-bold text-csub-blue">
           {{ stats.totalActiveSteps }}
         </p>
