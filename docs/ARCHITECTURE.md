@@ -578,7 +578,7 @@ For the production provisioning story — what a DBA runs by hand, which rights 
 
 ## The Data Layer (`Db.cs`)
 
-`Api/Data/Db.cs` is the **only** place that opens database connections. It is a thin wrapper over Dapper + `Microsoft.Data.SqlClient` that mirrors the old Node `server/db/pool.ts` helper (`queryOne` / `queryAll` / `execute` / `transaction`) so ported code reads the same. There is no ORM, no LINQ, no query builder — every query is hand-written T-SQL passed in by the caller, with parameters supplied as a plain anonymous object (`new { id, term_id }`), which is also how SQL injection is avoided.
+`Api/Data/Db.cs` is the **only** place that opens database connections. It is a thin wrapper over Dapper + `Microsoft.Data.SqlClient` exposing four methods — `QueryOne` / `QueryAll` / `Execute` / `Transaction`. There is no ORM, no LINQ, no query builder — every query is hand-written T-SQL passed in by the caller, with parameters supplied as a plain anonymous object (`new { id, term_id }`), which is also how SQL injection is avoided.
 
 Three things make this layer enterprise-grade:
 
@@ -949,7 +949,7 @@ The `tests/Api.IntegrationTests` project hosts the **real application** via `Web
 
 ## Key Design Decisions
 
-- **No ORM.** Every query is hand-written T-SQL passed to Dapper through the thin `Db` wrapper (`QueryOne`/`QueryAll`/`Execute`/`Transaction`). Parameters are plain anonymous objects (`new { id, term_id }`); no repositories, no LINQ, no query builder. This mirrors the old Node `db/pool.ts` so ported code reads the same — and SQL injection is avoided through parameterization rather than string building.
+- **No ORM.** Every query is hand-written T-SQL passed to Dapper through the thin `Db` wrapper (`QueryOne`/`QueryAll`/`Execute`/`Transaction`). Parameters are plain anonymous objects (`new { id, term_id }`); no repositories, no LINQ, no query builder. SQL injection is avoided through parameterization rather than string building.
 - **Resilient data layer.** That same `Db` wrapper retries transient SQL faults with exponential backoff (4 attempts), retrying whole transactions rather than individual statements, so routine failover/throttling/deadlock events don't surface as 500s. See [The Data Layer](#the-data-layer-dbcs).
 - **Stable API contract.** Paths, payloads, status codes, error envelopes, snake_case vs. camelCase keys, and UTC `Z` timestamps are treated as a frozen contract (enforced in `Program.cs`: no JSON naming policy, suppressed model-state 400, custom UTC converter). Integration partners and the SPA can rely on shapes not shifting between releases.
 - **App-managed schema + seed, gated for production.** `SchemaInitializer` + `Seeder` run on boot. The schema is idempotent and its version is recorded in `schema_version`; the optional `CREATE DATABASE` is gated behind `Database:AutoCreate` (off in Production, where a DBA provisions the DB) and seeding behind `Database:Seed`. No migration tool, no manual SQL step in dev.
@@ -957,9 +957,9 @@ The `tests/Api.IntegrationTests` project hosts the **real application** via `Web
 - **Three-container deployment with same-origin proxy.** Splitting `web` / `api` / `sqlserver` lets each scale and ship independently, while nginx reverse-proxying `/api` keeps the browser on a single origin so **CORS is normally unnecessary**. The client's relative `/api` calls work identically in dev (Vite proxy) and in production (nginx proxy).
 - **Hardened, self-sequencing containers.** Both app containers run non-root (the api as `$APP_UID`, the web as nginx-unprivileged on 8080); all three declare HEALTHCHECKs, and Compose gates each service on the next being healthy. Required secrets use the `${VAR:?msg}` form so a misconfigured stack fails fast.
 - **Trust the proxy, but only the proxy.** `UseForwardedHeaders` honors `X-Forwarded-For`/`-Proto` from nginx so rate limiting and audit log key on the real client IP. The known-proxy allowlist is cleared because the api is only reachable behind nginx on the internal network / `127.0.0.1`.
-- **Transaction-based row locking.** Progress writes go through `Progress.ApplyAsync` using `WITH (UPDLOCK, HOLDLOCK)` inside a `Db.TransactionAsync`, the SQL Server equivalent of the old `SELECT ... FOR UPDATE`, so concurrent admin edits and integration pushes can't corrupt a student's progress row.
+- **Transaction-based row locking.** Progress writes go through `Progress.ApplyAsync` using `WITH (UPDLOCK, HOLDLOCK)` inside a `Db.TransactionAsync` to hold an exclusive row lock for the duration of the update, so concurrent admin edits and integration pushes can't corrupt a student's progress row.
 - **Integration-test isolation.** `tests/Api.IntegrationTests` hosts the real app via `WebApplicationFactory` against a dedicated test database that is dropped and rebuilt per run — no mocks for the data layer, real SQL Server behavior under test.
-- **Split admin API.** The admin surface is split into focused controllers (`Analytics`, `Steps`, `Students`, `Terms`, `Users`, `ApiChecks`) under `/api/admin`, each declaring its own `[AdminAuth(...)]` role gates per action — the C# analog of the old "5 focused route modules" refactor of a single 1,660-line file.
+- **Split admin API.** The admin surface is split into focused controllers (`Analytics`, `Steps`, `Students`, `Terms`, `Users`, `ApiChecks`) under `/api/admin`, each declaring its own `[AdminAuth(...)]` role gates per action, so each concern stays small and independently authorized.
 - **Shared helpers.** Common patterns (`ParseTermId`, `ParsePagination`, `CountActiveStepsAsync`, the active-step SQL fragment) live in `Api/Services/QueryHelpers.cs` to eliminate duplication across controllers.
 - **Quality as a build contract.** Backend analyzers run with `TreatWarningsAsErrors`; the frontend lints, formats, and unit-tests; CI exercises both against a real SQL Server. See [Quality Gates & CI](#quality-gates--ci).
 

@@ -1,16 +1,16 @@
-# CSUB Runner Roadmap V2 — Road to Becoming a Roadrunner
+# CSUB Runner Roadmap — Road to Becoming a Roadrunner
 
-An interactive student onboarding application for California State University, Bakersfield. Guides newly admitted students through every step of the admissions process — from acceptance to their first day of classes.
+An interactive onboarding app for California State University, Bakersfield that turns the admissions maze into a clear, personalized checklist. Every newly admitted student gets a step-by-step roadmap — from accepting their offer to their first day of class — with the right tasks, deadlines, and guidance surfaced for *their* situation, so nothing critical slips through the cracks.
 
-Built on **Vue 3 + C# (ASP.NET Core) + SQL Server** with deliberately simple, low-abstraction, readable code — every behavior is explained in the docs so a new maintainer can understand not just *what* the app does, but *why*.
+For admissions staff it doubles as a control center: shape the checklist for each incoming term, track progress across the whole cohort, spot who's falling behind a deadline, and let campus systems (SIS/ERP) complete steps automatically through the integration API.
 
 ![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
 ![ASP.NET Core](https://img.shields.io/badge/ASP.NET_Core-10-512BD4?logo=dotnet&logoColor=white)
 ![Dapper](https://img.shields.io/badge/Dapper-micro--ORM-FF6A00)
 ![SQL Server](https://img.shields.io/badge/SQL_Server-2022-CC2927?logo=microsoftsqlserver&logoColor=white)
-![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3-06B6D4?logo=tailwindcss&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-3_containers-2496ED?logo=docker&logoColor=white)
 
@@ -46,6 +46,8 @@ Built on **Vue 3 + C# (ASP.NET Core) + SQL Server** with deliberately simple, lo
 - **Frontend:** Vue 3 + Vite + Tailwind + Pinia. Tiptap (rich text), vue-chartjs (analytics), vuedraggable (reorder), MSAL (Azure AD SSO). Served by a non-root nginx in production. Unit-tested with Vitest; linted with ESLint + Prettier.
 - **Backend:** ASP.NET Core (.NET 10) controllers + Dapper (hand-written T-SQL). No ORM. Built with .NET analyzers and warnings-as-errors; transient-fault retry on all SQL; liveness/readiness health probes.
 - **Database:** SQL Server 2022. Schema is applied idempotently on startup and tracked in a `schema_version` table. **In production a DBA provisions the database and a least-privilege login — the app does not run `CREATE DATABASE`.** Database creation and seeding auto-run only outside Production (see [Deployment](docs/DEPLOYMENT.md)).
+
+Throughout, the code favors explicit, low-abstraction style over cleverness, and the [docs](#documentation) explain the reasoning behind each behavior — so the system stays easy to operate and maintain.
 
 ## Quick Start
 
