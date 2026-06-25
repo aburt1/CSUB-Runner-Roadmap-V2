@@ -20,6 +20,7 @@ public sealed class Student
     public string? applicant_type { get; set; }
     public string? major { get; set; }
     public string? residency { get; set; }
+    public string? admit_term { get; set; }
     public int? term_id { get; set; }
     public DateTime? last_synced_at { get; set; }
     public DateTime? last_api_check_at { get; set; }

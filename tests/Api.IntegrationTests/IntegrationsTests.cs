@@ -387,4 +387,211 @@ public class IntegrationsTests
         var body = await res.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("term_id must be a valid number", body.GetProperty("error").GetString());
     }
+
+    // ---- PUT /students: provisioning upsert ----
+
+    // Fresh, never-seeded emplid per test so creates don't collide with the seeded roster.
+    private static string FreshEmplid() => "9" + Guid.NewGuid().ToString("N")[..8];
+
+    [Fact]
+    public async Task Put_student_create_succeeds()
+    {
+        var emplid = FreshEmplid();
+        var res = await _fx.Integration().PutAsJsonAsync(
+            "/api/integrations/v1/students",
+            new { emplid, display_name = "Pre Staged", email = $"{emplid}@t.edu", major = "Biology", source_event_id = Guid.NewGuid().ToString() });
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(body.GetProperty("success").GetBoolean());
+        Assert.Equal("created", body.GetProperty("result").GetString());
+        Assert.Equal(emplid, body.GetProperty("student_id_number").GetString());
+        Assert.False(string.IsNullOrEmpty(body.GetProperty("student_id").GetString()));
+
+        // Defaulted to the active term.
+        var activeTerm = Convert.ToInt32(await _fx.ScalarAsync("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC"));
+        Assert.Equal(activeTerm, body.GetProperty("term_id").GetInt32());
+
+        // The "accepted" step was auto-completed on create.
+        var studentId = body.GetProperty("student_id").GetString();
+        var acceptedCount = Convert.ToInt32(await _fx.ScalarAsync(
+            $"SELECT COUNT(*) FROM student_progress sp JOIN steps s ON s.id = sp.step_id WHERE sp.student_id = '{studentId}' AND s.step_key = 'accepted'"));
+        Assert.True(acceptedCount >= 1);
+    }
+
+    [Fact]
+    public async Task Put_student_update_existing_only_writes_present_fields()
+    {
+        var emplid = FreshEmplid();
+        // Create with tags + major.
+        var create = await _fx.Integration().PutAsJsonAsync(
+            "/api/integrations/v1/students",
+            new { emplid, display_name = "Original", tags = "[\"vip\"]", major = "History", source_event_id = Guid.NewGuid().ToString() });
+        Assert.Equal(HttpStatusCode.OK, create.StatusCode);
+        var createBody = await create.Content.ReadFromJsonAsync<JsonElement>();
+        var studentId = createBody.GetProperty("student_id").GetString();
+
+        // Update display_name + phone, OMIT tags/major (must be left intact).
+        var update = await _fx.Integration().PutAsJsonAsync(
+            "/api/integrations/v1/students",
+            new { emplid, display_name = "Renamed", phone = "555-0100", source_event_id = Guid.NewGuid().ToString() });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        var updateBody = await update.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("updated", updateBody.GetProperty("result").GetString());
+        // Same row reused.
+        Assert.Equal(studentId, updateBody.GetProperty("student_id").GetString());
+
+        Assert.Equal("Renamed", (string?)await _fx.ScalarAsync($"SELECT display_name FROM students WHERE id = '{studentId}'"));
+        Assert.Equal("555-0100", (string?)await _fx.ScalarAsync($"SELECT phone FROM students WHERE id = '{studentId}'"));
+        // Omitted fields untouched.
+        Assert.Equal("[\"vip\"]", (string?)await _fx.ScalarAsync($"SELECT tags FROM students WHERE id = '{studentId}'"));
+        Assert.Equal("History", (string?)await _fx.ScalarAsync($"SELECT major FROM students WHERE id = '{studentId}'"));
+    }
+
+    [Fact]
+    public async Task Put_student_replay_same_source_event_id_is_idempotent()
+    {
+        var emplid = FreshEmplid();
+        var sourceEventId = Guid.NewGuid().ToString();
+
+        var first = await _fx.Integration().PutAsJsonAsync(
+            "/api/integrations/v1/students",
+            new { emplid, display_name = "First", source_event_id = sourceEventId });
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        var firstBody = await first.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("created", firstBody.GetProperty("result").GetString());
+        var firstStudentId = firstBody.GetProperty("student_id").GetString();
+
+        // Replay the SAME source_event_id with a different payload -> stored response replayed verbatim.
+        var second = await _fx.Integration().PutAsJsonAsync(
+            "/api/integrations/v1/students",
+            new { emplid, display_name = "Changed Name", source_event_id = sourceEventId });
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        var secondBody = await second.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("created", secondBody.GetProperty("result").GetString());
+        Assert.Equal(firstStudentId, secondBody.GetProperty("student_id").GetString());
+
+        // The replayed payload was ignored: the stored name persists.
+        Assert.Equal("First", (string?)await _fx.ScalarAsync($"SELECT display_name FROM students WHERE id = '{firstStudentId}'"));
+    }
+
+    [Fact]
+    public async Task Put_student_invalid_term_id_returns_404_term_not_found()
+    {
+        var res = await _fx.Integration().PutAsJsonAsync(
+            "/api/integrations/v1/students",
+            new { emplid = FreshEmplid(), display_name = "Bad Term", term_id = 999999, source_event_id = Guid.NewGuid().ToString() });
+
+        Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(body.GetProperty("success").GetBoolean());
+        Assert.Equal("term_not_found", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Put_student_missing_emplid_returns_400()
+    {
+        var res = await _fx.Integration().PutAsJsonAsync(
+            "/api/integrations/v1/students",
+            new { display_name = "No Emplid", source_event_id = Guid.NewGuid().ToString() });
+
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(body.GetProperty("success").GetBoolean());
+        Assert.Equal("invalid_emplid", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Put_student_missing_display_name_returns_400()
+    {
+        var res = await _fx.Integration().PutAsJsonAsync(
+            "/api/integrations/v1/students",
+            new { emplid = FreshEmplid(), display_name = "", source_event_id = Guid.NewGuid().ToString() });
+
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(body.GetProperty("success").GetBoolean());
+        Assert.Equal("missing_required_field", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Put_student_missing_source_event_id_returns_400_not_stored()
+    {
+        var res = await _fx.Integration().PutAsJsonAsync(
+            "/api/integrations/v1/students",
+            new { emplid = FreshEmplid(), display_name = "No Event" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(body.GetProperty("success").GetBoolean());
+        Assert.Equal("invalid_source_event_id", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Post_students_batch_processes_all()
+    {
+        var goodEmplid = FreshEmplid();
+        var payload = new
+        {
+            items = new object[]
+            {
+                new { emplid = goodEmplid, display_name = "Batch Good", source_event_id = Guid.NewGuid().ToString() },
+                new { emplid = FreshEmplid(), display_name = "Batch Bad Term", term_id = 999999, source_event_id = Guid.NewGuid().ToString() },
+            },
+        };
+
+        var res = await _fx.Integration().PostAsJsonAsync("/api/integrations/v1/students/batch", payload);
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.True(body.GetProperty("success").GetBoolean());
+        var items = body.GetProperty("items");
+        Assert.Equal(2, items.GetArrayLength());
+        Assert.True(items[0].GetProperty("success").GetBoolean());
+        Assert.False(items[1].GetProperty("success").GetBoolean());
+        Assert.Equal("term_not_found", items[1].GetProperty("code").GetString());
+
+        var summary = body.GetProperty("summary");
+        Assert.Equal(2, summary.GetProperty("total").GetInt32());
+        Assert.Equal(1, summary.GetProperty("succeeded").GetInt32());
+        Assert.Equal(1, summary.GetProperty("failed").GetInt32());
+    }
+
+    [Fact]
+    public async Task Post_students_batch_empty_items_returns_400()
+    {
+        var res = await _fx.Integration().PostAsJsonAsync(
+            "/api/integrations/v1/students/batch",
+            new { items = Array.Empty<object>() });
+
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("items must be a non-empty array", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Post_students_batch_over_500_returns_400()
+    {
+        var items = Enumerable.Range(0, 501)
+            .Select(_ => (object)new { emplid = FreshEmplid(), display_name = "X", source_event_id = Guid.NewGuid().ToString() })
+            .ToArray();
+
+        var res = await _fx.Integration().PostAsJsonAsync(
+            "/api/integrations/v1/students/batch",
+            new { items });
+
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Batch size must not exceed 500 items", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task Put_students_without_key_returns_401()
+    {
+        var res = await _fx.Anonymous().PutAsJsonAsync(
+            "/api/integrations/v1/students",
+            new { emplid = FreshEmplid(), display_name = "X", source_event_id = Guid.NewGuid().ToString() });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
+    }
 }

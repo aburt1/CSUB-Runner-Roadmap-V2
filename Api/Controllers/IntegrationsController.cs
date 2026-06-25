@@ -40,6 +40,10 @@ public sealed class IntegrationsController : ControllerBase
         "step_not_found" => 404,
         "step_inactive" => 409,
         "duplicate_student_id_number" => 409,
+        "invalid_emplid" => 400,
+        "missing_required_field" => 400,
+        "term_not_found" => 404,
+        "no_active_term" => 409,
         _ => 400,
     };
 
@@ -56,6 +60,30 @@ public sealed class IntegrationsController : ControllerBase
     public sealed class BatchRequest
     {
         public List<CompletionItem>? items { get; set; }
+    }
+
+    // Student provisioning push: pre-stage / upsert a student into a cohort by emplid
+    // before they ever sign in. emplid + display_name + source_event_id are required;
+    // the rest are optional profile fields written only when present in the payload.
+    public sealed class StudentItem
+    {
+        public string? emplid { get; set; }
+        public string? display_name { get; set; }
+        public string? source_event_id { get; set; }
+        public int? term_id { get; set; }
+        public string? email { get; set; }
+        public string? tags { get; set; }
+        public string? preferred_name { get; set; }
+        public string? phone { get; set; }
+        public string? applicant_type { get; set; }
+        public string? major { get; set; }
+        public string? residency { get; set; }
+        public string? admit_term { get; set; }
+    }
+
+    public sealed class StudentBatchRequest
+    {
+        public List<StudentItem>? items { get; set; }
     }
 
     private sealed class Outcome
@@ -86,6 +114,52 @@ public sealed class IntegrationsController : ControllerBase
         foreach (var item in items)
         {
             var outcome = await ProcessCompletionItemAsync(item ?? new CompletionItem());
+            results.Add(outcome.Body);
+        }
+
+        var succeeded = 0;
+        foreach (var result in results)
+        {
+            if (IsSuccess(result))
+                succeeded++;
+        }
+        var failed = results.Count - succeeded;
+
+        return Ok(new
+        {
+            success = true,
+            items = results,
+            summary = new
+            {
+                total = results.Count,
+                succeeded,
+                failed,
+            },
+        });
+    }
+
+    // PUT /api/integrations/v1/students
+    [HttpPut("students")]
+    public async Task<IActionResult> StudentUpsert([FromBody] StudentItem? body)
+    {
+        var outcome = await ProcessStudentItemAsync(body ?? new StudentItem());
+        return StatusCode(outcome.HttpStatus, outcome.Body);
+    }
+
+    // POST /api/integrations/v1/students/batch
+    [HttpPost("students/batch")]
+    public async Task<IActionResult> StudentsBatch([FromBody] StudentBatchRequest? body)
+    {
+        var items = body?.items;
+        if (items is null || items.Count == 0)
+            return BadRequest(new { error = "items must be a non-empty array" });
+        if (items.Count > 500)
+            return BadRequest(new { error = "Batch size must not exceed 500 items" });
+
+        var results = new List<object>();
+        foreach (var item in items)
+        {
+            var outcome = await ProcessStudentItemAsync(item ?? new StudentItem());
             results.Add(outcome.Body);
         }
 
@@ -267,6 +341,303 @@ public sealed class IntegrationsController : ControllerBase
         });
     }
 
+    // Core single-student pipeline. The PUT and each batch item run through this.
+    // Upserts the student keyed on emplid; idempotent via source_event_id like completions.
+    private async Task<Outcome> ProcessStudentItemAsync(StudentItem item)
+    {
+        var integrationClientId = (int)HttpContext.Items["integrationClientId"]!;
+
+        var sourceEventId = (item.source_event_id ?? "").Trim();
+        if (string.IsNullOrEmpty(sourceEventId))
+        {
+            return new Outcome
+            {
+                HttpStatus = 400,
+                Body = BuildStudentFailure(item, "source_event_id is required", "invalid_source_event_id"),
+            };
+        }
+
+        var storedEvent = await GetStoredIntegrationEventAsync(integrationClientId, sourceEventId);
+        if (storedEvent is not null)
+            return storedEvent;
+
+        // Input-validation failures (blank emplid / display_name, bad term) are deliberately
+        // NOT recorded — the caller can retry the same source_event_id with a corrected payload.
+        var emplid = Progress.NormalizeStudentIdNumber(item.emplid);
+        if (string.IsNullOrEmpty(emplid))
+        {
+            return new Outcome
+            {
+                HttpStatus = 400,
+                Body = BuildStudentFailure(item, "emplid is required", "invalid_emplid"),
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(item.display_name))
+        {
+            return new Outcome
+            {
+                HttpStatus = 400,
+                Body = BuildStudentFailure(item, "display_name is required", "missing_required_field"),
+            };
+        }
+
+        var termResolution = await ResolveTermIdAsync(item.term_id);
+        if (termResolution.Error is not null)
+        {
+            return new Outcome
+            {
+                HttpStatus = StatusForErrorCode(termResolution.ErrorCode),
+                Body = BuildStudentFailure(item, termResolution.Error, termResolution.ErrorCode),
+            };
+        }
+        var termId = termResolution.TermId!.Value;
+
+        // Resolve an existing row by the SAME emplid predicate the completion API uses.
+        // Branch on ErrorCode (the stable code), not Error (the human-readable message).
+        var resolution = await Progress.ResolveStudentByIdNumberAsync(_db, emplid);
+        if (resolution.ErrorCode is "duplicate_student_id_number")
+        {
+            // >1 existing rows for this emplid: surface a real 409 (and store it).
+            return await FinalizeStudentOutcomeAsync(integrationClientId, item, emplid, new Outcome
+            {
+                HttpStatus = StatusForErrorCode(resolution.ErrorCode),
+                Body = BuildStudentFailure(item, resolution.Error!, resolution.ErrorCode),
+            });
+        }
+        if (resolution.ErrorCode is "invalid_student_id_number")
+        {
+            // Should not happen (emplid already validated non-blank), but mirror its 400.
+            return new Outcome
+            {
+                HttpStatus = 400,
+                Body = BuildStudentFailure(item, resolution.Error!, resolution.ErrorCode),
+            };
+        }
+
+        Outcome outcome;
+        if (resolution.ErrorCode is "student_not_found")
+        {
+            outcome = await CreateStudentAsync(item, emplid, termId);
+        }
+        else
+        {
+            outcome = await UpdateStudentAsync(item, resolution.Student!, emplid, termId);
+        }
+
+        return await FinalizeStudentOutcomeAsync(integrationClientId, item, emplid, outcome);
+    }
+
+    // Build the present-only optional-column SET/INSERT fragments using the same
+    // whitelist + CoerceTruthy semantics the admin profile update uses: only columns
+    // PRESENT on the payload are written, and falsy values ('' / 0 / false) become null.
+    private static readonly string[] OptionalStudentFields =
+    {
+        "email", "tags", "preferred_name", "phone",
+        "applicant_type", "major", "residency", "admit_term",
+    };
+
+    private async Task<Outcome> CreateStudentAsync(StudentItem item, string emplid, int termId)
+    {
+        var studentId = Guid.NewGuid().ToString();
+
+        var columns = new List<string> { "id", "emplid", "display_name", "term_id" };
+        var values = new List<string> { "@id", "@emplid", "@display_name", "@termId" };
+        var parameters = new Dictionary<string, object?>
+        {
+            ["id"] = studentId,
+            ["emplid"] = emplid,
+            ["display_name"] = item.display_name,
+            ["termId"] = termId,
+        };
+        AddPresentOptionalFields(item, columns, values, parameters, forUpdate: false);
+
+        try
+        {
+            await _db.ExecuteAsync(
+                $"INSERT INTO students ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)})",
+                parameters);
+        }
+        catch (SqlException ex) when (ex.Number is 2627 or 2601)
+        {
+            // A concurrent push of the same new emplid won the unique index — re-resolve
+            // and fall through to the UPDATE branch (the upsert's own race guard, distinct
+            // from the integration_events idempotency race).
+            var reresolved = await Progress.ResolveStudentByIdNumberAsync(_db, emplid);
+            if (reresolved.Student is not null)
+                return await UpdateStudentAsync(item, reresolved.Student, emplid, termId);
+            throw;
+        }
+
+        // New students start with the "accepted" step already completed — only on a genuine
+        // create, mirroring the sign-in provisioning path.
+        await AutoCompleteAcceptedStepAsync(studentId, termId);
+
+        return new Outcome
+        {
+            HttpStatus = 200,
+            Body = BuildStudentSuccess(emplid, studentId, termId, "created", item),
+        };
+    }
+
+    private async Task<Outcome> UpdateStudentAsync(StudentItem item, Progress.ResolvedStudent existing, string emplid, int termId)
+    {
+        var updates = new List<string> { "display_name = @display_name" };
+        var parameters = new Dictionary<string, object?>
+        {
+            ["id"] = existing.id,
+            ["display_name"] = item.display_name,
+        };
+
+        // Only move a student between cohorts when term_id was EXPLICITLY provided, so a
+        // re-push without term_id never silently reassigns them.
+        if (item.term_id.HasValue)
+        {
+            updates.Add("term_id = @termId");
+            parameters["termId"] = termId;
+        }
+
+        AddPresentOptionalFields(item, columns: null, values: null, parameters: parameters, forUpdate: true, updates: updates);
+
+        await _db.ExecuteAsync(
+            $"UPDATE students SET {string.Join(", ", updates)} WHERE id = @id",
+            parameters);
+
+        // display_name is always present, so an update always writes >=1 field. Match the
+        // completion result vocabulary: any present field => "updated".
+        return new Outcome
+        {
+            HttpStatus = 200,
+            Body = BuildStudentSuccess(emplid, existing.id, termId, "updated", item),
+        };
+    }
+
+    // Append the optional columns/params that are present (non-null) on the payload,
+    // coercing falsy -> null. For INSERT, fills columns+values; for UPDATE, fills updates.
+    private static void AddPresentOptionalFields(
+        StudentItem item,
+        List<string>? columns,
+        List<string>? values,
+        Dictionary<string, object?> parameters,
+        bool forUpdate,
+        List<string>? updates = null)
+    {
+        var index = 0;
+        foreach (var field in OptionalStudentFields)
+        {
+            var raw = GetOptionalField(item, field);
+            // "Present" = the JSON carried a value. A null property is treated as omitted
+            // (so an omitted optional never null-outs an existing column on update).
+            if (raw is null)
+                continue;
+
+            var paramName = "opt" + index;
+            // CoerceTruthy semantics: '' / 0 / false -> null.
+            parameters[paramName] = string.IsNullOrEmpty(raw) ? null : raw;
+
+            if (forUpdate)
+                updates!.Add($"{field} = @{paramName}");
+            else
+            {
+                columns!.Add(field);
+                values!.Add("@" + paramName);
+            }
+            index++;
+        }
+    }
+
+    private static string? GetOptionalField(StudentItem item, string field) => field switch
+    {
+        "email" => item.email,
+        "tags" => item.tags,
+        "preferred_name" => item.preferred_name,
+        "phone" => item.phone,
+        "applicant_type" => item.applicant_type,
+        "major" => item.major,
+        "residency" => item.residency,
+        "admit_term" => item.admit_term,
+        _ => null,
+    };
+
+    // Resolve the target cohort. THE single swappable place for cohort resolution: an
+    // explicit term_id is validated against dbo.terms; otherwise we fall back to the
+    // current active term (same SQL AuthController uses on provisioning).
+    private async Task<TermResolution> ResolveTermIdAsync(int? requested)
+    {
+        if (requested.HasValue)
+        {
+            var found = await _db.QueryOneAsync<int?>(
+                "SELECT id FROM dbo.terms WHERE id = @id", new { id = requested.Value });
+            if (found is null)
+                return new TermResolution { ErrorCode = "term_not_found", Error = "term_id does not exist" };
+            return new TermResolution { TermId = found.Value };
+        }
+
+        var active = await _db.QueryOneAsync<int?>(
+            "SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
+        if (active is null)
+            return new TermResolution { ErrorCode = "no_active_term", Error = "No active term to assign the student to" };
+        return new TermResolution { TermId = active.Value };
+    }
+
+    // New students start with the "accepted" step already completed (idempotent).
+    // Duplicated from AuthController by design (boring-code charter: a small block, not a layer).
+    private async Task AutoCompleteAcceptedStepAsync(string studentId, int termId)
+    {
+        var stepId = await _db.QueryOneAsync<int?>(
+            "SELECT TOP 1 id FROM steps WHERE term_id = @termId AND step_key = 'accepted' ORDER BY id", new { termId });
+        if (stepId is null) return;
+        await _db.ExecuteAsync(
+            @"IF NOT EXISTS (SELECT 1 FROM student_progress WHERE student_id = @studentId AND step_id = @stepId)
+              INSERT INTO student_progress (student_id, step_id) VALUES (@studentId, @stepId)",
+            new { studentId, stepId });
+    }
+
+    // Store the student outcome when a source_event_id is present, otherwise pass through.
+    private async Task<Outcome> FinalizeStudentOutcomeAsync(int integrationClientId, StudentItem item, string emplid, Outcome outcome)
+    {
+        var sourceEventId = (item.source_event_id ?? "").Trim();
+        if (string.IsNullOrEmpty(sourceEventId))
+            return outcome;
+
+        // step_key is null for student pushes; store the normalized emplid as student_id_number.
+        return await StoreIntegrationEventAsync(
+            integrationClientId,
+            sourceEventId,
+            Json.NullIfEmpty(emplid),
+            null,
+            JsonSerializer.Serialize(item, StoreOptions),
+            outcome);
+    }
+
+    private static object BuildStudentSuccess(string emplid, string studentId, int termId, string result, StudentItem item) => new
+    {
+        success = true,
+        student_id_number = emplid,
+        student_id = studentId,
+        term_id = termId,
+        result,
+        source_event_id = (item.source_event_id ?? "").Trim(),
+    };
+
+    // Fixed-shape student failure body, mirroring BuildFailure.
+    private static object BuildStudentFailure(StudentItem item, string error, string? code) => new
+    {
+        success = false,
+        student_id_number = Json.NullIfEmpty(Progress.NormalizeStudentIdNumber(item.emplid)),
+        source_event_id = Json.NullIfEmpty(item.source_event_id),
+        result = "failed",
+        error,
+        code,
+    };
+
+    private sealed class TermResolution
+    {
+        public int? TermId { get; set; }
+        public string? ErrorCode { get; set; }
+        public string? Error { get; set; }
+    }
+
     // Replay a previously stored event response, or null if none exists.
     private async Task<Outcome?> GetStoredIntegrationEventAsync(int integrationClientId, string sourceEventId)
     {
@@ -295,7 +666,19 @@ public sealed class IntegrationsController : ControllerBase
         Converters = { new Api.Serialization.UtcDateTimeConverter() },
     };
 
-    private async Task<Outcome> StoreIntegrationEventAsync(int integrationClientId, string sourceEventId, CompletionItem item, Outcome outcome)
+    private Task<Outcome> StoreIntegrationEventAsync(int integrationClientId, string sourceEventId, CompletionItem item, Outcome outcome) =>
+        StoreIntegrationEventAsync(
+            integrationClientId,
+            sourceEventId,
+            Json.NullIfEmpty(Progress.NormalizeStudentIdNumber(item.student_id_number)),
+            StepKeys.Normalize(item.step_key ?? ""),
+            JsonSerializer.Serialize(item, StoreOptions),
+            outcome);
+
+    // Core idempotency persist: callers pass the already-computed student_id_number,
+    // step_key (null for student pushes), and the serialized request body so both
+    // CompletionItem and StudentItem flows share this one write path.
+    private async Task<Outcome> StoreIntegrationEventAsync(int integrationClientId, string sourceEventId, string? studentIdNumber, string? stepKey, string requestBody, Outcome outcome)
     {
         try
         {
@@ -313,9 +696,9 @@ public sealed class IntegrationsController : ControllerBase
                 {
                     integrationClientId,
                     sourceEventId,
-                    studentIdNumber = Json.NullIfEmpty(Progress.NormalizeStudentIdNumber(item.student_id_number)),
-                    stepKey = StepKeys.Normalize(item.step_key ?? ""),
-                    requestBody = JsonSerializer.Serialize(item, StoreOptions),
+                    studentIdNumber,
+                    stepKey,
+                    requestBody,
                     responseStatus = outcome.HttpStatus,
                     responseBody = JsonSerializer.Serialize(outcome.Body, StoreOptions),
                 });

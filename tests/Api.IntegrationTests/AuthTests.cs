@@ -175,4 +175,43 @@ public class AuthTests
         var body = await res.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Invalid token type", body.GetProperty("error").GetString());
     }
+
+    // ---- sign-in links a pre-staged (SIS-pushed) student instead of duplicating ----
+
+    [Fact]
+    public async Task Signin_links_pre_staged_student_does_not_duplicate()
+    {
+        // Pre-stage a student via the integration provisioning push: emplid + email, NO azure_id.
+        var emplid = "9" + Guid.NewGuid().ToString("N")[..8];
+        var email = $"prestaged-{Guid.NewGuid():N}@t.edu";
+
+        var integration = _fx.Anonymous();
+        integration.DefaultRequestHeaders.Add("X-Integration-Key", "dev-integration-key");
+        var push = await integration.PutAsJsonAsync(
+            "/api/integrations/v1/students",
+            new { emplid, display_name = "Pre Staged Student", email, source_event_id = Guid.NewGuid().ToString() });
+        push.EnsureSuccessStatusCode();
+        var pushBody = await push.Content.ReadFromJsonAsync<JsonElement>();
+        var preStagedId = pushBody.GetProperty("student_id").GetString();
+        var preStagedTerm = pushBody.GetProperty("term_id").GetInt32();
+
+        // First sign-in by the same email. dev-login matches by email (the same equality the
+        // SSO email-link branch uses), so it MUST reuse the pre-staged row, not insert a new one.
+        var signIn = await _fx.Anonymous().PostAsJsonAsync(
+            "/api/auth/dev-login", new { name = "Signed In Name", email });
+        signIn.EnsureSuccessStatusCode();
+        var signInBody = await signIn.Content.ReadFromJsonAsync<JsonElement>();
+        var signedInId = signInBody.GetProperty("student").GetProperty("id").GetString();
+
+        // Same row reused (no new GUID, no duplicate).
+        Assert.Equal(preStagedId, signedInId);
+        var rowCount = Convert.ToInt32(await _fx.ScalarAsync(
+            $"SELECT COUNT(*) FROM students WHERE email = '{email}'"));
+        Assert.Equal(1, rowCount);
+
+        // Provisioned cohort preserved.
+        var termAfter = Convert.ToInt32(await _fx.ScalarAsync(
+            $"SELECT term_id FROM students WHERE id = '{preStagedId}'"));
+        Assert.Equal(preStagedTerm, termAfter);
+    }
 }

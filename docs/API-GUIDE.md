@@ -136,20 +136,22 @@ Private/localhost targets are rejected even in Development **unless** the explic
 
 ## Inbound Integration (Push Data In)
 
-External systems (e.g., PeopleSoft) call these endpoints to update student step-completion status. All endpoints require an integration key and are served by `Api/Controllers/IntegrationsController.cs`.
+External systems (e.g., PeopleSoft) call these endpoints to pre-stage students into a cohort and to update student step-completion status. All endpoints require an integration key and are served by `Api/Controllers/IntegrationsController.cs`.
 
 ### Quick Start
 
 1. **Get your integration key** from the server admin
 2. **Discover available steps** by calling `GET /api/integrations/v1/step-catalog`
-3. **Send completions** via `PUT /api/integrations/v1/step-completions` (single) or `POST /api/integrations/v1/step-completions/batch` (bulk)
-4. **Always include a `source_event_id`** for idempotency — safe retries on network failures
+3. **Pre-stage students** (optional) via `PUT /api/integrations/v1/students` (single) or `POST /api/integrations/v1/students/batch` (bulk) so a cohort exists before anyone signs in
+4. **Send completions** via `PUT /api/integrations/v1/step-completions` (single) or `POST /api/integrations/v1/step-completions/batch` (bulk)
+5. **Always include a `source_event_id`** for idempotency — safe retries on network failures
 
 ### Key Concepts
 
-- **Students** are identified by `student_id_number` (the emplid field — e.g., the PeopleSoft employee/student ID)
+- **Students** are identified by their emplid (the campus Student ID #). The completion API exposes this as `student_id_number`; the provisioning API exposes the same value as `emplid`.
 - **Steps** are identified by `step_key` (a unique string per term — e.g., `submit-application`, `pay-deposit`)
 - **Status** must be one of: `completed`, `waived`, `not_completed`
+- **Pre-staging:** by default a student row is created lazily on first sign-in. Pushing a student with `PUT /students` creates (or updates) the row up front, keyed on emplid, so integrations and cohort pre-population work before the student ever logs in. On first sign-in the app links the pre-staged row by email (attaching the Azure id) instead of creating a duplicate.
 
 ---
 
@@ -374,6 +376,163 @@ Each item in `items` is exactly the body the single `PUT` endpoint would have re
 
 ---
 
+### PUT /api/integrations/v1/students
+
+Pre-stage (upsert) a single student into a cohort by emplid — **before** they ever sign in. This closes the gap where a student row is otherwise only created lazily on first sign-in (so a completion push for a not-yet-signed-in student would fail with `student_not_found`, and a cohort couldn't be pre-populated). If a row with the same emplid already exists it is updated in place; otherwise a new row is created and its `accepted` step is auto-completed (matching the sign-in provisioning path).
+
+**Request Body:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `emplid` | string | Yes | The campus Student ID # — the upsert key (maps to `students.emplid`). Blank → `invalid_emplid`. |
+| `display_name` | string | Yes | Student display name. Blank → `missing_required_field`. |
+| `source_event_id` | string | Yes | Idempotency key. Blank → `invalid_source_event_id`. Not stored as a column. |
+| `term_id` | integer | No | Our numeric `terms.id` (the cohort). If omitted, falls back to the current active term. A non-existent id → `term_not_found`; omitted with no active term → `no_active_term`. |
+| `email` | string | Recommended | The **only** identifier shared with the Azure sign-in token, so it is what links this row when the student first logs in. Omit it and the student gets a *duplicate* row on sign-in instead of linking to the pre-staged one. |
+| `tags` | string | No | JSON array string (e.g. `"[\"first_gen\"]"`). |
+| `preferred_name` | string | No | |
+| `phone` | string | No | |
+| `applicant_type` | string | No | |
+| `major` | string | No | |
+| `residency` | string | No | |
+| `admit_term` | string | No | |
+
+> **Update-if-present semantics.** On an update, only fields **present** in the payload are written; an omitted optional field is left untouched (so a re-push that omits `tags` does not clear existing tags). Falsy values (`""`, `0`, `false`) are coerced to `null`. `term_id` is only overwritten when **explicitly provided** — a re-push without `term_id` never silently moves a student between cohorts.
+
+**Validation pipeline** (`ProcessStudentItemAsync`): the first failing check short-circuits with the matching error code.
+
+```mermaid
+flowchart TD
+  sei{"source_event_id present?"}
+  sei -->|No| e1["400 invalid_source_event_id (not stored)"]
+  sei -->|Yes| replay{"stored event for<br/>(client, source_event_id)?"}
+  replay -->|Yes| done["Replay stored response immediately"]
+  replay -->|No| emplid{"emplid present?"}
+  emplid -->|No| e2["400 invalid_emplid (not stored)"]
+  emplid -->|Yes| dn{"display_name present?"}
+  dn -->|No| e3["400 missing_required_field (not stored)"]
+  dn -->|Yes| term{"resolve term_id"}
+  term -->|not in terms| e4["404 term_not_found (not stored)"]
+  term -->|omitted, no active term| e5["409 no_active_term (not stored)"]
+  term -->|ok| upsert["Create or update the student → 200 (stored)"]
+```
+
+**Example Request:**
+
+```bash
+curl -X PUT \
+  -H "X-Integration-Key: your-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "emplid": "000123456",
+    "display_name": "Jane Q. Student",
+    "email": "jstudent@csub.edu",
+    "term_id": 1,
+    "major": "Biology",
+    "source_event_id": "SIS-STU-2026-03-22-001"
+  }' \
+  "https://your-domain.com/api/integrations/v1/students"
+```
+
+**Success Response (200):**
+
+```json
+{
+  "success": true,
+  "student_id_number": "000123456",
+  "student_id": "a1b2c3d4-uuid",
+  "term_id": 1,
+  "result": "created",
+  "source_event_id": "SIS-STU-2026-03-22-001"
+}
+```
+
+`student_id` is the internal GUID for the student. `result` is `created` when a new row was inserted, `updated` when an existing row was modified. (Note: the request field is `emplid`, but the response echoes it as `student_id_number` to match the completion envelope.)
+
+**Result Values:**
+
+| Result | Meaning |
+|--------|---------|
+| `created` | A new student row was inserted (and its `accepted` step seeded) |
+| `updated` | An existing row was matched on emplid and its provided fields written |
+
+**Error Response (4xx):**
+
+```json
+{
+  "success": false,
+  "student_id_number": "000123456",
+  "source_event_id": "SIS-STU-2026-03-22-001",
+  "result": "failed",
+  "error": "term_id does not exist",
+  "code": "term_not_found"
+}
+```
+
+---
+
+### POST /api/integrations/v1/students/batch
+
+Pre-stage multiple students in a single request. Each item has the same fields as the single endpoint. The batch is capped at **500 items**: an empty or missing `items` array returns `400 {"error": "items must be a non-empty array"}`, and more than 500 items returns `400 {"error": "Batch size must not exceed 500 items"}`.
+
+**Request Body:**
+
+```json
+{
+  "items": [
+    {
+      "emplid": "000123456",
+      "display_name": "Jane Q. Student",
+      "email": "jstudent@csub.edu",
+      "source_event_id": "SIS-BATCH-001-A"
+    },
+    {
+      "emplid": "000789012",
+      "display_name": "John Applicant",
+      "term_id": 1,
+      "source_event_id": "SIS-BATCH-001-B"
+    }
+  ]
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "items": [
+    {
+      "success": true,
+      "student_id_number": "000123456",
+      "student_id": "a1b2c3d4-uuid",
+      "term_id": 1,
+      "result": "created",
+      "source_event_id": "SIS-BATCH-001-A"
+    },
+    {
+      "success": true,
+      "student_id_number": "000789012",
+      "student_id": "e5f6g7h8-uuid",
+      "term_id": 1,
+      "result": "created",
+      "source_event_id": "SIS-BATCH-001-B"
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "succeeded": 2,
+    "failed": 0
+  }
+}
+```
+
+> **Important:** Like the completions batch, this endpoint always returns HTTP 200 at the envelope level even if individual items fail — the per-item HTTP status is folded into each item's body. Always check each item's `success` field. Items are processed **sequentially in array order**, and each is independently idempotent via its own `source_event_id`.
+
+> **Sign-in linking:** A pre-staged row has an emplid/email but no `azure_id`. When that student later signs in — via SSO **or** the dev-login path — the app matches the existing row by email and attaches the Azure id rather than inserting a duplicate, preserving the provisioned cohort. So a pushed student sees their seeded roadmap on first login.
+
+---
+
 ### Idempotency
 
 Every request **must** include a `source_event_id`. This is the key to safe retries.
@@ -398,7 +557,7 @@ Every request **must** include a `source_event_id`. This is the key to safe retr
 | Retry with same event ID `ABC-123` | Returns stored response (no re-processing) |
 | New call with event ID `ABC-456` | Processes as a new request |
 
-> Which failures are stored: **student/step-resolution failures** (`student_not_found`, `duplicate_student_id_number`, `step_not_found`, `step_inactive`) **are stored and replayed** for the same `source_event_id` — fixing the student record and retrying the same event ID will keep returning the stored failure. **Input-validation failures** (`invalid_source_event_id`, `invalid_status`, `invalid_completed_at`) are *not* stored and are re-validated on retry. Use a fresh `source_event_id` for a genuinely new attempt.
+> Which failures are stored: **student/step-resolution failures** (`student_not_found`, `duplicate_student_id_number`, `step_not_found`, `step_inactive`) **are stored and replayed** for the same `source_event_id` — fixing the student record and retrying the same event ID will keep returning the stored failure. **Input-validation failures** (`invalid_source_event_id`, `invalid_status`, `invalid_completed_at`, and — on the student-provisioning endpoints — `invalid_emplid`, `missing_required_field`, `term_not_found`, `no_active_term`) are *not* stored and are re-validated on retry. Successful create/update outcomes (and the `duplicate_student_id_number` data-integrity failure) **are** stored. Use a fresh `source_event_id` for a genuinely new attempt.
 
 ---
 
@@ -818,17 +977,21 @@ Integrators *call* the app; they don't stand it up. To run it locally or deploy 
 | `invalid_source_event_id` | 400 | `source_event_id` is missing or empty |
 | `invalid_status` | 400 | `status` is not `completed`, `waived`, or `not_completed` |
 | `invalid_student_id_number` | 400 | `student_id_number` is missing or empty |
+| `invalid_emplid` | 400 | `emplid` is missing or empty (student-provisioning endpoints) |
+| `missing_required_field` | 400 | `display_name` is missing or empty (student-provisioning endpoints) |
 | `invalid_step_key` | 400 | `step_key` is missing or empty |
 | `invalid_completed_at` | 400 | `completed_at` is not a valid ISO timestamp |
 | `student_not_found` | 404 | No student found with the given emplid |
 | `step_not_found` | 404 | No step found with the given `step_key` in the student's term |
+| `term_not_found` | 404 | The explicit `term_id` does not exist in `terms` (student-provisioning endpoints) |
 | `student_term_missing` | 409 | Student does not have an assigned term |
+| `no_active_term` | 409 | `term_id` was omitted and no active term exists to assign the student to (student-provisioning endpoints) |
 | `step_inactive` | 409 | The step exists but is deactivated |
 | `duplicate_student_id_number` | 409 | Multiple students share the same emplid (data-integrity issue) |
 
 > These `code` values appear inside the per-item failure body. The HTTP status above is what the single `PUT` endpoint returns; in a batch, the status is folded into the item body and the envelope is always 200.
 
-The catalog endpoint also returns `400 {"error": "term_id must be a valid number"}` for a non-numeric/zero `term_id`. The batch endpoint returns `400 {"error": "items must be a non-empty array"}` or `400 {"error": "Batch size must not exceed 500 items"}` at the envelope level.
+The catalog endpoint also returns `400 {"error": "term_id must be a valid number"}` for a non-numeric/zero `term_id`. The batch endpoints return `400 {"error": "items must be a non-empty array"}` or `400 {"error": "Batch size must not exceed 500 items"}` at the envelope level.
 
 ### Authentication Errors
 

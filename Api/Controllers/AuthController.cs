@@ -83,6 +83,8 @@ public sealed class AuthController : ControllerBase
             return Unauthorized(new { error = "Invalid or expired token" });
         }
 
+        // Match order matters: azure_id FIRST, so an already-linked oid never tries to
+        // re-attach to a different row (and never trips the filtered azure_id unique index).
         var student = await _db.QueryOneAsync<StudentLite>(
             "SELECT id, display_name, email FROM students WHERE azure_id = @oid", new { oid });
 
@@ -96,13 +98,38 @@ public sealed class AuthController : ControllerBase
         }
         else
         {
-            var studentId = Guid.NewGuid().ToString();
-            var termId = await _db.QueryOneAsync<int?>("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
-            await _db.ExecuteAsync(
-                "INSERT INTO students (id, display_name, email, azure_id, term_id) VALUES (@studentId, @name, @email, @oid, @termId)",
-                new { studentId, name, email, oid, termId });
-            await AutoCompleteAcceptedStepAsync(studentId, termId);
-            student = new StudentLite { id = studentId, display_name = name, email = email };
+            // No azure_id match. A student may have been pre-staged (e.g. pushed by the SIS
+            // via PUT /api/integrations/v1/students) with an email but no azure_id yet — the
+            // id token only carries oid/email/name, so email is the only shared identifier at
+            // sign-in. If such a row exists, LINK it (attach azure_id, reuse its id) rather
+            // than inserting a duplicate. Preserve its provisioned term_id; the accepted step
+            // was already seeded on provisioning, so do not re-run AutoCompleteAcceptedStep.
+            StudentLite? preStaged = null;
+            if (!string.IsNullOrEmpty(email))
+            {
+                // Only an UNCLAIMED row (azure_id IS NULL) — never re-attach to a row already
+                // linked to a different account (email is not unique), which would hijack it.
+                preStaged = await _db.QueryOneAsync<StudentLite>(
+                    "SELECT id, display_name, email FROM students WHERE email = @email AND azure_id IS NULL", new { email });
+            }
+
+            if (preStaged is not null)
+            {
+                await _db.ExecuteAsync(
+                    "UPDATE students SET azure_id = @oid, display_name = @name, email = @email WHERE id = @id",
+                    new { oid, name, email, id = preStaged.id });
+                student = new StudentLite { id = preStaged.id, display_name = name, email = email };
+            }
+            else
+            {
+                var studentId = Guid.NewGuid().ToString();
+                var termId = await _db.QueryOneAsync<int?>("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
+                await _db.ExecuteAsync(
+                    "INSERT INTO students (id, display_name, email, azure_id, term_id) VALUES (@studentId, @name, @email, @oid, @termId)",
+                    new { studentId, name, email, oid, termId });
+                await AutoCompleteAcceptedStepAsync(studentId, termId);
+                student = new StudentLite { id = studentId, display_name = name, email = email };
+            }
         }
 
         var token = _jwt.IssueStudentToken(student.id, student.email ?? "");
