@@ -151,7 +151,7 @@ External systems (e.g., PeopleSoft) call these endpoints to pre-stage students i
 - **Students** are identified by their emplid (the campus Student ID #). The completion API exposes this as `student_id_number`; the provisioning API exposes the same value as `emplid`.
 - **Steps** are identified by `step_key` (a unique string per term — e.g., `submit-application`, `pay-deposit`)
 - **Status** must be one of: `completed`, `waived`, `not_completed`
-- **Pre-staging:** by default a student row is created lazily on first sign-in. Pushing a student with `PUT /students` creates (or updates) the row up front, keyed on emplid, so integrations and cohort pre-population work before the student ever logs in. On first sign-in the app links the pre-staged row by email (attaching the Azure id) instead of creating a duplicate.
+- **Pre-staging:** by default a student row is created lazily on first sign-in. Pushing a student with `PUT /students` creates (or updates) the row up front, keyed on emplid, so integrations and cohort pre-population work before the student ever logs in. On first sign-in the app links the pre-staged row by the **student ID number** (the `studentId` token claim), attaching the Azure id, instead of creating a duplicate.
 
 ---
 
