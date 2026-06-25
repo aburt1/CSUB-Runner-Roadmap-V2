@@ -9,25 +9,23 @@ This guide covers how external systems integrate with the CSUB Admissions app. T
 | **Who initiates** | Your system | Our app (triggered by the student) |
 | **Auth method** | Integration key | Configured per-step by a sysadmin (none, basic, or bearer) |
 
+```mermaid
+flowchart LR
+  subgraph IN["Inbound — you push to us"]
+    ext1[Your system<br/>e.g. PeopleSoft] -->|"push to /api/integrations/v1<br/>integration key auth"| csub1[CSUB API]
+  end
+  subgraph OUT["Outbound — we poll you"]
+    csub2[CSUB API] -->|"GET your endpoint<br/>truthy response = complete"| ext2[Your endpoint]
+  end
+```
+
 The app is an **ASP.NET Core (.NET 10)** service using **Dapper** + hand-written T-SQL against **SQL Server**, paired with a **Vue 3 (Vite)** single-page app. The endpoints below — paths, payloads, status codes, JSON key names — are a **stable contract**: integration partners can rely on these shapes not changing between releases. Where a behavior is enforced by a specific source file, that file is named so you can verify it.
 
 **Base URL:** `https://your-domain.com` (substitute your production hostname)
 
-### Where the API lives (deployment topology)
+### Where the API lives
 
-In production the app runs as **three containers** that talk over an internal Docker network:
-
-| Container | Image / build | Port (host:container) | Role |
-|-----------|---------------|-----------------------|------|
-| `web` | Vue build served by **non-root nginx** (`client/Dockerfile`, `nginxinc/nginx-unprivileged`) | `3000:8080` | Serves the SPA and **reverse-proxies `/api` to the `api` container** |
-| `api` | **ASP.NET Core** (`Api/Dockerfile`, non-root) | `127.0.0.1:8080:8080` | The API only; applies schema + seed on startup (`CREATE DATABASE` gated to non-prod) |
-| `sqlserver` | `mcr.microsoft.com/mssql/server:2022-latest` | `127.0.0.1:1433:1433` | SQL Server 2022 (local/testing only — prod uses an external SQL Server) |
-
-Browsers (and your integration clients, if they go through the public hostname) hit **`web` on port 3000**. nginx forwards every `/api/...` request to `api:8080` over the internal network (`client/nginx.conf.template`). Because the browser only ever sees one origin (`http://localhost:3000`), **the SPA and the API are same-origin and CORS is not involved**. The `api` container also still bundles a static-file fallback (`Api/Program.cs` calls `UseStaticFiles` + `MapFallbackToFile`), so it *can* serve a SPA on its own, but in the supported topology the `web`/nginx container owns that job.
-
-If you call the API directly (skipping nginx) for local debugging, use the `api` container's published port — e.g. `http://localhost:8080/api/integrations/v1/step-catalog`. Note that port is bound to `127.0.0.1` only (not reachable off-box), so production integration clients should always go through the `web` front door: `http://your-host/api/...`.
-
-> **Local development** runs without containers and uses different ports: the API runs on `http://localhost:3001` (`dotnet run`) and the Vite dev server runs on `http://localhost:3000` and proxies `/api` to the API. See [Running the app](#running-the-app) for the full local workflow. The client always calls a **relative** `/api` path, so no API URL is ever hardcoded — the proxy (Vite in dev, nginx in containers) decides where it lands.
+Call the app at its public origin — `https://your-host/api/...`. In production the SPA and API are **same-origin behind nginx**, so **CORS is not involved**: your client just needs the base URL above plus an integration key. For the container topology see [ARCHITECTURE.md](ARCHITECTURE.md); for local-dev ports see [SETUP.md](SETUP.md).
 
 ---
 
@@ -523,12 +521,12 @@ Create or update an API-check configuration. This is an **upsert keyed on `step_
 | `http_method` | string | No | `"GET"` (default) or `"POST"` (case-insensitive; uppercased server-side) |
 | `auth_type` | string | No | `"none"` (default), `"basic"`, or `"bearer"` |
 | `auth_credentials` | object/string | No | See the auth-options table above. Encrypted at rest. Send the masked sentinel `"••••••••"` to **preserve existing credentials unchanged**. |
-
-> **Partial edits are all-or-nothing for `basic` auth.** The admin UI requires re-entering *both* the username and the password when changing either — submitting a pair where one field is still the mask would store the literal `••••••••` as that credential. If you call this endpoint directly, follow the same rule: send the full real pair, or the bare mask sentinel to keep what is stored.
 | `headers` | array | No | Array of `{"key": "...", "value": "..."}` objects |
 | `student_param_name` | string | No | Placeholder name in the URL (default: `"studentId"`) |
 | `student_param_source` | string | No | `"emplid"` (default) or `"email"` |
 | `is_enabled` | boolean | No | **Only a literal JSON `true` enables the check**; anything else — including omitting it — disables it. |
+
+> **Partial edits are all-or-nothing for `basic` auth.** The admin UI requires re-entering *both* the username and the password when changing either — submitting a pair where one field is still the mask would store the literal `••••••••` as that credential. If you call this endpoint directly, follow the same rule: send the full real pair, or the bare mask sentinel to keep what is stored.
 
 **Validation:** `url` and `response_field_path` are required. The URL is validated for format **after** substituting a placeholder probe value (so `{{studentId}}` doesn't break URL parsing); a malformed result returns `400 Invalid URL format`. `http_method` must resolve to `GET` or `POST`; `auth_type` must be `none`, `basic`, or `bearer`. If you supply real (non-masked) credentials with a non-`none` auth type and the server has no encryption key configured, the request returns `500 Encryption key not configured on server`.
 
@@ -744,7 +742,7 @@ Configuration is read from environment variables (or `appsettings.json`). ASP.NE
 
 Other configuration the API consumes (full reference) uses the same `__` convention: `ConnectionStrings__Default`, `Jwt__Secret`, `AzureAd__ClientId` / `AzureAd__TenantId`, `Admin__DefaultEmail` / `Admin__DefaultPassword`, and `LocalLogin__Username` / `LocalLogin__Password`.
 
-> **Note:** The app auto-creates the database, applies the schema (`Api/Data/schema.sql`), and seeds defaults on startup — there is **no manual DB setup step** (`Api/Program.cs` runs `SchemaInitializer` + `Seeder` before serving). The default seeded admin is `admin@csub.edu` / `admin123` (override `Admin__DefaultEmail` / `Admin__DefaultPassword`); a break-glass local admin is `localadmin` / `Local_Admin_2026!` (`LocalLogin__Username` / `LocalLogin__Password`).
+> **Note:** The app applies its schema and seeds defaults on startup (`Api/Program.cs` runs `SchemaInitializer` + `Seeder`), so there is no manual DB setup step. Admin credentials come from `Admin__DefaultEmail`/`Admin__DefaultPassword` and the optional break-glass `LocalLogin__Username`/`LocalLogin__Password` — see [SETUP.md](SETUP.md) for the dev defaults and [DEPLOYMENT.md](DEPLOYMENT.md) for production.
 
 **Generate an encryption key:**
 
@@ -757,69 +755,7 @@ openssl rand -hex 32
 
 ## Running the app
 
-### Full stack with Docker (three containers)
-
-```bash
-docker compose up --build      # -> web on http://localhost:3000
-```
-
-This builds and starts all three services (`web`, `api`, `sqlserver`). Open **http://localhost:3000** — nginx serves the SPA and proxies `/api` to the API. To bring services up one at a time (each pulls its dependencies via `depends_on`):
-
-```bash
-docker compose up -d sqlserver        # just the database (:1433)
-docker compose up -d --build api      # database + API (:8080)
-docker compose up -d --build web      # full stack (:3000); pulls api + sqlserver
-```
-
-Override secrets/config by setting the matching env vars before `docker compose up` (see the `api` service in `docker-compose.yml`): `MSSQL_SA_PASSWORD`, `JWT_SECRET`, `ADMIN_DEFAULT_EMAIL/PASSWORD`, `LOCAL_LOGIN_USERNAME/PASSWORD`, `API_CHECK_ENCRYPTION_KEY`, and so on.
-
-> SQL Server runs as a `linux/amd64` container — platform notes live in [SETUP.md](SETUP.md#troubleshooting).
-
-### Local development without containers
-
-Run the database in a container and the API + client on the host:
-
-```bash
-# Database only:
-docker compose up -d sqlserver
-
-# Backend:
-cd Api && dotnet run    # serves the API on http://localhost:3001
-dotnet test             # from the REPO ROOT (resolves the .slnx incl. tests/) — not from Api/
-dotnet build
-
-# Client (from client/):
-npm install
-npm run dev       # Vite dev server on http://localhost:3000, proxies /api -> :3001
-npm run build
-```
-
-The Vite dev proxy target is the `VITE_API_PROXY_TARGET` env var (default `http://localhost:3001`). The client always calls a relative `/api`, so it works through either the Vite proxy (dev) or nginx (containers) with no hardcoded URL.
-
-### Running the frontend on its own (e.g. a Windows desktop)
-
-You can run just the Vue client and point it at a backend hosted elsewhere:
-
-1. Install **Node.js LTS** from [nodejs.org](https://nodejs.org).
-2. Open **PowerShell**.
-3. `cd client`
-4. `npm install`
-5. `npm run dev`
-6. Open **http://localhost:3000**.
-
-By default this proxies `/api` to `http://localhost:3001`. To point at a backend that is **not** on `localhost:3001`, set the env var before starting the dev server:
-
-```powershell
-# PowerShell
-$env:VITE_API_PROXY_TARGET="http://<host>:<port>"; npm run dev
-```
-
-```bat
-:: cmd.exe
-set VITE_API_PROXY_TARGET=http://<host>:<port> && npm run dev
-```
-
-Alternatively, use Docker Desktop on Windows and run `docker compose up web` (it pulls the `api` and `sqlserver` containers via `depends_on`).
+Integrators *call* the app; they don't stand it up. To run it locally or deploy it, see **[SETUP.md](SETUP.md)** (development) and **[DEPLOYMENT.md](DEPLOYMENT.md)** (production).
 
 ---
 
