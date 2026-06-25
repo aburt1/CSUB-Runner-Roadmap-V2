@@ -20,14 +20,16 @@ public sealed class AdminAuthController : ControllerBase
     private readonly JwtService _jwt;
     private readonly AzureAdTokenValidator _azure;
     private readonly IConfiguration _config;
+    private readonly IHostEnvironment _env;
     private readonly ILogger<AdminAuthController> _logger;
 
-    public AdminAuthController(Db db, JwtService jwt, AzureAdTokenValidator azure, IConfiguration config, ILogger<AdminAuthController> logger)
+    public AdminAuthController(Db db, JwtService jwt, AzureAdTokenValidator azure, IConfiguration config, IHostEnvironment env, ILogger<AdminAuthController> logger)
     {
         _db = db;
         _jwt = jwt;
         _azure = azure;
         _config = config;
+        _env = env;
         _logger = logger;
     }
 
@@ -134,6 +136,16 @@ public sealed class AdminAuthController : ControllerBase
         var configPassword = _config["LocalLogin:Password"];
         if (string.IsNullOrEmpty(configUsername) || string.IsNullOrEmpty(configPassword))
             return NotFound(new { error = "Not found" });
+
+        // Fail closed in Production: a weak/placeholder break-glass password is treated as
+        // not configured, so a guessable emergency credential can never grant sysadmin.
+        // Mirrors the seeded-admin and JWT/encryption-key strength policy.
+        if (_env.IsProduction() && Seeder.IsWeakAdminPassword(configPassword))
+        {
+            _logger.LogWarning(
+                "Break-glass login is disabled in Production: LocalLogin:Password does not meet the strength policy.");
+            return NotFound(new { error = "Not found" });
+        }
 
         if (string.IsNullOrEmpty(body?.Username) || string.IsNullOrEmpty(body.Password))
             return BadRequest(new { error = "Username and password required" });

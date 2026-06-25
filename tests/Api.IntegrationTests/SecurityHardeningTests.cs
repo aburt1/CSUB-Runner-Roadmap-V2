@@ -1,8 +1,11 @@
 using Api.Auth;
+using Api.Controllers;
 using Api.Data;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Api.IntegrationTests;
 
@@ -63,4 +66,26 @@ public class SecurityHardeningTests
     [InlineData("Str0ng!Passw0rd#here")]
     public void Strong_admin_passwords_are_accepted(string password) =>
         Assert.False(Seeder.IsWeakAdminPassword(password));
+
+    // Break-glass with a weak/placeholder password is fail-closed in Production: the
+    // endpoint behaves as if unconfigured (404) so a guessable emergency credential can
+    // never grant sysadmin. The weak-password path returns before touching DB/HttpContext.
+    [Fact]
+    public async Task Break_glass_with_weak_password_in_production_is_disabled()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["LocalLogin:Username"] = "localadmin",
+                ["LocalLogin:Password"] = "admin123", // weak -> rejected in Production
+            })
+            .Build();
+        var controller = new AdminAuthController(
+            null!, null!, null!, config, Production, NullLogger<AdminAuthController>.Instance);
+
+        var result = await controller.LocalLogin(
+            new AdminAuthController.LocalLoginRequest("localadmin", "admin123"));
+
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
 }

@@ -19,6 +19,11 @@ ENV ASPNETCORE_ENVIRONMENT=Production
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 # Liveness probe: the api answers /api/health/live with 200 once the process is up.
+# Deliberately /live, NOT /ready: the container HEALTHCHECK drives restart-on-unhealthy
+# (and `web depends_on api: service_healthy`), so it must reflect "is the process alive",
+# not "is the DB reachable". Wiring it to /ready would restart-loop the api on a transient
+# DB blip with no benefit on a single instance. /api/health/ready (DB-backed) is reserved
+# for an external orchestrator/monitor that routes traffic rather than restarting.
 # Use 127.0.0.1 explicitly to avoid resolving "localhost" to ::1.
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8080/api/health/live || exit 1

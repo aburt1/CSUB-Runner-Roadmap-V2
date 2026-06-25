@@ -61,6 +61,11 @@ CREATE UNIQUE INDEX idx_students_emplid_unique
     ON dbo.students (emplid_norm)
     WHERE emplid IS NOT NULL AND emplid <> '';
 
+-- The admin student list and every per-term analytics aggregation filter students by
+-- term_id; without this they scan the table. Cheap insurance as the roster grows.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'idx_students_term')
+CREATE INDEX idx_students_term ON dbo.students (term_id);
+
 ------------------------------------------------------------------- terms
 IF OBJECT_ID('dbo.terms', 'U') IS NULL
 CREATE TABLE dbo.terms (
