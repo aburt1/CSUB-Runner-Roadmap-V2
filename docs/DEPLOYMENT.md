@@ -210,7 +210,7 @@ as environment variables using the ASP.NET Core double-underscore syntax (`Secti
 | `Database__Seed` | No | `true` by default; set `false` if the DBA seeds the bootstrap data manually |
 | `LocalLogin__Username` / `LocalLogin__Password` | No | Optional break-glass local admin login. **Disabled unless both are set.** Use only if you need a non-SSO admin path |
 | `AzureAd__ClientId` / `AzureAd__TenantId` | No | Enables Azure AD SSO token validation on the API. Omit to disable (SSO endpoints then return 501) |
-| `AzureAd__EmplidClaim` | No | The id-token claim carrying the student's emplid (e.g. `employeeId` or an extension attribute). When set, sign-in links a pre-staged student to their account by emplid (our primary identifier); unset → linking falls back to email |
+| `AzureAd__EmplidClaim` | No | The id-token claim carrying the student's emplid, used to link a pre-staged student to their account by emplid (our primary identifier). **Defaults to `studentId`** — override if your Entra app emits it under a different claim. If the claim is absent from the token, linking falls back to email |
 | `Integration__DefaultName` / `Integration__DefaultKey` | No | Seeds an integration client for the inbound push / outbound API-check features |
 | `Cors__Origin` | No | Only needed if the SPA is served from a **different** origin than the API. In the standard same-origin nginx setup, leave it unset |
 
