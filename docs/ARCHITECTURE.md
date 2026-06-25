@@ -135,161 +135,35 @@ on-ramp, and the locked titles show the journey ahead.*
 
 ## Project Structure
 
+```mermaid
+flowchart TB
+  subgraph client["client/ — Vue 3 SPA (Vite + Tailwind + Pinia)"]
+    c1["pages + components + charts<br/>roadmap UI, admin tabs, vue-chartjs"]
+    c2["stores · composables<br/>auth, toasts, progress, admin API"]
+    c3["router · types · auth/msal"]
+  end
+  subgraph api["Api/ — ASP.NET Core (.NET 10)"]
+    a1["Controllers (+ Admin/)<br/>public, student, integrations,<br/>admin split by concern"]
+    a2["Auth<br/>JWT, bcrypt, Azure AD,<br/>action-filter attributes"]
+    a3["Services<br/>Progress, ApiCheckRunner,<br/>Encryption, Audit, tags"]
+    a4["Data<br/>Db (Dapper + retry),<br/>schema.sql, Seeder"]
+  end
+  tests["tests/ — xUnit integration tests<br/>real app via WebApplicationFactory"]
+  client -->|"/api (same origin)"| api
+  api --> db[("SQL Server")]
+  tests -.exercises.-> api
 ```
-CSUB-Runner-Roadmap-V2/
-├── client/                          # Vue 3 SPA (Vite + Tailwind + Pinia)
-│   ├── src/
-│   │   ├── main.ts                  # App entry: createApp, Pinia, router, global error handlers, mount
-│   │   ├── App.vue                  # Root component (router-view shell + onErrorCaptured boundary)
-│   │   ├── index.css                # Tailwind entry + global styles
-│   │   ├── shims.d.ts               # TS shims for .vue imports
-│   │   ├── auth/
-│   │   │   └── msalConfig.ts        # Azure AD / MSAL SSO config (reads VITE_AZURE_AD_*)
-│   │   ├── stores/
-│   │   │   ├── auth.ts              # Pinia store: session token, identity, login/logout
-│   │   │   └── toast.ts            # Pinia store: transient error/notice toasts
-│   │   ├── composables/
-│   │   │   ├── useProgress.ts       # Student step-completion logic + tag filtering
-│   │   │   └── useAdminApi.ts       # Authenticated fetch wrapper for admin endpoints
-│   │   ├── components/
-│   │   │   ├── Celebration.vue          # canvas-confetti completion celebration
-│   │   │   ├── HighContrastToggle.vue   # Accessibility toggle
-│   │   │   ├── PublicRoadmapPreview.vue # Anonymous public step preview
-│   │   │   ├── ToastContainer.vue       # Global transient notifications (errors/success)
-│   │   │   └── roadmap/                 # The student timeline UI
-│   │   │       ├── RoadmapTimeline.vue
-│   │   │       ├── TimelineStep.vue
-│   │   │       ├── StepDetailPanel.vue
-│   │   │       ├── ListView.vue
-│   │   │       ├── ProgressSummary.vue
-│   │   │       ├── CurrentStepCallout.vue
-│   │   │       ├── CompletionBanner.vue
-│   │   │       ├── DeadlineCountdown.vue
-│   │   │       └── HelpSection.vue
-│   │   ├── pages/
-│   │   │   ├── RoadmapPage.vue       # Main student view
-│   │   │   └── admin/               # Admin dashboard (tabs + supporting components)
-│   │   │       ├── AdminPage.vue         # Tabbed console shell
-│   │   │       ├── AdminLogin.vue        # Admin password / SSO login
-│   │   │       ├── AdminLocalLogin.vue   # Break-glass local login
-│   │   │       ├── StudentsTab.vue       # Student list/search
-│   │   │       ├── StudentDetail.vue     # Per-student progress/profile/tags
-│   │   │       ├── StudentDrillDown.vue
-│   │   │       ├── TermStepsTab.vue      # Step CRUD + reorder per term
-│   │   │       ├── TermBar.vue / TermHeader.vue
-│   │   │       ├── CloneTermModal.vue
-│   │   │       ├── AnalyticsTab.vue      # Charts + summary stats
-│   │   │       ├── SummaryStats.vue
-│   │   │       ├── AdminUsersTab.vue     # Admin user CRUD (sysadmin)
-│   │   │       ├── ApiCheckConfig.vue    # Per-step API-check config (sysadmin)
-│   │   │       ├── AuditLogTab.vue / AuditTimeline.vue
-│   │   │       ├── StepForm.vue / StepToggle.vue / TagEditor.vue / NoteModal.vue
-│   │   │       ├── RichTextEditor.vue    # Tiptap editor for step content
-│   │   │       ├── ExportButton.vue      # CSV/data export
-│   │   │       ├── roleConfig.ts         # RBAC role labels/permissions for the UI
-│   │   │       └── charts/               # vue-chartjs analytics charts
-│   │   │           ├── StepCompletionChart.vue
-│   │   │           ├── CompletionTrendChart.vue
-│   │   │           ├── CompletionVelocityChart.vue
-│   │   │           ├── BottleneckChart.vue
-│   │   │           ├── CohortComparisonChart.vue
-│   │   │           ├── CohortDistributionChart.vue
-│   │   │           ├── DeadlineRiskChart.vue
-│   │   │           ├── StalledStudentsChart.vue
-│   │   │           ├── chartTheme.ts        # Shared Chart.js theme
-│   │   │           └── registerCharts.ts    # Chart.js component registration
-│   │   ├── views/
-│   │   │   └── HomeView.vue          # `/` landing — public preview + student entry
-│   │   ├── router/
-│   │   │   └── index.ts              # Routes: /, /admin, /admin/local-login
-│   │   └── types/
-│   │       └── api.ts                # Shared TypeScript types for API payloads
-│   ├── vite.config.ts               # Dev server on :3000, proxies /api -> :3001
-│   ├── tailwind.config.js
-│   ├── postcss.config.js
-│   ├── eslint.config.js             # ESLint flat config
-│   ├── .prettierrc.json             # Prettier config
-│   ├── nginx.conf.template          # Container: nginx serves SPA + proxies /api
-│   ├── Dockerfile                   # Container: build Vue, serve via nginx-unprivileged
-│   └── package.json                 # scripts: dev / build / test / lint / format
-│
-├── Api/                             # ASP.NET Core API (backend only)
-│   ├── Program.cs                   # App entry: DI, forwarded headers, CORS, rate limiting,
-│   │                                #   security headers, schema init + seed, SPA fallback
-│   ├── Controllers/
-│   │   ├── HealthController.cs       # GET /api/health/live, /api/health/ready
-│   │   ├── AuthController.cs         # Student auth (dev-login, SSO, me)
-│   │   ├── AdminAuthController.cs    # Admin auth (login, SSO, break-glass)
-│   │   ├── StepsController.cs        # Public/student step routes (/api/steps)
-│   │   ├── IntegrationsController.cs # Inbound integration push API (/api/integrations/v1)
-│   │   ├── RoadmapApiChecksController.cs  # Student-triggered API-check runs (/api/roadmap)
-│   │   └── Admin/                    # Admin API (split by concern)
-│   │       ├── AnalyticsController.cs   # Stats, charts, exports
-│   │       ├── StepsController.cs       # Step CRUD, reorder, duplicate, bulk-status
-│   │       ├── StudentsController.cs    # Student progress, profiles, tags, audit
-│   │       ├── TermsController.cs       # Term CRUD, clone
-│   │       ├── UsersController.cs       # Admin user list + role/active management (sysadmin only)
-│   │       └── ApiChecksController.cs   # Per-step API-check config (sysadmin only)
-│   ├── Auth/
-│   │   ├── JwtService.cs             # Issue/validate HS256 tokens
-│   │   ├── Passwords.cs              # bcrypt hash/verify (BCrypt.Net-Next)
-│   │   ├── StudentAuthAttribute.cs   # [StudentAuth] action filter
-│   │   ├── AdminAuthAttribute.cs     # [AdminAuth(...)] action filter + role check
-│   │   ├── IntegrationAuthAttribute.cs  # [IntegrationAuth] action filter
-│   │   ├── AzureAdTokenValidator.cs  # Azure AD id_token validation
-│   │   └── RequestContext.cs         # Typed HttpContext.Items accessors
-│   ├── Data/
-│   │   ├── Db.cs                     # Dapper wrapper (QueryOne/QueryAll/Execute/Transaction) + transient-fault retry
-│   │   ├── SchemaInitializer.cs      # Optional CREATE DATABASE + run idempotent schema.sql + record schema_version
-│   │   ├── Seeder.cs                 # Seed defaults + dev sample data
-│   │   ├── schema.sql                # Hand-written T-SQL schema (idempotent)
-│   │   └── seed/
-│   │       └── fall2026-onboarding-checklist.json
-│   ├── Services/
-│   │   ├── Progress.cs               # Step completion logic (ApplyAsync)
-│   │   ├── StudentTags.cs            # Manual + derived tag merging
-│   │   ├── StepKeys.cs               # Unique step-key slug generation
-│   │   ├── QueryHelpers.cs           # ParseTermId/pagination/active-step helpers
-│   │   ├── Audit.cs                  # Audit logging
-│   │   ├── Encryption.cs             # AES-256-GCM credential encryption
-│   │   ├── ApiCheckRunner.cs         # Outbound API-check execution + SSRF guard
-│   │   └── Json.cs                   # Safe JSON parsing helpers
-│   ├── Models/
-│   │   └── Rows.cs                   # DB row / model types
-│   ├── Serialization/
-│   │   └── UtcDateTimeConverter.cs   # ISO-8601 UTC 'Z' timestamp output
-│   ├── appsettings.json              # Base config
-│   ├── appsettings.Development.json  # Dev config (Urls=:3001, dev secrets)
-│   ├── Dockerfile                    # Multi-stage: SDK build -> aspnet runtime (non-root + HEALTHCHECK)
-│   └── Api.csproj                    # EnableNETAnalyzers + AnalysisLevel=latest + TreatWarningsAsErrors
-│
-├── tests/
-│   └── Api.IntegrationTests/         # xUnit + WebApplicationFactory route tests
-│       ├── WebAppFixture.cs          # Hosts the app against a test SQL Server DB
-│       ├── SmokeTests.cs             # Health / startup
-│       ├── AuthTests.cs              # Student auth
-│       ├── AdminAuthTests.cs         # Admin auth + break-glass
-│       ├── StepsTests.cs             # Public/student steps
-│       ├── AdminStepsTests.cs        # Step CRUD/reorder/duplicate
-│       ├── AdminStudentsTests.cs     # Student progress/profile/tags
-│       ├── AdminTermsTests.cs        # Term CRUD/clone
-│       ├── AdminUsersTests.cs        # Admin user CRUD
-│       ├── AdminAnalyticsTests.cs    # Analytics + exports
-│       ├── IntegrationsTests.cs      # Inbound integration push API
-│       ├── ApiChecksTests.cs         # Outbound API checks
-│       ├── AdminRevocationTests.cs   # Deactivated admin token rejected per-request
-│       ├── SecurityHardeningTests.cs # Production fail-safe guards (JWT secret, passwords)
-│       └── MiscTests.cs              # Cross-cutting cases
-│
-├── .editorconfig                    # Analyzer rules + documented CA1707/CA1848 suppressions (repo root)
-├── .github/workflows/ci.yml.disabled # CI (PARKED): build+test API vs. SQL Server service; lint+test+build client
-├── docs/                            # Documentation (this file lives here)
-│   └── screenshots/                 # public-preview / student-dashboard / admin-dashboard
-├── docker-compose.yml               # Three containers: web, api, sqlserver
-├── .env.example                     # Compose secrets template
-├── CsubRunnerRoadmapV2.slnx         # .NET solution
-└── README.md
-```
+
+| Path | What lives there |
+|------|------------------|
+| `client/src/{pages,components,charts}` | Student roadmap UI + admin console tabs + analytics charts |
+| `client/src/{stores,composables}` | Pinia stores (auth, toasts) and the fetch/progress composables |
+| `Api/Controllers` (+ `Admin/`) | Skinny controllers; the admin API is split by concern (Analytics, Steps, Students, Terms, Users, ApiChecks) |
+| `Api/Auth` | JWT issue/validate, bcrypt, Azure AD validation, and the `[StudentAuth]` / `[AdminAuth]` / `[IntegrationAuth]` filters |
+| `Api/Services` | The business logic — `Progress.ApplyAsync` (the one write path), `ApiCheckRunner` (SSRF-guarded), `Encryption`, `Audit`, tag/step-key helpers |
+| `Api/Data` | `Db.cs` (Dapper + transient-retry), `schema.sql` (idempotent T-SQL), `Seeder.cs` |
+| `tests/Api.IntegrationTests` | One class per area, hosting the real app against a test SQL Server DB |
+| repo root | `docker-compose.yml`, `.env.example`, `CsubRunnerRoadmapV2.slnx`, `.editorconfig`, `.github/workflows/ci.yml.disabled` (CI parked) |
 
 The frontend and backend are deliberately separated — `client/` produces a static bundle served by its own nginx container, and `Api/` serves only the API — so each can be built, shipped, and scaled independently. The deployment section below covers this.
 
