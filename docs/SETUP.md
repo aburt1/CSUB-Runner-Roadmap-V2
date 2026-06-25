@@ -6,6 +6,21 @@ flags (`Database:AutoCreate`, `Database:Seed`). For how the pieces fit together 
 [Architecture](ARCHITECTURE.md); to ship to a Windows Server + SQL Server see
 [Deployment](DEPLOYMENT.md).
 
+## TL;DR — the recommended loop
+
+```bash
+docker compose up -d sqlserver               # SQL Server in Docker (:1433)
+cd Api && dotnet run                          # API on :3001 (creates DB + schema + seed)
+cd client && npm install && npm run dev       # Vue client on :3000, proxies /api → :3001
+```
+
+Before you push:
+
+```bash
+cd client && npm run lint && npm run format:check && npm run test && npm run build
+dotnet build && dotnet test                   # from the repo root
+```
+
 **Pick your path:**
 
 ```mermaid
@@ -57,16 +72,14 @@ What this does:
 
 - Starts **`sqlserver`** (SQL Server 2022) on `localhost:1433`.
 - Builds and starts **`api`** (ASP.NET Core) on `localhost:8080`. On startup it
-  waits for SQL Server to become healthy, then creates the `csub_admissions`
-  database, applies the schema (`Api/Data/schema.sql`), and seeds default data.
+  waits for SQL Server to become healthy, then provisions the database (see
+  [What the API does on startup](#what-the-api-does-on-startup)).
 - Builds and starts **`web`** (the Vue bundle served by nginx) on
-  `localhost:3000`. nginx reverse-proxies any request under `/api` to the `api`
-  container, so the browser only ever talks to a **single origin** — there is
-  **no CORS** to configure.
-
-Because the client always calls **relative `/api` URLs** (proxied by nginx in
-containers, and by Vite in local dev), no API URL is hardcoded anywhere in the
-frontend.
+  `localhost:3000`. nginx reverse-proxies `/api` to the `api` container, so the
+  browser only ever talks to a **single origin** — there is **no CORS** to
+  configure. The client always calls **relative `/api` URLs** (proxied by nginx
+  in containers, by Vite in local dev), so no API URL is hardcoded in the
+  frontend.
 
 ### Starting the containers individually
 
@@ -106,7 +119,7 @@ client directly on the host:
 
 ```bash
 # 1. Start SQL Server (Docker). Requires MSSQL_SA_PASSWORD in .env — use
-#    Csub_Local_Dev_2026! locally so dotnet run / dotnet test match (see Database Setup).
+#    Csub_Local_Dev_2026! locally (see Database Setup for why).
 docker compose up -d sqlserver
 
 # 2. Run the API (creates DB + schema + seed on first boot)
@@ -121,14 +134,12 @@ The client runs at [http://localhost:3000](http://localhost:3000) and proxies
 `client/vite.config.ts`). The proxy target defaults to `http://localhost:3001`
 and can be overridden with the `VITE_API_PROXY_TARGET` environment variable.
 
-There is **no manual database setup**: on startup the API ensures the
-`csub_admissions` database exists, applies the schema (`Api/Data/schema.sql`),
-and seeds default data (admin account, integration client, Fall 2026 checklist,
-and — when not running in Production — 50 sample students). The break-glass local
-admin is **not** seeded: it is enabled by the `LocalLogin:Username`/`Password`
-config values (defaulted in `appsettings.Development.json`). No `createdb`, migrations, or hand-run scripts are required. The
-exact boot sequence and the flags that control it are described under
-[What the API does on startup](#what-the-api-does-on-startup).
+There is **no manual database setup** — the API creates the database, applies
+the schema, and seeds defaults idempotently on first boot (see
+[What the API does on startup](#what-the-api-does-on-startup)). The break-glass
+local admin is the one exception: it is **not** seeded but enabled by the
+`LocalLogin:Username`/`Password` config values (defaulted in
+`appsettings.Development.json`).
 
 > **Why two different API ports?** In local dev the API listens on **`:3001`**
 > (set via `Urls` in `appsettings.Development.json`), which is what the Vite
@@ -198,8 +209,7 @@ auth or Windows auth, `Encrypt=True/False`, certificate trust — so changing
 environments is a one-line change with no code edits.
 
 The database, schema, and seed data are applied automatically on first API start
-— no `createdb`, migrations, or manual scripts required (see
-[What the API does on startup](#what-the-api-does-on-startup)).
+(see [What the API does on startup](#what-the-api-does-on-startup)).
 
 ### Confirm it's up
 
@@ -321,9 +331,8 @@ dotnet build          # compiles + runs analyzers; warnings are errors
 ## Running the frontend on its own (e.g. a Windows desktop)
 
 You can run **only the Vue client** on a separate machine — for example a
-Windows desktop — and point it at a backend running somewhere else. The client
-never hardcodes an API URL; it always calls relative `/api`, and Vite proxies
-those calls to whatever `VITE_API_PROXY_TARGET` points at.
+Windows desktop — and point it at a backend running somewhere else (the client
+never hardcodes an API URL — see the [Quick Start](#quick-start-full-stack-in-docker)).
 
 The decision is just *how* you run the client and *where* the backend lives:
 
@@ -406,10 +415,16 @@ feeds the container's `API_URL`):
 WEB_API_URL=http://<host>:<port> docker compose up web
 ```
 
-> **Source-run vs. container proxy variable.** Use `VITE_API_PROXY_TARGET` when
-> you run the client from source (`npm run dev`); use `WEB_API_URL` when you run
-> the prebuilt `web` container. They do the same job — name the backend `/api`
-> is forwarded to — but apply to different run modes.
+**Which variable names the backend?** Both do the same job — name where `/api`
+is forwarded — but apply to different run modes:
+
+```mermaid
+flowchart LR
+  q{How are you<br/>running the client?} --> src["From source<br/>npm run dev"]
+  q --> ctr["Prebuilt web container<br/>docker compose up web"]
+  src --> v1["Set VITE_API_PROXY_TARGET<br/>default http://localhost:3001"]
+  ctr --> v2["Set WEB_API_URL<br/>default http://api:8080"]
+```
 
 ## Environment Variables
 
@@ -444,7 +459,7 @@ the full set with their defaults.
 > `Cors__Origin`. Only set it if you deliberately serve the client from a
 > different origin and bypass the proxy.
 
-The `sqlserver` service requires `MSSQL_SA_PASSWORD` (no default — set it in `.env`; use `Csub_Local_Dev_2026!` locally so `dotnet run`/`dotnet test` match), plus `ACCEPT_EULA=Y` and `MSSQL_PID=Developer`. The same `MSSQL_SA_PASSWORD` value is interpolated into the `api` service's connection string, so overriding it in one place keeps both in sync.
+The `sqlserver` service requires `MSSQL_SA_PASSWORD` (no default — set it in `.env`; use `Csub_Local_Dev_2026!` locally — see [Database Setup](#local-sql-server-via-docker-recommended)), plus `ACCEPT_EULA=Y` and `MSSQL_PID=Developer`. The same `MSSQL_SA_PASSWORD` value is interpolated into the `api` service's connection string, so overriding it in one place keeps both in sync.
 
 ### Vite / client (dev only)
 
@@ -484,34 +499,18 @@ on first run; the break-glass login is **config-gated, not seeded** (enabled by
 when the API is not running in Production** (i.e. local dev). In Production the
 seeder refuses to create the default admin unless `Admin__DefaultPassword` is
 explicitly set. To skip seeding entirely, set `Database__Seed=false` (see
-[`Database:Seed`](#databaseseed--should-the-app-insert-default-data)).
+[What the API does on startup](#what-the-api-does-on-startup)).
 
 ## Available Commands
 
-### Backend (`Api/`)
-
-| Command | Description |
-|---------|-------------|
-| `dotnet run` | Start the API (hot-build) on :3001 |
-| `dotnet build` | Compile the API + run analyzers (warnings are errors) without running |
-| `dotnet test` | Run the xUnit integration tests (`tests/Api.IntegrationTests`); needs the `sqlserver` container up |
-
-`dotnet build` / `dotnet test` can also be run from the repo root against
-`CsubRunnerRoadmapV2.slnx`, which includes both the API and the test project.
-
-### Client (`client/`)
-
-| Command | Description |
-|---------|-------------|
-| `npm install` | Install client dependencies |
-| `npm run dev` | Vite dev server on :3000 (proxies `/api` to `VITE_API_PROXY_TARGET`, default :3001) |
-| `npm run build` | Type-check (`vue-tsc -b`) and build the production bundle |
-| `npm run preview` | Preview the production build locally |
-| `npm run test` | Run the Vitest unit suite once (CI form) |
-| `npm run test:watch` | Run Vitest in watch mode while developing |
-| `npm run lint` | Lint with ESLint (`eslint.config.js`) |
-| `npm run format` | Auto-format `src/` with Prettier |
-| `npm run format:check` | Verify formatting without writing (CI form) |
+- **Backend (`Api/`)** — `dotnet run` / `dotnet build` / `dotnet test`, with the
+  full per-command nuance under [Backend tests](#backend-tests-dotnet-test) and
+  [Backend build quality gates](#backend-build-quality-gates). `dotnet build` /
+  `dotnet test` can also run from the repo root against `CsubRunnerRoadmapV2.slnx`,
+  which includes both the API and the test project.
+- **Client (`client/`)** — the full npm-script reference (with the exact command
+  each one runs) is the table under
+  [Frontend npm scripts](#frontend-npm-scripts-client).
 
 ### Docker
 
@@ -532,7 +531,7 @@ Real failure modes and their causes, fastest fix first.
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `docker compose up` exits immediately with `set MSSQL_SA_PASSWORD in .env` (or similar) | A required secret is unset — compose validates with `${VAR:?}` | Copy `.env.example` to `.env` and fill in the four required values |
-| `dotnet run` / `dotnet test` can't connect to SQL Server, but the container is healthy | Your `MSSQL_SA_PASSWORD` differs from `Csub_Local_Dev_2026!`, which `appsettings.Development.json` and the test fixture hardcode | Set `MSSQL_SA_PASSWORD=Csub_Local_Dev_2026!` in `.env` for local work (or update both files to match yours) |
+| `dotnet run` / `dotnet test` can't connect to SQL Server, but the container is healthy | Your `MSSQL_SA_PASSWORD` differs from the value `appsettings.Development.json` and the test fixture hardcode (see [Database Setup](#local-sql-server-via-docker-recommended)) | Set `MSSQL_SA_PASSWORD=Csub_Local_Dev_2026!` in `.env` for local work (or update both files to match yours) |
 | `sqlserver` container crash-loops or segfaults on a Mac | SQL Server is amd64-only; the VM is using qemu emulation | Enable VZ + Rosetta: `rdctl set --virtual-machine.use-rosetta=true` (Rancher) or the equivalent Docker Desktop toggle |
 | Every `/api` request through nginx returns 404, SPA loads fine | `WEB_API_URL` was set **with a trailing slash**, so `proxy_pass` strips the `/api/` prefix | Remove the trailing slash (`http://api:8080`, not `http://api:8080/`) |
 | api container exits at startup with an `ApiCheck:EncryptionKey` or `Jwt:Secret` error | Production fail-fast guards: the key must be 64 real hex chars and the JWT secret ≥ 32 chars, neither a placeholder | Generate real values: `openssl rand -hex 32` and `openssl rand -base64 48` |

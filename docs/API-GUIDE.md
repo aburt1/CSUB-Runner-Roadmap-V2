@@ -27,6 +27,16 @@ The app is an **ASP.NET Core (.NET 10)** service using **Dapper** + hand-written
 
 Call the app at its public origin — `https://your-host/api/...`. In production the SPA and API are **same-origin behind nginx**, so **CORS is not involved**: your client just needs the base URL above plus an integration key. For the container topology see [ARCHITECTURE.md](ARCHITECTURE.md); for local-dev ports see [SETUP.md](SETUP.md).
 
+### TL;DR — pick your path
+
+| You are… | Read |
+|---|---|
+| **Pushing completions in** | [Authentication](#authentication--security) (integration key) + [Inbound Integration](#inbound-integration-push-data-in) |
+| **Building an endpoint we poll** | [Outbound Integration](#outbound-integration-poll-external-apis) + [What Your External Endpoint Must Provide](#what-your-external-endpoint-must-provide) |
+| **Operating the server** | [Configuration](#configuration) |
+
+Three must-knows for inbound callers: always send a **`source_event_id`** (idempotency); the **batch endpoint always returns 200** — check each item's `success`; **snake_case field names are a frozen contract**.
+
 ---
 
 ## Table of Contents
@@ -107,11 +117,11 @@ All `/api/` routes are rate-limited to **200 requests per 15 minutes** per IP ad
 
 ### Credential Encryption
 
-Outbound API-check credentials (basic-auth passwords, bearer tokens) are encrypted at rest using **AES-256-GCM** (`Api/Services/Encryption.cs`). The on-disk format is a JSON string `{ "iv": ..., "data": ..., "tag": ... }` where each field is **hex-encoded** — a **12-byte IV** and a **16-byte GCM authentication tag**. The encryption key is read once at startup from `ApiCheck__EncryptionKey` and must be a **64-character (32-byte) hex string**; anything else leaves encryption "not configured" and any attempt to save credentials returns `500 Encryption key not configured on server`.
+Outbound API-check credentials (basic-auth passwords, bearer tokens) are encrypted at rest using **AES-256-GCM** (`Api/Services/Encryption.cs`). The on-disk format is a JSON string `{ "iv": ..., "data": ..., "tag": ... }` where each field is **hex-encoded** — a **12-byte IV** and a **16-byte GCM authentication tag**. The encryption key is read once at startup from `ApiCheck__EncryptionKey` and must be a **64-character (32-byte) hex string**; anything else — a malformed/wrong-length value, **or a 64-hex key made of a single repeated character** (e.g. all zeros, rejected as a weak/placeholder key by `Encryption.IsWeakKey`) — leaves encryption "not configured" and any attempt to save credentials returns `500 Encryption key not configured on server`.
 
 ### SSRF Protection
 
-Outbound API-check URLs are validated before any request is made (`ApiCheckRunner.ValidateUrlAsync` in `Api/Services/ApiCheckRunner.cs`). In **production**, the following are blocked:
+Outbound API-check URLs are validated before any request is made (`ApiCheckRunner.ValidateUrlAsync` in `Api/Services/ApiCheckRunner.cs`). SSRF validation is **always active and fail-closed** — it is **not** gated by environment. In **every** environment the following are blocked:
 
 - Non-HTTP(S) schemes (only `http:` and `https:` are allowed)
 - `localhost` (and `::1` / `[::1]`)
@@ -120,7 +130,7 @@ Outbound API-check URLs are validated before any request is made (`ApiCheckRunne
 
 The hostname is **resolved via DNS** and the **resolved address** is checked (the first address returned by `Dns.GetHostAddressesAsync`), so DNS-rebinding a public hostname to a private IP is also rejected. If DNS resolution fails, the URL is rejected with `DNS resolution failed for <host>`.
 
-In **development** (`ASPNETCORE_ENVIRONMENT=Development`), `localhost` and private IPs are **allowed** so you can point checks at a local mock server while testing.
+Private/localhost targets are rejected even in Development **unless** the explicit `ApiCheck:AllowPrivateTargets` flag (env: `ApiCheck__AllowPrivateTargets=true`) is set. That flag exists only so you can point checks at a **local mock server** during dev/test; it defaults to `false` in every environment, including Development, and **must never be `true` in production**.
 
 ---
 
@@ -204,7 +214,23 @@ Update a single student's step-completion status.
 | `note` | string | No | Optional note attached to the completion |
 | `completed_at` | string | No | ISO 8601 timestamp. Defaults to current time if omitted. |
 
-**Validation order** (`ProcessCompletionItemAsync`): `source_event_id` is required → if a stored event for `(client, source_event_id)` already exists it is **replayed immediately** → `status` is validated → the student is resolved by emplid → the step is resolved by `step_key` within that student's term → the progress change is applied. The first failing check short-circuits with the matching error code.
+**Validation pipeline** (`ProcessCompletionItemAsync`): the first failing check short-circuits with the matching error code, so this flowchart doubles as a visual index into the [Error Code Reference](#error-code-reference).
+
+```mermaid
+flowchart TD
+  start([Request item]) --> sei{"source_event_id present?"}
+  sei -->|No| e1["400 invalid_source_event_id"]
+  sei -->|Yes| replay{"stored event for<br/>(client, source_event_id)?"}
+  replay -->|Yes| done["Replay stored response immediately"]
+  replay -->|No| status{"status one of<br/>completed / waived / not_completed?"}
+  status -->|No| e2["400 invalid_status"]
+  status -->|Yes| student{"resolve student by emplid"}
+  student -->|Not found| e3["404 student_not_found"]
+  student -->|Found| step{"resolve step by step_key in term"}
+  step -->|Not found| e4["404 step_not_found"]
+  step -->|Inactive| e5["409 step_inactive"]
+  step -->|Active| apply["Apply progress change<br/>(created / updated / noop)"]
+```
 
 **Example Request:**
 
@@ -382,14 +408,28 @@ The app can poll external HTTP endpoints to automatically check whether a studen
 
 ### How It Works
 
-1. A sysadmin configures an API check on a step (URL, auth, response-field path)
-2. A student visits their roadmap and triggers a check run
-3. The app loads all **enabled** checks for the student's **active term whose steps are active**, ordered by step `sort_order`
-4. For each check, it substitutes the student's identifier into the URL, calls the external API, and extracts the configured field
-5. **Truthy value** = mark the step completed (recorded with `completed_by = api_check`), but **only if** the step is not already completed
-6. **Falsy value** = revert the step to incomplete, but **only if** it was previously auto-completed by `api_check` — it never reverts a manual or integration completion
+A sysadmin configures an API check on a step (URL, auth, response-field path). When a student triggers a run, the app loads all **enabled** checks for the student's **active term whose steps are active**, ordered by step `sort_order`, and processes each one:
 
-The throttle timestamp (`students.last_api_check_at`) is updated at the end of every run.
+```mermaid
+flowchart TD
+  trigger([Student triggers run]) --> cooldown{"within 5-min cooldown?<br/>(last_api_check_at)"}
+  cooldown -->|Yes| skip["Skip run"]
+  cooldown -->|No| load["Load enabled checks<br/>active term, steps active<br/>ordered by sort_order"]
+  load --> call["Per check: substitute student id into URL<br/>GET/POST, extract response_field_path"]
+  call --> truthy{"extracted value truthy?"}
+  truthy -->|Truthy| comp{"step already complete?"}
+  comp -->|No| markdone["Mark complete<br/>completed_by = api_check"]
+  comp -->|Yes| noop1["Leave as-is"]
+  truthy -->|Falsy| rev{"previously completed by api_check?"}
+  rev -->|Yes| revert["Revert to incomplete"]
+  rev -->|No| noop2["Leave as-is<br/>(never reverts manual/integration)"]
+  markdone --> upd
+  noop1 --> upd
+  revert --> upd
+  noop2 --> upd["Update last_api_check_at<br/>(end of every run)"]
+```
+
+A **truthy** value marks the step completed (recorded with `completed_by = api_check`) only if it is not already complete. A **falsy** value reverts the step only if it was previously auto-completed by `api_check` — it never reverts a manual or integration completion. The throttle timestamp (`students.last_api_check_at`) is updated at the end of every run.
 
 **Throttling & Timeouts:**
 
@@ -640,6 +680,20 @@ curl -H "Authorization: Bearer <student-jwt>" \
 
 Status values: `"running"`, `"complete"`, `"no_run"` (no recent run). Run state is held **in memory** in the singleton `ApiCheckRunner` (it does not survive an app restart, and is per-`api`-process) and is cleaned up **2 minutes** after a run completes — so poll promptly after starting a run, or you'll fall back to `no_run`.
 
+```mermaid
+sequenceDiagram
+  participant C as Client (student JWT)
+  participant A as CSUB API
+  C->>A: POST /api/roadmap/run-api-checks
+  A-->>C: {status: started} or {status: skipped}
+  Note over A: Checks run fire-and-forget in background
+  loop poll until complete
+    C->>A: GET /api/roadmap/check-status
+    A-->>C: {status: running | complete | no_run}
+  end
+  Note over A: In-memory result per student,<br/>2-min TTL after completion
+```
+
 **Polling pattern (TypeScript):**
 
 ```javascript
@@ -666,12 +720,7 @@ async function runAndPoll(token) {
 
 ## Health & monitoring endpoints
 
-The API exposes two unauthenticated health endpoints from `Api/Controllers/HealthController.cs`, both mounted under `/api/health`. They are deliberately split so that an orchestrator (Docker Compose, Kubernetes, a load balancer, or an uptime monitor) can ask two *different* questions and react to them differently:
-
-- **"Is the process alive?"** — a liveness probe. If this fails, the container is wedged and should be **restarted**.
-- **"Is the process ready to serve traffic?"** — a readiness probe. If this fails (e.g. SQL Server is briefly unreachable), the container should be **pulled out of rotation** but **not** killed — its dependency may recover on its own.
-
-Conflating the two is a classic outage amplifier: if a liveness probe also checks the database, a transient DB blip restarts every API container at once, and the restart storm prevents recovery. Splitting them is why `/live` never touches the DB while `/ready` does.
+The API exposes two unauthenticated health endpoints from `Api/Controllers/HealthController.cs`, both mounted under `/api/health`. They are deliberately split so an orchestrator (Docker Compose, Kubernetes, a load balancer, or an uptime monitor) can ask "is the process alive?" (restart it if not) separately from "is it ready to serve traffic?" (pull it from rotation if not, but don't kill it). Conflating the two is an outage amplifier — a liveness probe that also checks the DB turns a transient DB blip into a restart storm — which is why `/live` never touches the DB while `/ready` does.
 
 | Endpoint | Touches DB? | Status when healthy | Status when DB down | Use for |
 |----------|-------------|---------------------|---------------------|---------|
@@ -736,7 +785,8 @@ Configuration is read from environment variables (or `appsettings.json`). ASP.NE
 | `Integration__DefaultName` | Inbound | Name of the default integration client seeded on startup (default: `"PeopleSoft Dev"`) |
 | `Integration__DefaultKey` | Inbound | Raw secret key for the default client (bcrypt-hashed before storage). In dev, defaults to `dev-integration-key` if unset; in production no client is seeded unless this is set. |
 | `ApiCheck__EncryptionKey` | Outbound | 64-character hex string (32 bytes) for AES-256-GCM encryption of stored credentials |
-| `ASPNETCORE_ENVIRONMENT` | Both | Set to `Production` to enable SSRF protection on outbound checks. `Development` allows localhost/private IPs for testing. |
+| `ApiCheck__AllowPrivateTargets` | Outbound (dev/test only) | Allow outbound checks to hit localhost/private IPs for local mock servers. Defaults to `false` (fail-closed) in **every** environment, including Development. Never set `true` in production. |
+| `ASPNETCORE_ENVIRONMENT` | Both | Standard ASP.NET Core environment switch (`Development` / `Production`). Does **not** gate SSRF protection — that is always on (see `ApiCheck__AllowPrivateTargets`). |
 | `Cors__Origin` | Browser callers (only when bypassing the proxy) | Allowed SPA origin for CORS. Defaults to `http://localhost:3000` in dev; **closed** in production unless set. Through the nginx proxy the SPA and API are same-origin, so CORS normally isn't needed. |
 | `RateLimiting__Disabled` | Tests only | `true` turns off the rate limiter (used by the xUnit suite). Leave unset in production. |
 

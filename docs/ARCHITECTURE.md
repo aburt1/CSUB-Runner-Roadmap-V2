@@ -18,6 +18,17 @@ it does** (the business logic). For specific topics it hands off to the sibling 
 
 ---
 
+## If you read nothing else
+
+- **Stack:** Vue 3 SPA + ASP.NET Core (.NET 10) + Dapper/hand-written T-SQL + SQL Server, deliberately low-abstraction. → [Tech Stack](#tech-stack)
+- **Domain model:** terms are cohorts, steps are tag-personalized, and the **progression cursor** is the first incomplete required step. → [How the App Works](#how-the-app-works--the-business-logic)
+- **One write path:** every progress change — student, admin, integration, API check — funnels through `Progress.ApplyAsync` under `WITH (UPDLOCK, HOLDLOCK)`. → [Request / Data Flow](#request--data-flow)
+- **One DB site:** `Api/Data/Db.cs` is the only place that opens a connection, and it absorbs transient SQL faults with retry. → [The Data Layer](#the-data-layer-dbcs)
+- **Self-initializing schema:** the API brings the database to shape on boot, gated by `Database:AutoCreate` and `Database:Seed`. → [Startup Sequence](#startup-sequence-programcs--schemainitializercs)
+- **Deployment:** three containers (`web` / `api` / `sqlserver`), with nginx reverse-proxying `/api` so the browser sees a single origin. → [Deployment Architecture](#deployment-architecture)
+
+---
+
 ## Tech Stack
 
 | Layer | Technologies |
@@ -191,25 +202,24 @@ Each student's roadmap is built from four things:
 
 A single page load illustrates the full path through the system. The numbered hops correspond to the topology in [Deployment Architecture](#deployment-architecture).
 
-```
- Browser                nginx (web)              ASP.NET Core (api)         SQL Server
- ───────                ───────────              ──────────────────         ──────────
-   │  GET /                  │                          │                       │
-   │ ──────────────────────► │  serve index.html        │                       │
-   │ ◄────────────────────── │  (SPA shell + JS)         │                       │
-   │                         │                          │                       │
-   │  GET /api/steps         │                          │                       │
-   │ ──────────────────────► │  proxy_pass ──────────►  │  (forwarded headers)  │
-   │                         │  X-Forwarded-For/-Proto  │  filter pipeline:     │
-   │                         │                          │   error-handler →     │
-   │                         │                          │   fwd-headers →       │
-   │                         │                          │   security-headers →  │
-   │                         │                          │   CORS → rate-limit    │
-   │                         │                          │   → controller        │
-   │                         │                          │  Db.QueryAll ────────►│ SELECT ...
-   │                         │                          │ ◄──────────────────── │ rows
-   │ ◄────────────────────── │ ◄──────────────────────  │  JSON (verbatim keys) │
-   │  render personalized timeline                      │                       │
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant W as nginx (web)
+    participant A as ASP.NET Core (api)
+    participant S as SQL Server
+
+    B->>W: GET /
+    W-->>B: index.html (SPA shell + JS)
+
+    B->>W: GET /api/steps
+    W->>A: proxy_pass (+ X-Forwarded-For / -Proto)
+    Note over A: Middleware pipeline:<br/>error-handler → fwd-headers →<br/>security-headers → CORS →<br/>rate-limit → controller
+    A->>S: Db.QueryAll (SELECT ...)
+    S-->>A: rows
+    A-->>W: JSON (verbatim keys)
+    W-->>B: JSON response
+    Note over B: render personalized timeline
 ```
 
 Every line of that diagram applies to **every** API request: nginx adds the forwarded
@@ -371,7 +381,7 @@ flowchart LR
 /api/steps/{stepId}/status` — gated to optional, active, tag-applicable steps in their
 own term; required steps can only be completed by staff, integrations, or API checks.)
 
-**Database access.** `Db.QueryOneAsync` / `QueryAllAsync` / `ExecuteAsync` open a fresh SQL Server connection per call; `Db.TransactionAsync` runs a unit of work on a single connection/transaction (commit on success, rollback on throw). The row lock in `Progress.ApplyAsync` is the T-SQL `WITH (UPDLOCK, HOLDLOCK)` hint — `UPDLOCK` serializes writers on an existing row, `HOLDLOCK` range-locks the key when the row is absent. This is why the same progress-write path is safe under concurrent admin edits and integration pushes. See [The Data Layer (`Db.cs`)](#the-data-layer-dbcs) for how this layer also absorbs transient SQL faults.
+**Database access.** `Db.QueryOneAsync` / `QueryAllAsync` / `ExecuteAsync` open a fresh SQL Server connection per call; `Db.TransactionAsync` runs a unit of work on a single connection/transaction (commit on success, rollback on throw). The `UPDLOCK`/`HOLDLOCK` row lock that makes `Progress.ApplyAsync` safe under concurrent writers is detailed in [The Data Layer (`Db.cs`)](#the-data-layer-dbcs), which also covers how this layer absorbs transient SQL faults.
 
 **Client-side resilience.** The frontend is hardened to fail gracefully (see `client/src/main.ts`, `client/src/App.vue`, `client/src/stores/toast.ts`): a global `app.config.errorHandler`, a `window` `unhandledrejection` listener, and an `onErrorCaptured` boundary in the root component all funnel into a Pinia **toast store** so an unexpected error surfaces as a dismissible notice rather than a blank screen. A student `401` response triggers logout plus a toast, so an expired session lands the user back at sign-in cleanly.
 
@@ -381,54 +391,19 @@ own term; required steps can only be completed by staff, integrations, or API ch
 
 The API is self-initializing: point it at a SQL Server instance and it brings the database to the right shape on boot — no manual migration step. The sequence is deliberately gated so the **same image** behaves correctly in zero-setup dev and in a locked-down production database where the app login has no `CREATE DATABASE` rights.
 
-```
-          ┌─────────────────────────────────────────────────────────────┐
-          │                    api process starts                       │
-          └─────────────────────────────────────────────────────────────┘
-                                       │
-                                       ▼
-          Read ConnectionStrings:Default  ── missing? ──► throw, fail fast
-                                       │
-                                       ▼
-          Build DI container, ForwardedHeaders, CORS, RateLimiter
-                                       │
-                                       ▼
-          ┌──────────────────────────────────────────────┐
-          │ Database:AutoCreate ?                         │
-          │   (config value  ??  !IsProduction())        │
-          └──────────────────────────────────────────────┘
-                │ true (dev/test default)        │ false (Production default)
-                ▼                                 │
-   EnsureDatabaseAsync(connStr):                  │
-     connect to [master], retry up to 15×/3s      │
-     IF DB_ID('csub_admissions') IS NULL          │
-        CREATE DATABASE [csub_admissions]         │
-     (db name validated ^[A-Za-z0-9_]+$ first)    │
-                │                                 │
-                └──────────────┬──────────────────┘
-                               ▼
-          SchemaInitializer.RunAsync(db, Data/schema.sql)
-            • read schema.sql, ExecuteAsync the whole batch
-            • every object guarded by IF NOT EXISTS — idempotent, never drops data
-            • INSERT CurrentSchemaVersion ("2026.06.09") into schema_version
-              if not already present  (append-only audit of applied versions)
-                               │
-                               ▼
-          ┌──────────────────────────────────────────────┐
-          │ Database:Seed  (default: true) ?              │
-          └──────────────────────────────────────────────┘
-                │ true                              │ false (DBA seeds out-of-band)
-                ▼                                    │
-   Seeder.RunAsync(db, config, env):                 │
-     idempotent "is this table empty?" checks        │
-     • default term + onboarding checklist            │
-     • default admin (Admin:DefaultEmail/Password)    │
-     • default integration client                     │
-     • DEV only: 50-student deterministic sample      │
-                │                                    │
-                └──────────────┬─────────────────────┘
-                               ▼
-          Build middleware pipeline, then app.Run()
+```mermaid
+flowchart TD
+    start(["api process starts"]) --> conn{"Read<br/>ConnectionStrings:Default"}
+    conn -->|missing| fail["throw, fail fast"]
+    conn -->|present| di["Build DI container,<br/>ForwardedHeaders, CORS, RateLimiter"]
+    di --> g1{"Database:AutoCreate ?<br/>(config value ?? !IsProduction())"}
+    g1 -->|"true (dev/test default)"| ensure["EnsureDatabaseAsync(connStr):<br/>connect to [master], retry up to 15x / 3s<br/>IF DB_ID('csub_admissions') IS NULL<br/>CREATE DATABASE [csub_admissions]<br/>(db name validated ^[A-Za-z0-9_]+$ first)"]
+    g1 -->|"false (Production default)"| schema
+    ensure --> schema["SchemaInitializer.RunAsync(db, Data/schema.sql):<br/>ExecuteAsync the whole batch<br/>idempotent: tables via IF OBJECT_ID, indexes via IF NOT EXISTS<br/>INSERT CurrentSchemaVersion (2026.06.10) into schema_version"]
+    schema --> g2{"Database:Seed ?<br/>(default: true)"}
+    g2 -->|true| seed["Seeder.RunAsync(db, config, env):<br/>idempotent empty-table checks<br/>default term + onboarding checklist<br/>default admin (Admin:DefaultEmail/Password)<br/>default integration client<br/>DEV only: 50-student deterministic sample"]
+    g2 -->|"false (DBA seeds out-of-band)"| run
+    seed --> run["Build middleware pipeline,<br/>then app.Run()"]
 ```
 
 ### The three gates
@@ -436,7 +411,7 @@ The API is self-initializing: point it at a SQL Server instance and it brings th
 | Gate | Config key | Default | Why |
 |------|-----------|---------|-----|
 | **Auto-create the database** | `Database:AutoCreate` | `!IsProduction()` (true off-Production) | In dev/test you want zero setup: connect to `master` and `CREATE DATABASE` if missing. In production the database is provisioned by a DBA and the app login is **not** expected to hold server-level `CREATE DATABASE` rights, so the step is skipped. |
-| **Apply the schema** | *(always runs)* | always | `schema.sql` is fully idempotent (`IF NOT EXISTS` around every object), so re-applying it every boot is safe and keeps the schema in lock-step with the code. The applied `CurrentSchemaVersion` is recorded append-only in `dbo.schema_version` so an operator can see the upgrade history. |
+| **Apply the schema** | *(always runs)* | always | `schema.sql` is fully idempotent (tables guarded by `IF OBJECT_ID(...) IS NULL`, indexes by `IF NOT EXISTS`), so re-applying it every boot is safe and keeps the schema in lock-step with the code. The applied `CurrentSchemaVersion` (`2026.06.10`) is recorded append-only in `dbo.schema_version` so an operator can see the upgrade history. |
 | **Seed bootstrap data** | `Database:Seed` | `true` | Seeds the default term, onboarding checklist, default admin, and integration client into an *empty* database (guarded by emptiness checks). Set `false` when a DBA seeds out-of-band. Dev also gets a deterministic 50-student sample (fixed RNG seed) so analytics has realistic data. |
 
 The relevant lines in `Api/Program.cs`:
@@ -527,31 +502,17 @@ The DB probe uses its **own connection with a 3-second connect/command timeout a
 
 The ASP.NET Core process is configured entirely in `Api/Program.cs`. After the [startup sequence](#startup-sequence-programcs--schemainitializercs) it builds the middleware pipeline. **Order matters** — each layer wraps the ones after it:
 
-```
-   incoming request
-        │
-        ▼
-  ┌──────────────────────────────────────────────────────────┐
-  │ 1. Error handler   try/catch → 500 {"error":"Internal     │  outermost — catches
-  │                    server error"}, never leaks a stack    │  everything below it
-  ├──────────────────────────────────────────────────────────┤
-  │ 2. UseForwardedHeaders   rewrite RemoteIp/scheme from      │  must precede rate
-  │                          X-Forwarded-For / -Proto          │  limiting + audit
-  ├──────────────────────────────────────────────────────────┤
-  │ 3. Security headers      CSP, nosniff, X-Frame-Options,    │
-  │                          HSTS, COOP/CORP, …                │
-  ├──────────────────────────────────────────────────────────┤
-  │ 4. UseCors               SPA origin + credentials          │
-  ├──────────────────────────────────────────────────────────┤
-  │ 5. UseRateLimiter        200/15min per IP on /api          │  skippable in tests
-  ├──────────────────────────────────────────────────────────┤
-  │ 6. Static files          UseDefaultFiles + UseStaticFiles  │  no-op when wwwroot
-  │                          (serve SPA from wwwroot if any)   │  is empty (containers)
-  ├──────────────────────────────────────────────────────────┤
-  │ 7. MapControllers        the API itself                    │
-  ├──────────────────────────────────────────────────────────┤
-  │ 8. MapFallbackToFile     non-/api → index.html (SPA route) │
-  └──────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    req(["incoming request"]) --> m1
+    m1["1. Error handler<br/>try/catch → 500 {error: Internal server error}, never leaks a stack<br/><i>outermost — catches everything below it</i>"] --> m2
+    m2["2. UseForwardedHeaders<br/>rewrite RemoteIp/scheme from X-Forwarded-For / -Proto<br/><i>must precede rate limiting + audit</i>"] --> m3
+    m3["3. Security headers<br/>CSP, nosniff, X-Frame-Options, HSTS, COOP/CORP, ..."] --> m4
+    m4["4. UseCors<br/>SPA origin + credentials"] --> m5
+    m5["5. UseRateLimiter<br/>200 / 15min per IP on /api<br/><i>skippable in tests</i>"] --> m6
+    m6["6. Static files<br/>UseDefaultFiles + UseStaticFiles (serve SPA from wwwroot if any)<br/><i>no-op when wwwroot is empty (containers)</i>"] --> m7
+    m7["7. MapControllers<br/>the API itself"] --> m8
+    m8["8. MapFallbackToFile<br/>non-/api → index.html (SPA route)"]
 ```
 
 ### Forwarded headers / reverse proxy
@@ -677,25 +638,24 @@ The deployment splits into **three containers** orchestrated by `docker-compose.
 | **api** | built from `Api/` (`dotnet/sdk:10.0` → `dotnet/aspnet:10.0`) | `127.0.0.1:8080:8080` | ASP.NET Core API only; **auto-creates the DB/schema/seed on startup** (per the gates above). Runs as the image's non-root user. |
 | **sqlserver** | `mcr.microsoft.com/mssql/server:2022-latest` | `127.0.0.1:1433:1433` | SQL Server 2022 (persistent volume `csub_sqlserver_data`) |
 
-```
-                                  ┌─────────────────────────────────────────────┐
-   Browser                        │            Docker Compose network           │
- ───────────                      │                                             │
-  http://localhost:3000  ────────►│  web (nginx-unprivileged :8080, non-root)   │
-   │                              │    ├─ /            → static Vue bundle       │
-   │  (same origin — no CORS)     │    └─ /api/*       → proxy_pass ${API_URL}    │
-   │                              │            + X-Forwarded-For / -Proto         │
-   │                              │                         │                   │
-   │                              │                         ▼                   │
-   │                              │                       api (ASP.NET :8080, non-root)
-   │                              │                  HEALTHCHECK /api/health/live │
-   │                              │                         │                   │
-   │                              │                         ▼                   │
-   │                              │                  sqlserver (SQL Server :1433)│
-   │                              │                  HEALTHCHECK sqlcmd SELECT 1 │
-   └──────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    browser(["Browser<br/>http://localhost:3000"])
 
-   depends_on (service_healthy):  web  ──waits-for──►  api  ──waits-for──►  sqlserver
+    subgraph net["Docker Compose network"]
+        web["web<br/>nginx-unprivileged :8080, non-root<br/>HEALTHCHECK /api/health/live (on api)"]
+        api["api<br/>ASP.NET Core :8080, non-root<br/>HEALTHCHECK /api/health/live"]
+        sql[("sqlserver<br/>SQL Server :1433<br/>HEALTHCHECK sqlcmd SELECT 1")]
+
+        web -->|"/  → static Vue bundle"| web
+        web -->|"/api/* → proxy_pass ${API_URL}<br/>(+ X-Forwarded-For / -Proto)"| api
+        api -->|"Db.cs connection"| sql
+    end
+
+    browser -->|"same origin — no CORS"| web
+
+    web -.->|"depends_on: service_healthy"| api
+    api -.->|"depends_on: service_healthy"| sql
 ```
 
 **Same-origin via nginx.** The browser only ever talks to `web` on `http://localhost:3000`. nginx serves the SPA for `/` (with `try_files $uri $uri/ /index.html` SPA fallback so client routes like `/admin` load), and reverse-proxies everything under `/api/` to the `api` container (`proxy_pass ${API_URL}`, default `http://api:8080`). Because the API responses come back through the same origin, **the browser never makes a cross-origin request, so CORS is not needed** in the container deployment. The nginx config (`client/nginx.conf.template`) is rendered at container start by `envsubst` from the `API_URL` env var, so you can repoint the proxy at a different backend without rebuilding. The proxy also sets `X-Real-IP` / `X-Forwarded-For` / `X-Forwarded-Proto`, which the API consumes via `UseForwardedHeaders` (see [Forwarded headers / reverse proxy](#forwarded-headers--reverse-proxy)). nginx also hardens what it serves: security headers on the SPA (CSP including the `login.microsoftonline.com` connect-src MSAL needs, `nosniff`, frame `DENY`, `no-referrer`), gzip for text assets, and a 1-year cache for the hashed `/assets/` bundle. One operational footgun is documented in the template itself: **`API_URL` must not end with a trailing slash**, or `proxy_pass` would strip the `/api/` prefix and every API route would 404.
@@ -744,21 +704,16 @@ docker compose up -d --build web        # full stack (:3000); pulls api + sqlser
 
 ### Configuration / secrets
 
-All secrets and config are supplied as environment variables on the `api` service (and `MSSQL_SA_PASSWORD` on `sqlserver`). ASP.NET Core's configuration binder maps the **double-underscore** form of nested keys:
+All secrets and config are environment variables on the `api` service (and
+`MSSQL_SA_PASSWORD` on `sqlserver`). ASP.NET Core's binder maps the **double-underscore**
+form of nested keys — e.g. `ConnectionStrings__Default` → `ConnectionStrings:Default`,
+`Jwt__Secret` → `Jwt:Secret`, `Database__AutoCreate` → `Database:AutoCreate`.
 
-| Env var | Maps to | Default (dev) |
-|---------|---------|---------------|
-| `ConnectionStrings__Default` | `ConnectionStrings:Default` | `Server=sqlserver,1433;...` |
-| `Jwt__Secret` | `Jwt:Secret` | **required** in containers |
-| `Admin__DefaultEmail` / `Admin__DefaultPassword` | seed admin | `admin@csub.edu` / **required** |
-| `LocalLogin__Username` / `LocalLogin__Password` | break-glass admin (off unless *both* set) | unset |
-| `Integration__DefaultName` / `Integration__DefaultKey` | seed integration client | `PeopleSoft Dev` / `dev-integration-key` |
-| `ApiCheck__EncryptionKey` | AES-256-GCM key for stored API-check credentials | 64-hex (32-byte) — **required** |
-| `AzureAd__ClientId` / `AzureAd__TenantId` | Azure AD SSO | unset (SSO → 501) |
-| `Cors__Origin` | allowed SPA origin | only needed if you bypass the nginx proxy |
-| `Database__AutoCreate` | gate the `CREATE DATABASE` step | unset → `!IsProduction()` |
-| `Database__Seed` | gate the bootstrap seed | unset → `true` |
-| `RateLimiting__Disabled` | disable all rate limiting | unset → `false` |
+The full variable reference lives with its owners — **dev defaults** in
+[SETUP.md](SETUP.md) and **production requirements** in [DEPLOYMENT.md](DEPLOYMENT.md) —
+so it stays correct in one place. The two that change app behavior on boot are
+`Database:AutoCreate` (default `!IsProduction()`) and `Database:Seed` (default `true`),
+which gate the [startup sequence](#startup-sequence-programcs--schemainitializercs).
 
 For the production deployment (Windows Server, IIS/reverse proxy, a DBA-provisioned SQL Server, `Database__AutoCreate=false`), see **[DEPLOYMENT.md](DEPLOYMENT.md)** rather than the dev recipe above.
 
