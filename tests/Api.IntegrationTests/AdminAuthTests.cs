@@ -5,8 +5,7 @@ using System.Text.Json;
 
 namespace Api.IntegrationTests;
 
-// Integration tests for AdminAuthController (POST login, GET me, POST change-password,
-// POST sso, POST local-login).
+// Integration tests for AdminAuthController (POST login, GET me, POST sso, POST local-login).
 [Collection("api")]
 public class AdminAuthTests
 {
@@ -148,70 +147,6 @@ public class AdminAuthTests
         Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
         var body = await res.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Authentication required", body.GetProperty("error").GetString());
-    }
-
-    // ------------------------------------------------------- change-password
-
-    [Fact]
-    public async Task ChangePassword_without_token_is_401()
-    {
-        var res = await _fx.Anonymous().PostAsJsonAsync(
-            "/api/admin/auth/change-password",
-            new { currentPassword = "admin123", newPassword = "a-very-long-new-password" });
-
-        Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
-        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("Authentication required", body.GetProperty("error").GetString());
-    }
-
-    [Fact]
-    public async Task ChangePassword_missing_newPassword_is_400_with_exact_message()
-    {
-        var res = await _fx.Admin().PostAsJsonAsync(
-            "/api/admin/auth/change-password", new { currentPassword = "admin123" });
-
-        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
-        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("Current and new password required", body.GetProperty("error").GetString());
-    }
-
-    [Fact]
-    public async Task ChangePassword_missing_currentPassword_is_400_with_exact_message()
-    {
-        var res = await _fx.Admin().PostAsJsonAsync(
-            "/api/admin/auth/change-password", new { newPassword = "this-is-long-enough" });
-
-        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
-        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("Current and new password required", body.GetProperty("error").GetString());
-    }
-
-    [Fact]
-    public async Task ChangePassword_too_short_newPassword_is_400_min_12_chars()
-    {
-        // "tooshort123" is 11 chars -> below the 12-char minimum. Validation happens
-        // before the current-password check, so this stays a 400 even with a valid
-        // current password.
-        var res = await _fx.Admin().PostAsJsonAsync(
-            "/api/admin/auth/change-password",
-            new { currentPassword = "admin123", newPassword = "tooshort123" });
-
-        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
-        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("Password must be at least 12 characters", body.GetProperty("error").GetString());
-    }
-
-    [Fact]
-    public async Task ChangePassword_wrong_current_password_is_401()
-    {
-        // Long enough to pass length validation, but the current password is wrong.
-        var res = await _fx.Admin().PostAsJsonAsync(
-            "/api/admin/auth/change-password",
-            new { currentPassword = "wrong-current-pw", newPassword = "a-brand-new-secure-password" });
-
-        Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
-        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("Current password is incorrect", body.GetProperty("error").GetString());
     }
 
     // ------------------------------------------------------------------ sso

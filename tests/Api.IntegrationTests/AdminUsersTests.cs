@@ -95,133 +95,19 @@ public class AdminUsersTests
         Assert.Equal("Invalid or expired token", body.GetProperty("error").GetString());
     }
 
-    // ---- POST /api/admin/users ----
-
-    [Fact]
-    public async Task Create_with_unique_email_returns_id_and_appears_in_list()
-    {
-        var email = UniqueEmail();
-        var res = await _fx.Admin().PostAsJsonAsync("/api/admin/users",
-            new { email, role = "admissions", displayName = "Created Admissions" });
-
-        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
-        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.True(body.GetProperty("success").GetBoolean());
-        var newId = body.GetProperty("id").GetInt32();
-        Assert.True(newId > 0);
-
-        // The created row should now be visible (email lowercased/trimmed by the API).
-        var list = await (await _fx.Admin().GetAsync("/api/admin/users")).Content.ReadFromJsonAsync<JsonElement>();
-        var found = list.EnumerateArray().FirstOrDefault(u => u.GetProperty("id").GetInt32() == newId);
-        Assert.Equal(JsonValueKind.Object, found.ValueKind);
-        Assert.Equal(email.ToLowerInvariant(), found.GetProperty("email").GetString());
-        Assert.Equal("admissions", found.GetProperty("role").GetString());
-        Assert.Equal("Created Admissions", found.GetProperty("display_name").GetString());
-        Assert.Equal(1, found.GetProperty("is_active").GetInt32());
-    }
-
-    [Fact]
-    public async Task Create_without_role_defaults_to_viewer()
-    {
-        var email = UniqueEmail();
-        var res = await _fx.Admin().PostAsJsonAsync("/api/admin/users",
-            new { email, displayName = "Defaulted Role" });
-
-        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
-        var newId = (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
-
-        var list = await (await _fx.Admin().GetAsync("/api/admin/users")).Content.ReadFromJsonAsync<JsonElement>();
-        var found = list.EnumerateArray().First(u => u.GetProperty("id").GetInt32() == newId);
-        Assert.Equal("viewer", found.GetProperty("role").GetString());
-    }
-
-    [Fact]
-    public async Task Create_normalizes_email_to_lowercase_trimmed()
-    {
-        var local = $"Mixed{Guid.NewGuid():N}";
-        var raw = $"  {local}@T.EDU  ";
-        var res = await _fx.Admin().PostAsJsonAsync("/api/admin/users",
-            new { email = raw, displayName = "Normalize Me" });
-
-        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
-        var newId = (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
-
-        var list = await (await _fx.Admin().GetAsync("/api/admin/users")).Content.ReadFromJsonAsync<JsonElement>();
-        var found = list.EnumerateArray().First(u => u.GetProperty("id").GetInt32() == newId);
-        Assert.Equal($"{local.ToLowerInvariant()}@t.edu", found.GetProperty("email").GetString());
-    }
-
-    [Fact]
-    public async Task Create_missing_email_is_400_with_exact_message()
-    {
-        var res = await _fx.Admin().PostAsJsonAsync("/api/admin/users",
-            new { displayName = "No Email" });
-
-        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
-        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("email and displayName required", body.GetProperty("error").GetString());
-    }
-
-    [Fact]
-    public async Task Create_missing_display_name_is_400_with_exact_message()
-    {
-        var res = await _fx.Admin().PostAsJsonAsync("/api/admin/users",
-            new { email = UniqueEmail() });
-
-        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
-        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("email and displayName required", body.GetProperty("error").GetString());
-    }
-
-    [Fact]
-    public async Task Create_invalid_role_is_400_with_exact_message()
-    {
-        var res = await _fx.Admin().PostAsJsonAsync("/api/admin/users",
-            new { email = UniqueEmail(), role = "superuser", displayName = "Bad Role" });
-
-        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
-        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("role must be one of: viewer, admissions, admissions_editor, sysadmin",
-            body.GetProperty("error").GetString());
-    }
-
-    [Fact]
-    public async Task Create_duplicate_email_is_409_with_exact_message()
-    {
-        var email = UniqueEmail();
-        var first = await _fx.Admin().PostAsJsonAsync("/api/admin/users",
-            new { email, displayName = "First" });
-        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
-
-        // Same email (different case) must collide via the lowercase/trim normalization.
-        var dup = await _fx.Admin().PostAsJsonAsync("/api/admin/users",
-            new { email = email.ToUpperInvariant(), displayName = "Second" });
-
-        Assert.Equal(HttpStatusCode.Conflict, dup.StatusCode);
-        var body = await dup.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("Email already exists", body.GetProperty("error").GetString());
-    }
-
-    [Fact]
-    public async Task Create_without_token_is_401()
-    {
-        var res = await _fx.Anonymous().PostAsJsonAsync("/api/admin/users",
-            new { email = UniqueEmail(), displayName = "No Auth" });
-        Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
-
-        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("Authentication required", body.GetProperty("error").GetString());
-    }
-
     // ---- PUT /api/admin/users/{id} ----
 
-    // Create a fresh admin row we fully own, returning its id.
+    // Seed a fresh admin row we fully own and return its id. Admin accounts are created
+    // in Azure AD (there is no create-user endpoint), so the row is inserted directly;
+    // password_hash is a throwaway placeholder since these tests exercise the UPDATE
+    // path, never login. Inputs are test-controlled constants (no SQL-escaping needed).
     private async Task<int> CreateOwnedUserAsync(string role = "viewer", string displayName = "Owned")
     {
-        var res = await _fx.Admin().PostAsJsonAsync("/api/admin/users",
-            new { email = UniqueEmail(), role, displayName });
-        res.EnsureSuccessStatusCode();
-        return (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
+        var id = await _fx.ScalarAsync(
+            "INSERT INTO admin_users (email, password_hash, role, display_name) " +
+            $"VALUES ('{UniqueEmail()}', 'unusable-placeholder-hash', '{role}', '{displayName}'); " +
+            "SELECT CAST(SCOPE_IDENTITY() AS int);");
+        return Convert.ToInt32(id);
     }
 
     private async Task<JsonElement> FetchRowAsync(int id)

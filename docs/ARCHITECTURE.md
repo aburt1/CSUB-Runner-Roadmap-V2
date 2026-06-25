@@ -218,7 +218,7 @@ CSUB-Runner-Roadmap-V2/
 │   ├── Controllers/
 │   │   ├── HealthController.cs       # GET /api/health/live, /api/health/ready
 │   │   ├── AuthController.cs         # Student auth (dev-login, SSO, me)
-│   │   ├── AdminAuthController.cs    # Admin auth (login, SSO, break-glass, change-password)
+│   │   ├── AdminAuthController.cs    # Admin auth (login, SSO, break-glass)
 │   │   ├── StepsController.cs        # Public/student step routes (/api/steps)
 │   │   ├── IntegrationsController.cs # Inbound integration push API (/api/integrations/v1)
 │   │   ├── RoadmapApiChecksController.cs  # Student-triggered API-check runs (/api/roadmap)
@@ -227,7 +227,7 @@ CSUB-Runner-Roadmap-V2/
 │   │       ├── StepsController.cs       # Step CRUD, reorder, duplicate, bulk-status
 │   │       ├── StudentsController.cs    # Student progress, profiles, tags, audit
 │   │       ├── TermsController.cs       # Term CRUD, clone
-│   │       ├── UsersController.cs       # Admin user CRUD (sysadmin only)
+│   │       ├── UsersController.cs       # Admin user list + role/active management (sysadmin only)
 │   │       └── ApiChecksController.cs   # Per-step API-check config (sysadmin only)
 │   ├── Auth/
 │   │   ├── JwtService.cs             # Issue/validate HS256 tokens

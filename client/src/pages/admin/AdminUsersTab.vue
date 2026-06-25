@@ -27,7 +27,6 @@ const props = defineProps<{
 }>()
 
 const users = ref<User[]>([])
-const showForm = ref(false)
 const editingId = ref<number | null>(null)
 const form = ref<UserForm>({ email: '', displayName: '', role: 'viewer' })
 const error = ref('')
@@ -48,30 +47,23 @@ onMounted(() => {
   loadUsers()
 })
 
-const resetForm = () => {
-  form.value = { email: '', displayName: '', role: 'viewer' }
-  showForm.value = false
+const cancelEdit = () => {
   editingId.value = null
   error.value = ''
 }
 
+// New admin accounts are provisioned in Azure AD, not created here — this tab only
+// edits an existing account's role, display name, and active state.
 const handleSubmit = async () => {
+  if (editingId.value === null) return
   error.value = ''
   saving.value = true
   try {
-    if (editingId.value) {
-      await props.api.put(`/users/${editingId.value}`, {
-        displayName: form.value.displayName,
-        role: form.value.role,
-      })
-    } else {
-      await props.api.post('/users', {
-        email: form.value.email,
-        displayName: form.value.displayName,
-        role: form.value.role,
-      })
-    }
-    resetForm()
+    await props.api.put(`/users/${editingId.value}`, {
+      displayName: form.value.displayName,
+      role: form.value.role,
+    })
+    cancelEdit()
     loadUsers()
   } catch (err) {
     error.value = errorMessage(err, 'Could not save user. Please try again.')
@@ -83,7 +75,7 @@ const handleSubmit = async () => {
 const startEdit = (user: User) => {
   form.value = { email: user.email, displayName: user.display_name, role: user.role }
   editingId.value = user.id
-  showForm.value = true
+  error.value = ''
 }
 
 const toggleActive = async (user: User) => {
@@ -98,45 +90,22 @@ const toggleActive = async (user: User) => {
 
 <template>
   <div class="space-y-6">
-    <div class="flex items-center justify-between">
-      <div>
-        <h2 class="font-display text-lg font-bold text-csub-blue-dark uppercase tracking-wide">
-          Admin Users
-        </h2>
-        <p class="font-body text-xs text-csub-gray mt-1">
-          Manage who can access the admin portal and their permission level
-        </p>
-      </div>
-      <button
-        v-if="!showForm"
-        @click="
-          () => {
-            resetForm()
-            showForm = true
-          }
-        "
-        class="flex items-center gap-2 bg-csub-blue hover:bg-csub-blue-dark text-white font-display text-sm font-bold uppercase tracking-wider px-4 py-2 rounded-lg shadow transition-colors"
-      >
-        <svg
-          class="w-4 h-4"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          :stroke-width="2"
-        >
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
-        </svg>
-        New User
-      </button>
+    <div>
+      <h2 class="font-display text-lg font-bold text-csub-blue-dark uppercase tracking-wide">
+        Admin Users
+      </h2>
+      <p class="font-body text-xs text-csub-gray mt-1">
+        Manage who can access the admin portal and their permission level
+      </p>
     </div>
 
     <form
-      v-if="showForm"
+      v-if="editingId !== null"
       @submit.prevent="handleSubmit"
       class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-4"
     >
       <h3 class="font-display text-sm font-bold uppercase tracking-wide text-csub-blue-dark">
-        {{ editingId ? 'Edit User' : 'Create User' }}
+        Edit User
       </h3>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <input
@@ -148,8 +117,7 @@ const toggleActive = async (user: User) => {
         />
         <input
           type="email"
-          :required="!editingId"
-          :disabled="!!editingId"
+          disabled
           placeholder="Email"
           v-model="form.email"
           class="px-3 py-2 rounded-lg border border-gray-300 font-body text-sm focus:outline-none focus:ring-2 focus:ring-csub-blue disabled:bg-gray-100"
@@ -168,11 +136,11 @@ const toggleActive = async (user: User) => {
           :disabled="saving"
           class="bg-csub-blue hover:bg-csub-blue-dark text-white font-display text-sm font-bold uppercase tracking-wider px-5 py-2 rounded-lg shadow transition-colors disabled:opacity-50"
         >
-          {{ saving ? 'Saving...' : editingId ? 'Update' : 'Create' }}
+          {{ saving ? 'Saving...' : 'Update' }}
         </button>
         <button
           type="button"
-          @click="resetForm"
+          @click="cancelEdit"
           class="font-body text-sm text-csub-gray hover:text-csub-blue-dark transition-colors"
         >
           Cancel

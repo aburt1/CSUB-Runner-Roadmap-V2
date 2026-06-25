@@ -32,7 +32,6 @@ public sealed class AdminAuthController : ControllerBase
     }
 
     public sealed record LoginRequest(string? Email, string? Password);
-    public sealed record ChangePasswordRequest(string? CurrentPassword, string? NewPassword);
     public sealed record SsoRequest(string? IdToken);
     public sealed record LocalLoginRequest(string? Username, string? Password);
 
@@ -79,31 +78,6 @@ public sealed class AdminAuthController : ControllerBase
 
         // Break-glass admin has no DB row.
         return Ok(new { user = new { id = ctx.Id, email = ctx.Email, displayName = ctx.DisplayName, role = ctx.Role } });
-    }
-
-    // POST /api/admin/auth/change-password — current admin changes their password.
-    [HttpPost("change-password")]
-    [AdminAuth]
-    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest? body)
-    {
-        if (string.IsNullOrEmpty(body?.CurrentPassword) || string.IsNullOrEmpty(body.NewPassword))
-            return BadRequest(new { error = "Current and new password required" });
-        if (body.NewPassword.Length < 12)
-            return BadRequest(new { error = "Password must be at least 12 characters" });
-
-        var ctx = HttpContext.AdminUser()!;
-        if (!int.TryParse(ctx.Id, out var adminId))
-            return NotFound(new { error = "User not found" });
-
-        var user = await _db.QueryOneAsync<AdminUser>("SELECT * FROM admin_users WHERE id = @adminId", new { adminId });
-        if (user is null)
-            return NotFound(new { error = "User not found" });
-        if (!Passwords.Verify(body.CurrentPassword, user.password_hash))
-            return Unauthorized(new { error = "Current password is incorrect" });
-
-        await _db.ExecuteAsync("UPDATE admin_users SET password_hash = @hash WHERE id = @id",
-            new { hash = Passwords.Hash(body.NewPassword), id = user.id });
-        return Ok(new { success = true });
     }
 
     // POST /api/admin/auth/sso — Azure AD SSO login for admins.

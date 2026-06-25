@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.Json;
 using Api.Auth;
 using Api.Data;
@@ -16,8 +15,7 @@ public sealed class UsersController : ControllerBase
 {
     private readonly Db _db;
 
-    // Single source for the assignable roles so Create and Update validate against
-    // the same set; adding or renaming a role here can't drift between the two paths.
+    // Single source for the assignable roles the Update path validates against.
     private static readonly string[] ValidRoles = { "viewer", "admissions", "admissions_editor", "sysadmin" };
 
     public UsersController(Db db)
@@ -32,44 +30,6 @@ public sealed class UsersController : ControllerBase
         var users = await _db.QueryAllAsync<UserListRow>(
             "SELECT id, email, display_name, role, is_active, created_at FROM admin_users ORDER BY created_at");
         return Ok(users);
-    }
-
-    // POST /api/admin/users
-    [HttpPost]
-    public async Task<IActionResult> Create([FromBody] CreateUserRequest? body)
-    {
-        var email = body?.Email;
-        var role = body?.Role;
-        var displayName = body?.DisplayName;
-
-        if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(displayName))
-            return BadRequest(new { error = "email and displayName required" });
-
-        if (!string.IsNullOrEmpty(role) && !ValidRoles.Contains(role))
-            return BadRequest(new { error = $"role must be one of: {string.Join(", ", ValidRoles)}" });
-
-        var normalizedEmail = email.ToLowerInvariant().Trim();
-        var existing = await _db.QueryOneAsync<IdRow>(
-            "SELECT id FROM admin_users WHERE email = @email", new { email = normalizedEmail });
-        if (existing is not null)
-            return Conflict(new { error = "Email already exists" });
-
-        // Generate an unusable random hash — admin users authenticate via SSO or break-glass only
-        var hashSource = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
-        var hash = Passwords.Hash(hashSource);
-        var effectiveRole = string.IsNullOrEmpty(role) ? "viewer" : role;
-
-        var newId = await _db.InsertReturningAsync<int>(
-            @"INSERT INTO admin_users (email, password_hash, role, display_name)
-              VALUES (@email, @hash, @role, @displayName);
-              SELECT CAST(SCOPE_IDENTITY() AS int);",
-            new { email = normalizedEmail, hash, role = effectiveRole, displayName });
-
-        var actor = Audit.ResolveActor(HttpContext);
-        await Audit.LogAsync(_db, actor, "admin_user", newId, "admin_create",
-            new { email, role = effectiveRole, displayName });
-
-        return Ok(new { success = true, id = newId });
     }
 
     // PUT /api/admin/users/{id}
@@ -186,13 +146,6 @@ public sealed class UsersController : ControllerBase
                 keys.Add(prop.Name);
         }
         return keys;
-    }
-
-    public sealed record CreateUserRequest(string? Email, string? Role, string? DisplayName);
-
-    private sealed class IdRow
-    {
-        public int id { get; set; }
     }
 
     private sealed class UserListRow
