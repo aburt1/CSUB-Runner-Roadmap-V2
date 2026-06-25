@@ -881,51 +881,16 @@ For the production deployment (Windows Server, IIS/reverse proxy, a DBA-provisio
 
 ---
 
-## Local Development (without containers)
+## Local Development
 
-For day-to-day development you typically run SQL Server in a container but the API and client as native dev processes (the full step-by-step is in [SETUP.md](SETUP.md)):
+For day-to-day dev you run SQL Server in a container and the API + client as host
+processes; the full step-by-step (and the frontend-only-on-Windows path) lives in
+**[SETUP.md](SETUP.md)**.
 
-```bash
-# 1. Database
-docker compose up -d sqlserver           # SQL Server on localhost:1433
-
-# 2. API (port 3001)  — appsettings.Development.json sets Urls=http://localhost:3001
-cd Api
-dotnet run                               # creates DB + schema + seed on boot
-curl http://localhost:3001/api/health/ready    # -> {"status":"ready","db":"connected", ...}
-
-# 3. Client (port 3000)
-cd client
-npm install
-npm run dev                              # http://localhost:3000
-```
-
-In dev, the **Vite dev server** (`client/vite.config.ts`) plays the role nginx plays in containers: it serves the SPA on `:3000` and proxies `/api` to the backend. The proxy target is the `VITE_API_PROXY_TARGET` env var, defaulting to `http://localhost:3001` (the `dotnet run` port). Because the client always calls **relative `/api`** paths — proxied by Vite in dev and by nginx in containers — **no API URL is ever hardcoded** in the frontend.
-
-### Running the frontend on its own (e.g., a Windows desktop)
-
-You can run just the Vue client on a separate machine and point it at a backend elsewhere:
-
-1. Install **Node.js LTS** from [nodejs.org](https://nodejs.org).
-2. Open **PowerShell**.
-3. `cd client`
-4. `npm install`
-5. `npm run dev`
-6. Open **http://localhost:3000**.
-
-To point the dev proxy at a backend that is **not** on `localhost:3001`, set the env var before starting:
-
-```powershell
-# PowerShell
-$env:VITE_API_PROXY_TARGET="http://<host>:<port>"; npm run dev
-```
-
-```bat
-:: cmd.exe
-set VITE_API_PROXY_TARGET=http://<host>:<port> && npm run dev
-```
-
-Alternatively, use **Docker Desktop on Windows** and run `docker compose up web` (which pulls `api` and `sqlserver` via `depends_on`).
+Architecturally, the **Vite dev server plays the role nginx plays in containers**: it
+serves the SPA on `:3000` and proxies `/api` to the backend (`VITE_API_PROXY_TARGET`,
+default `http://localhost:3001`). Because the client always calls **relative `/api`**
+paths — proxied by Vite in dev, nginx in containers — **no API URL is ever hardcoded**.
 
 ---
 
