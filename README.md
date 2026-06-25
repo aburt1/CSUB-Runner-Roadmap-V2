@@ -75,7 +75,10 @@ Sign in as `admin@csub.edu` with the `ADMIN_DEFAULT_PASSWORD` from your `.env`.
 | [Deployment](docs/DEPLOYMENT.md) | Production runbook: the three run modes, DBA provisioning, secrets, TLS, health probes, go-live checklist |
 | [API Integration](docs/API-GUIDE.md) | REST contract for external systems (inbound push + outbound API checks) + health endpoints |
 | [Architecture Considerations](docs/ARCHITECTURE-CONSIDERATIONS.md) | Deliberate trade-offs and their "revisit when…" triggers |
+| [Working with Claude Code](docs/WORKING-WITH-CLAUDE.md) | Using the AI assistant on this repo — the `CLAUDE.md` context file, the `.claude/launch.json` preview config, and what it's good for |
 | [docs/history/](docs/history/) | Historical audit records |
+
+> Maintained with [Claude Code](https://claude.com/claude-code)? [`CLAUDE.md`](CLAUDE.md) gives the assistant the project's conventions and guardrails automatically — see [Working with Claude Code](docs/WORKING-WITH-CLAUDE.md).
 
 ---
 
