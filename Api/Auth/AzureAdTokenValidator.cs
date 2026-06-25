@@ -5,7 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace Api.Auth;
 
-// Validates an Azure AD ID token, mirroring the old server/utils/azureAdToken.ts.
+// Validates an Azure AD ID token.
 // Signing keys come from the tenant's OpenID Connect metadata; ConfigurationManager
 // caches them and refreshes automatically (handling key rotation).
 public sealed class AzureAdTokenValidator

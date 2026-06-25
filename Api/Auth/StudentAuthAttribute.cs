@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace Api.Auth;
 
-// Student JWT gate, ported from server/middleware/auth.ts (authMiddleware).
+// Student JWT gate.
 // Put [StudentAuth] on a controller or action. On success it stashes the
 // student id/email on HttpContext.Items for the action to read.
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]

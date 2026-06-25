@@ -6,7 +6,7 @@ namespace Api.IntegrationTests;
 
 // Integration tests for the Steps area: GET /api/steps (anonymous + authed,
 // term/tag filtered), GET /api/steps/progress, and PUT /api/steps/{id}/status.
-// Ported contract from server/routes/steps.ts -> Api/Controllers/StepsController.cs.
+// Endpoints: Api/Controllers/StepsController.cs.
 [Collection("api")]
 public class StepsTests
 {

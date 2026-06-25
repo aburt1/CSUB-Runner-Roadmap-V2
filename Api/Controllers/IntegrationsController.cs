@@ -7,8 +7,8 @@ using Microsoft.Data.SqlClient;
 
 namespace Api.Controllers;
 
-// Integration push API, ported from server/routes/integrations.ts.
-// Every action sits behind [IntegrationAuth] (mirrors router.use(integrationAuth)).
+// Integration push API.
+// Every action sits behind [IntegrationAuth].
 //
 //   PUT  /api/integrations/v1/step-completions        single completion (idempotent)
 //   POST /api/integrations/v1/step-completions/batch   up to 500 completions
@@ -30,7 +30,7 @@ public sealed class IntegrationsController : ControllerBase
         _logger = logger;
     }
 
-    // Per-errorCode HTTP status, mirroring ERROR_STATUS in the old route file.
+    // Per-errorCode HTTP status.
     private static int StatusForErrorCode(string? code) => code switch
     {
         "invalid_student_id_number" => 400,
@@ -118,8 +118,8 @@ public sealed class IntegrationsController : ControllerBase
         var rawTermId = Request.Query["term_id"].ToString();
         if (!string.IsNullOrEmpty(rawTermId))
         {
-            // Mirror JS `parseInt(x, 10)`: parse the leading integer, then treat 0/NaN as
-            // falsy so the old `req.query.term_id && !termId` guard returns 400.
+            // Parse the leading integer, then treat 0/NaN as falsy so an unparseable
+            // term_id returns 400.
             var parsed = JsParse.LeadingInt(rawTermId);
             if (parsed is null || parsed.Value == 0)
                 return BadRequest(new { error = "term_id must be a valid number" });
@@ -149,8 +149,8 @@ public sealed class IntegrationsController : ControllerBase
         return Ok(rows);
     }
 
-    // Core single-item pipeline, ported from processCompletionItem(). The PUT and each
-    // batch item run through this. Returns the HTTP status + body to send/collect.
+    // Core single-item pipeline. The PUT and each batch item run through this.
+    // Returns the HTTP status + body to send/collect.
     private async Task<Outcome> ProcessCompletionItemAsync(CompletionItem item)
     {
         var integrationClientId = (int)HttpContext.Items["integrationClientId"]!;
@@ -357,7 +357,7 @@ public sealed class IntegrationsController : ControllerBase
         return await StoreIntegrationEventAsync(integrationClientId, sourceEventId, item, outcome);
     }
 
-    // Mirrors buildFailure(): fixed-shape failure body (no student/step ids).
+    // Fixed-shape failure body (no student/step ids).
     private static object BuildFailure(CompletionItem item, string error, string? code) => new
     {
         success = false,

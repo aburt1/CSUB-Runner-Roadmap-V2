@@ -47,7 +47,7 @@ public class MiscTests
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
     }
 
-    // ---- Security headers (Helmet-equivalent, applied to every response) ----
+    // ---- Security headers (applied to every response) ----
 
     [Fact]
     public async Task Security_headers_present_on_response()

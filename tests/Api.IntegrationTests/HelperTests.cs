@@ -4,7 +4,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace Api.IntegrationTests;
 
-// Unit tests for the in-memory helpers that encode subtle JS-mirroring semantics.
+// Unit tests for the in-memory helpers that encode subtle parsing/coercion semantics.
 // No WebAppFixture needed — these are pure in-process assertions.
 public class HelperTests
 {

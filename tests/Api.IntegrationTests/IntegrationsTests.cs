@@ -6,8 +6,7 @@ namespace Api.IntegrationTests;
 
 // Integration push API: PUT /step-completions, POST /step-completions/batch,
 // GET /step-catalog. Gated by [IntegrationAuth] (X-Integration-Key: dev-integration-key).
-// Ported contract reference: server/routes/integrations.ts + middleware/integrationAuth.ts
-// and Api/Controllers/IntegrationsController.cs.
+// Endpoints: Api/Controllers/IntegrationsController.cs.
 //
 // Shared-DB rules: every write uses a UNIQUE source_event_id (Guid) and targets the
 // seeded student emplid 001000000 (seed-student-001) + step_key "submit-final-documents"

@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers.Admin;
 
-// Admin configuration for per-step API checks, ported from server/routes/apiChecks.ts.
+// Admin configuration for per-step API checks.
 // Mounted under /api/admin and gated to sysadmin only.
 //
 // Actions catch locally so the log line names the operation; the global handler in
@@ -17,8 +17,8 @@ namespace Api.Controllers.Admin;
 [AdminAuth("sysadmin")]
 public sealed class ApiChecksController : ControllerBase
 {
-    // The saved-credential mask: eight U+2022 bullet characters, byte-for-byte the
-    // same literal the old server used so the round-trip "preserve if masked" works.
+    // The saved-credential mask: eight U+2022 bullet characters. This exact literal is
+    // the sentinel the round-trip "preserve if masked" check compares against.
     private const string Masked = "••••••••";
 
     private readonly Db _db;
@@ -60,8 +60,8 @@ public sealed class ApiChecksController : ControllerBase
             if (check is null)
                 return Ok(new { configured = false });
 
-            // Mask credentials when present (mirror of the old { ...check } spread, which
-            // only replaces a *truthy* value — null and "" are passed through unchanged).
+            // Mask credentials only when a *truthy* value is present — null and "" are
+            // passed through unchanged.
             object? authCredentials = string.IsNullOrEmpty(check.auth_credentials) ? check.auth_credentials : Masked;
 
             // Parse headers JSON to an object when possible, else return as-is.
@@ -121,7 +121,7 @@ public sealed class ApiChecksController : ControllerBase
                 return BadRequest(new { error = "auth_type must be none, basic, or bearer" });
 
             // Normalize auth_credentials (string -> as-is, object -> JSON string), and
-            // detect the masked sentinel exactly like the old code.
+            // detect the masked sentinel.
             var (credsString, credsIsMasked, credsIsPresent) = ReadCredentials(body?.Auth_Credentials);
 
             // Handle credentials — encrypt if new, preserve if masked.
@@ -149,7 +149,7 @@ public sealed class ApiChecksController : ControllerBase
             var paramSource = string.IsNullOrEmpty(body?.Student_Param_Source) ? "emplid" : body!.Student_Param_Source!;
             var storedParamName = string.IsNullOrEmpty(body?.Student_Param_Name) ? "studentId" : body!.Student_Param_Name!;
 
-            // Upsert on step_id (the old ON CONFLICT (step_id) DO UPDATE).
+            // Upsert on step_id.
             await _db.TransactionAsync(async tx =>
             {
                 // Serialize concurrent upserts of the same step: HOLDLOCK range-locks the
@@ -246,7 +246,7 @@ public sealed class ApiChecksController : ControllerBase
 
             var result = await _runner.TestApiCheckAsync(check, body.TestStudentId);
 
-            // Mirror the old key sets exactly: an error response carries only { error },
+            // Emit exact key sets: an error response carries only { error },
             // a success response carries only { statusCode, responseBody, extractedValue,
             // wouldMarkComplete } (no stray null keys from the unified result type).
             if (result.error is not null)
@@ -268,10 +268,10 @@ public sealed class ApiChecksController : ControllerBase
     }
 
     // headers can be stored as a JSON string; parse to an object for the GET
-    // response, else hand back the raw string (mirrors the try/catch passthrough).
+    // response, else hand back the raw string.
     private static object? ParseHeadersForResponse(string? headers)
     {
-        // Old code only parses a *truthy* value; null and "" pass through unchanged.
+        // Only a *truthy* value is parsed; null and "" pass through unchanged.
         if (string.IsNullOrEmpty(headers)) return headers;
         try
         {
@@ -284,7 +284,8 @@ public sealed class ApiChecksController : ControllerBase
         }
     }
 
-    // Mirror: const headersJson = headers ? (typeof headers === 'string' ? headers : JSON.stringify(headers)) : null
+    // Normalize headers for storage: a string is kept as-is, an object/array is
+    // serialized to JSON, and a falsy/empty value becomes null.
     private static string? ReadHeaders(JsonElement? headers)
     {
         if (headers is null) return null;
@@ -294,15 +295,15 @@ public sealed class ApiChecksController : ControllerBase
         if (h.ValueKind == JsonValueKind.String)
         {
             var s = h.GetString();
-            // A falsy empty string short-circuits to null, like JS `headers ? ...`.
+            // An empty string short-circuits to null.
             return string.IsNullOrEmpty(s) ? null : s;
         }
-        // Object/array/etc -> JSON.stringify equivalent.
+        // Object/array/etc -> serialized to its JSON text.
         return h.GetRawText();
     }
 
-    // Mirror the credential branch: returns the string form, whether it equals
-    // the masked sentinel, and whether a (truthy) value was provided at all.
+    // Returns the string form, whether it equals the masked sentinel, and whether
+    // a (truthy) value was provided at all.
     private static (string? Value, bool IsMasked, bool IsPresent) ReadCredentials(JsonElement? creds)
     {
         if (creds is null) return (null, false, false);
@@ -317,7 +318,7 @@ public sealed class ApiChecksController : ControllerBase
                 if (string.IsNullOrEmpty(s)) return (null, false, false); // falsy empty string
                 return (s, s == Masked, true);
             default:
-                // Object/array -> JSON.stringify equivalent; never equals the mask.
+                // Object/array -> serialized to its JSON text; never equals the mask.
                 return (c.GetRawText(), false, true);
         }
     }

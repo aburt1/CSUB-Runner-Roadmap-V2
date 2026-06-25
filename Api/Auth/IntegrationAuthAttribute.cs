@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Api.Auth;
 
-// Integration push-API gate, ported from server/middleware/integrationAuth.ts.
+// Integration push-API gate.
 // Reads the credential from X-Integration-Key or a Bearer token, then bcrypt-compares
 // it against integration_clients.key_hash for active clients. If X-Client-Name is
 // supplied we look up that single client (avoids iterating + bcrypt DoS); otherwise we

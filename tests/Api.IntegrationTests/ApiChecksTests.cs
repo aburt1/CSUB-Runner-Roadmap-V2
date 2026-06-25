@@ -7,9 +7,7 @@ namespace Api.IntegrationTests;
 // Integration tests for the per-step API-check configuration (admin, sysadmin-gated)
 // and the student-triggered run endpoints.
 //
-// Contract sources:
-//   OLD: server/routes/apiChecks.ts + server/routes/studentApiChecks.ts
-//   NEW: Api/Controllers/Admin/ApiChecksController.cs + Api/Controllers/RoadmapApiChecksController.cs
+// Endpoints: Api/Controllers/Admin/ApiChecksController.cs + Api/Controllers/RoadmapApiChecksController.cs
 //
 // Shared-DB discipline: every write test creates its OWN step (unique title/key) and
 // configures the check against that step, so it never disturbs the seeded steps that

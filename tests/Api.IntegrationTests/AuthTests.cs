@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace Api.IntegrationTests;
 
-// Integration tests for the student Auth area (server/routes/auth.ts -> Controllers/AuthController.cs).
+// Integration tests for the student Auth area (Controllers/AuthController.cs).
 // Endpoints: POST /api/auth/dev-login, POST /api/auth/sso, GET /api/auth/me.
 [Collection("api")]
 public class AuthTests

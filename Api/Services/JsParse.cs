@@ -1,6 +1,7 @@
 namespace Api.Services;
 
-// Shared port of JavaScript's parseInt(value, 10) semantics.
+// Integer parsing with JavaScript parseInt(value, 10) semantics, used to keep
+// query-string number handling consistent with the public API contract.
 // See IntegrationsController and Admin/StepsController for call sites.
 public static class JsParse
 {

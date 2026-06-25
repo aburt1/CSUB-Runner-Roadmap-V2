@@ -7,10 +7,10 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers.Admin;
 
-// Admin term management + clone, ported from server/routes/admin/terms.ts.
-// The old admin router applies adminAuth to every route (authentication, any
-// role), then the mutation routes additionally requireRole('admissions_editor',
-// 'sysadmin'). So GET is [AdminAuth] (authenticated admin) and the mutations are
+// Admin term management + clone.
+// Every route requires an authenticated admin (any role); the mutation routes
+// additionally require the 'admissions_editor' or 'sysadmin' role. So GET is
+// [AdminAuth] (authenticated admin) and the mutations are
 // [AdminAuth("admissions_editor", "sysadmin")].
 [ApiController]
 [Route("api/admin/terms")]
@@ -88,9 +88,8 @@ public sealed class TermsController : ControllerBase
         if (term is null)
             return NotFound(new { error = "Term not found" });
 
-        // Mirror Express req.body semantics: a field is "provided" if the key is
-        // present at all (even when its JSON value is null). Object.keys order is
-        // preserved for the audit `fields` detail.
+        // A field is "provided" if the key is present at all (even when its JSON value
+        // is null). Body-key order is preserved for the audit `fields` detail.
         var bodyKeys = CollectBodyKeys(body);
 
         var nameProvided = Json.TryGetProperty(body, "name", out var nameEl);
@@ -276,7 +275,7 @@ public sealed class TermsController : ControllerBase
         };
     }
 
-    // Mirrors `is_active === 1 || is_active === true` (the activation branch).
+    // True when is_active is the boolean true or the number 1.
     private static bool IsActivating(JsonElement el)
     {
         if (el.ValueKind == JsonValueKind.True) return true;
@@ -284,8 +283,7 @@ public sealed class TermsController : ControllerBase
         return false;
     }
 
-    // Mirrors `Object.keys(req.body)` for the audit `fields` detail: every key
-    // present in the request body, in order.
+    // Every key present in the request body, in order, for the audit `fields` detail.
     private static List<string> CollectBodyKeys(JsonElement body)
     {
         var keys = new List<string>();

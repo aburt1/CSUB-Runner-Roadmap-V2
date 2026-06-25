@@ -19,13 +19,13 @@ builder.Services.AddControllers()
         // response object spells its keys verbatim and we apply NO naming policy.
         options.JsonSerializerOptions.PropertyNamingPolicy = null;
         options.JsonSerializerOptions.DictionaryKeyPolicy = null;
-        // Emit timestamps as ISO-8601 UTC with a trailing 'Z' (matches the old app).
+        // Emit timestamps as ISO-8601 UTC with a trailing 'Z'.
         options.JsonSerializerOptions.Converters.Add(new Api.Serialization.UtcDateTimeConverter());
     })
     .ConfigureApiBehaviorOptions(options =>
     {
-        // The old Express API validates inputs by hand and returns { error: "..." }.
-        // Turn off the automatic ProblemDetails 400 so controllers return those
+        // Controllers validate inputs by hand and return { error: "..." }.
+        // Turn off the automatic ProblemDetails 400 so they return those
         // exact error bodies themselves.
         options.SuppressModelStateInvalidFilter = true;
     });
@@ -65,8 +65,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     }
 });
 
-// CORS — same behavior as the old server (allow the SPA origin with credentials;
-// in production CORS is effectively closed unless Cors:Origin is set).
+// CORS — allow the SPA origin with credentials; in production CORS is
+// effectively closed unless Cors:Origin is set.
 var corsOrigin = builder.Configuration["Cors:Origin"]
     ?? (builder.Environment.IsProduction() ? null : "http://localhost:3000");
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
@@ -76,11 +76,11 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
 }));
 
 // Rate limiting — global 200/15min per IP, plus stricter named policies the auth
-// endpoints opt into (matches the express-rate-limit limits in the old server).
+// endpoints opt into.
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = 429;
-    // 200/15min per IP — scoped to /api only (like the old app), so SPA/static
+    // 200/15min per IP — scoped to /api only, so SPA/static
     // asset requests don't consume the API budget.
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(http =>
         http.Request.Path.StartsWithSegments("/api")
@@ -120,7 +120,7 @@ await SchemaInitializer.RunAsync(db, Path.Combine(AppContext.BaseDirectory, "Dat
 if (app.Configuration.GetValue<bool?>("Database:Seed") ?? true)
     await Seeder.RunAsync(db, app.Configuration, app.Environment, app.Logger);
 
-// Outermost: turn any unhandled error into the old { error: "Internal server error" }
+// Outermost: turn any unhandled error into the { error: "Internal server error" }
 // envelope (and never leak stack traces).
 app.Use(async (context, next) =>
 {
@@ -147,7 +147,7 @@ app.Use(async (context, next) =>
 // Trust the reverse proxy's forwarded headers (must run before rate limiting/audit).
 app.UseForwardedHeaders();
 
-// Security headers — the Helmet-equivalent set from the old server.
+// Security headers applied to every response.
 // A second, SPA-specific CSP lives in client/nginx.conf.template (it additionally
 // allows connect-src login.microsoftonline.com for MSAL) — keep the two in sync.
 // Consequently the single-process wwwroot fallback below works only without Azure SSO.

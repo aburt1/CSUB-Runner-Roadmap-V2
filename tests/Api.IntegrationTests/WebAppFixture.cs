@@ -34,9 +34,8 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
         builder.UseSetting("Integration:DefaultName", "PeopleSoft Dev");
         builder.UseSetting("Integration:DefaultKey", "dev-integration-key");
         builder.UseSetting("ApiCheck:EncryptionKey", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
-        // ApiCheckRunner now blocks private/localhost targets unless this flag is set
-        // (previously implied by the Development environment). Tests/mock APIs run on
-        // localhost, so keep the old allowance explicitly.
+        // ApiCheckRunner blocks private/localhost targets unless this flag is set.
+        // Tests and mock APIs run on localhost, so allow private targets explicitly.
         builder.UseSetting("ApiCheck:AllowPrivateTargets", "true");
     }
 

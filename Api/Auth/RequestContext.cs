@@ -4,8 +4,7 @@ namespace Api.Auth;
 // Id is a string because the break-glass/local login uses a non-numeric id.
 public sealed record AdminContext(string Id, string Role, string Email, string DisplayName);
 
-// Typed accessors for values the auth filters stash on HttpContext.Items,
-// replacing the old Express req.studentId / req.adminUser fields.
+// Typed accessors for values the auth filters stash on HttpContext.Items.
 public static class RequestContext
 {
     public static string? StudentId(this HttpContext http) => http.Items["studentId"] as string;

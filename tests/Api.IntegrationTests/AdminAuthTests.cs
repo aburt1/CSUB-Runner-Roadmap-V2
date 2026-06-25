@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace Api.IntegrationTests;
 
 // Integration tests for AdminAuthController (POST login, GET me, POST change-password,
-// POST sso, POST local-login). Ported contract from server/routes/adminAuth.ts.
+// POST sso, POST local-login).
 [Collection("api")]
 public class AdminAuthTests
 {

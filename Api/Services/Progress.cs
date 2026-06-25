@@ -2,8 +2,8 @@ using Api.Data;
 
 namespace Api.Services;
 
-// Student-progress writes and student/step resolution, ported from
-// server/utils/progress.ts. Used by the student, admin, and integration endpoints.
+// Student-progress writes and student/step resolution.
+// Used by the student, admin, and integration endpoints.
 public static class Progress
 {
     public static string NormalizeStudentIdNumber(object? value) => (value?.ToString() ?? "").Trim();
@@ -26,8 +26,8 @@ public static class Progress
         if (string.IsNullOrEmpty(normalized))
             return new StudentResolution { ErrorCode = "invalid_student_id_number", Error = "student_id_number is required" };
 
-        // trim-only compare ports the old server; case-insensitivity comes from the
-        // server's CI collation, and emplid_norm guarantees no case-variant duplicates exist.
+        // Compare on the trimmed value; the DB's case-insensitive collation handles
+        // casing and the emplid_norm computed column guarantees no case-variant duplicates.
         var rows = await db.QueryAllAsync<ResolvedStudent>(
             @"SELECT id, display_name, email, emplid, term_id
               FROM students
@@ -69,7 +69,7 @@ public static class Progress
     public static async Task<ProgressChangeResult> ApplyAsync(Db db, ProgressChangeInput input)
     {
         // callers validate status; anything else (including null) means 'completed' —
-        // the default action, matching the old progress.ts.
+        // the default action.
         var nextStatus = input.Status == "waived" ? "waived"
             : input.Status == "not_completed" ? "not_completed"
             : "completed";

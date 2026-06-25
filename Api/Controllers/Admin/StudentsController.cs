@@ -7,10 +7,9 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers.Admin;
 
-// Admin students + audit, ported from server/routes/admin/students.ts.
-// Mounted under /api/admin (the old index.ts applies adminAuth to the whole group),
-// so every action carries at least [AdminAuth]; the write endpoints add the same
-// requireRole('admissions','admissions_editor','sysadmin') gate the old code used.
+// Admin students + audit.
+// Mounted under /api/admin, so every action carries at least [AdminAuth]; the write
+// endpoints add a requireRole('admissions','admissions_editor','sysadmin') gate.
 //
 // Boring on purpose: hand-written T-SQL, explicit control flow, the shared
 // services (Progress, Audit, StudentTags, QueryHelpers) are called, not recreated.
@@ -101,9 +100,9 @@ public sealed class StudentsController : ControllerBase
         var step = ParseIntOrZero(stepId);
         var note = body?.Note;
 
-        // Unlike CompleteStep, missing student/step is NOT a 404 here: the old API treats
-        // uncomplete as idempotent (deleting nothing is success); the lookups exist only
-        // to enrich the audit entry.
+        // Unlike CompleteStep, missing student/step is NOT a 404 here: uncomplete is
+        // idempotent (deleting nothing is success); the lookups exist only to enrich
+        // the audit entry.
         var student = await _db.QueryOneAsync<StudentNameRow>(
             "SELECT display_name FROM students WHERE id = @studentId",
             new { studentId });
@@ -208,12 +207,12 @@ public sealed class StudentsController : ControllerBase
 
         foreach (var field in fields)
         {
-            // Match the old `req.body[field] !== undefined` presence check.
+            // Only update fields actually present on the request body.
             if (TryGetField(requestBody, field, out var element))
             {
                 var paramName = "p" + index;
                 updates.Add($"{field} = @{paramName}");
-                // `req.body[field] || null`: falsy (null, "", 0, false) -> null.
+                // Coerce falsy values (null, "", 0, false) to null.
                 parameters[paramName] = CoerceTruthy(element);
                 index++;
             }
@@ -282,7 +281,7 @@ public sealed class StudentsController : ControllerBase
         if (string.IsNullOrEmpty(sort)) sort = "date_desc";
         var overdueOnly = Request.Query["overdue_only"].ToString();
         var termIdRaw = Request.Query["term_id"].ToString();
-        // Mirror `term_id ? parseInt(term_id) : null`: blank string is falsy -> null.
+        // Blank/falsy term_id parses to null; otherwise parse the integer.
         var termId = ParseTruthyTermId(termIdRaw);
 
         var (page, perPage, offset) = QueryHelpers.ParsePagination(Request);
@@ -331,7 +330,7 @@ public sealed class StudentsController : ControllerBase
 
         var whereClause = where.Count > 0 ? $"WHERE {string.Join(" AND ", where)}" : "";
 
-        // Sort mapping (identical to the old sortMap).
+        // Sort mapping.
         string orderBy;
         switch (sort)
         {
@@ -421,15 +420,13 @@ public sealed class StudentsController : ControllerBase
 
     // ─── Helpers ─────────────────────────────────────────────
 
-    // parseInt(stepId, 10) — leading digits, else 0 (NaN-style behavior is moot
-    // because the step lookup then misses and yields 404).
+    // Parse leading digits, else 0 (an unparseable id is moot because the step
+    // lookup then misses and yields 404).
     private static int ParseIntOrZero(string? value) =>
         int.TryParse(value, out var v) ? v : 0;
 
-    // `term_id ? parseInt(term_id) : null`: empty string is falsy -> null.
-    // A present "0" parses to 0, which is itself falsy in the original ternary;
-    // but the ternary tests the raw query string, not the parsed int, so "0"
-    // (truthy string) yields parseInt("0") = 0.
+    // An empty/missing term_id yields null; any non-empty string is parsed, so a
+    // literal "0" parses to 0 rather than null.
     private static int? ParseTruthyTermId(string raw)
     {
         if (string.IsNullOrEmpty(raw)) return null;
@@ -441,7 +438,7 @@ public sealed class StudentsController : ControllerBase
         return body.TryGetValue(field, out element);
     }
 
-    // `req.body[field] || null`: JS falsy values become null.
+    // Falsy values (null, "", 0, false) become null.
     private static object? CoerceTruthy(JsonElement element)
     {
         switch (element.ValueKind)
@@ -499,7 +496,7 @@ public sealed class StudentsController : ControllerBase
         public string? step_key { get; set; }
     }
 
-    // Mirrors the old /progress SELECT (and column order). The shared
+    // Local row shape for the /progress SELECT (and its column order). The shared
     // Api.Models.Student lacks admit_term, so we keep a local shape here to
     // preserve the wire JSON exactly.
     private sealed class StudentProgressDetailRow
@@ -521,7 +518,7 @@ public sealed class StudentsController : ControllerBase
         public DateTime? last_synced_at { get; set; }
     }
 
-    // Mirrors the old /profile SELECT; only display_name + emplid are read.
+    // Row shape for the /profile SELECT; only display_name + emplid are read.
     private sealed class StudentProfileRow
     {
         public string id { get; set; } = "";

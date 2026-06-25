@@ -12,8 +12,7 @@ namespace Api.IntegrationTests;
 //        completion-velocity}
 //   GET /api/admin/analytics/students  (drilldown)
 //
-// Ported from server/routes/admin/analytics.ts and matched against
-// Api/Controllers/Admin/AnalyticsController.cs. All endpoints are gated by
+// Endpoints: Api/Controllers/Admin/AnalyticsController.cs. All endpoints are gated by
 // [AdminAuth] (any authenticated admin; no role restriction), so the auth gate
 // here is the 401 path. Shared-DB rules: no exact global counts, only presence
 // / >= bounds / documented-shape assertions on the deterministic seed.
@@ -483,7 +482,7 @@ public class AdminAnalyticsTests
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
 
         var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        // Mirrors JS toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' }).
+        // Label is the en-US short date format: abbreviated month, numeric day, numeric year.
         AssertDrilldownShape(body, "Completions on Jan 5, 2026");
     }
 

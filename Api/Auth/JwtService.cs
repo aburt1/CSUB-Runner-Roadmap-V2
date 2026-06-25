@@ -7,7 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 namespace Api.Auth;
 
 // Issues and validates the app's own HS256 session tokens. The claim names and
-// 8-hour lifetime match the old server exactly so existing clients keep working:
+// 8-hour lifetime are a fixed contract that issued clients depend on:
 //   student: { type: "student", studentId, email }
 //   admin:   { type: "admin", adminId, role, email, displayName }
 public sealed class JwtService

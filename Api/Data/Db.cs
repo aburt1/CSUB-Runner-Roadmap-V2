@@ -5,8 +5,8 @@ using Microsoft.Extensions.Logging;
 namespace Api.Data;
 
 // Thin wrapper over Dapper + SqlClient. This is the only place that opens
-// database connections. It mirrors the old Node `server/db/pool.ts` helper
-// (queryOne / queryAll / execute / transaction) so the ported code reads the same.
+// database connections, exposing a small surface (QueryOne / QueryAll /
+// Execute / Transaction) that every caller goes through.
 //
 // Boring on purpose: every query is hand-written T-SQL passed in by the caller,
 // parameters are passed as a plain anonymous object (e.g. new { id, term_id }).

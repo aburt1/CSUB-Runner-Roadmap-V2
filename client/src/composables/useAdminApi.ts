@@ -18,8 +18,8 @@ export interface AdminApi {
   raw: (path: string, options?: Omit<RequestOptions, 'raw'>) => Promise<Response>
 }
 
-// Admin fetch wrapper, ported from the old useAdminApi hook. Pass the current
-// admin token; onAuthError fires on a 401 (e.g. to send the user back to login).
+// Admin fetch wrapper. Pass the current admin token; onAuthError fires on a
+// 401 (e.g. to send the user back to login).
 // Create a fresh instance when the token changes.
 export function useAdminApi(token: string | null, onAuthError?: () => void): AdminApi {
   async function request<T = unknown>(

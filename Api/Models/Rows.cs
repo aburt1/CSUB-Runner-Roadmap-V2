@@ -1,10 +1,10 @@
 namespace Api.Models;
 
-// Plain row models matching the SQL tables, 1:1 with the old server/types/models.ts.
+// Plain row models matching the SQL tables.
 //
 // Property names are snake_case on purpose: they match the database columns
 // (so Dapper maps them with no configuration) AND the JSON wire format the
-// existing React client expects (so responses that return rows verbatim need
+// API contract exposes (so responses that return rows verbatim need
 // no renaming). Hand-built responses (e.g. auth) use anonymous objects instead.
 
 public sealed class Student

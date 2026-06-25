@@ -12,7 +12,7 @@ const dialogRef = useTemplateRef<HTMLDivElement>('dialogRef')
 const prefersReducedMotion =
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-// Drives the CSS entrance transitions (matches framer-motion initial -> animate).
+// Drives the CSS entrance transitions (flips from initial to entered state).
 const entered = ref(false)
 
 function handleKeyDown(e: KeyboardEvent): void {

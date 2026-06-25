@@ -5,8 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Api.Data;
 
-// Seeds default data on startup, ported from the seeding parts of server/db/init.ts
-// (the live-activity simulator is intentionally dropped). All steps are guarded by
+// Seeds default data on startup. All steps are guarded by
 // "is this table empty?" so it is safe to run on every boot.
 public static class Seeder
 {
@@ -51,7 +50,7 @@ public static class Seeder
         }
     }
 
-    // ORDER BY id (oldest active) mirrors the old init.ts; the runtime endpoints pick the
+    // Seed against the oldest active term (ORDER BY id); the runtime endpoints pick the
     // newest active term (ORDER BY id DESC) — only differs if more than one term is active.
     private static Task<int> ActiveTermIdAsync(Db db) =>
         db.QueryOneAsync<int>("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id");
@@ -163,9 +162,8 @@ public static class Seeder
         logger?.LogInformation("Seeder: created default integration client '{Name}'.", name);
     }
 
-    // 50 deterministic sample students with realistic progress (dev only),
-    // ported from the seed loop in server/db/init.ts. Uses a fixed RNG seed so
-    // reseeding a fresh database is reproducible.
+    // 50 deterministic sample students with realistic progress (dev only).
+    // Uses a fixed RNG seed so reseeding a fresh database is reproducible.
     private static async Task SeedSampleStudentsAsync(Db db, int termId, ILogger? logger)
     {
         var count = await db.QueryOneAsync<int>("SELECT COUNT(*) FROM students");

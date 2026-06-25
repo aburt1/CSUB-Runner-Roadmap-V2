@@ -8,14 +8,13 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers.Admin;
 
-// Admin analytics, stats, and CSV export, ported from
-// server/routes/admin/analytics.ts. Mounted under /api/admin, gated by adminAuth
-// (any authenticated admin — the old router applies adminAuth with no requireRole).
+// Admin analytics, stats, and CSV export. Mounted under /api/admin, gated by
+// adminAuth (any authenticated admin, no requireRole).
 //
 // Boring on purpose: hand-written T-SQL inline, snake_case anonymous response
-// objects that mirror the old res.json(...) keys verbatim, manual validation.
+// objects whose keys are the public JSON contract, manual validation.
 //
-// 'Done' deliberately differs per metric (port parity with the old analytics.ts):
+// 'Done' deliberately differs per metric:
 //   - Completion/cohort/trend metrics count status IN ('completed','waived') —
 //     waiving a step counts as finishing it for progress tracking purposes.
 //   - Velocity and stalled count status = 'completed' only — waiving is not
@@ -62,8 +61,8 @@ public sealed class AnalyticsController : ControllerBase
         var totalActiveSteps = await _db.QueryOneAsync<int>(
             $"SELECT COUNT(*) as count FROM steps {stepFilter}", new { termId });
 
-        // Postgres AVG over integer counts yields numeric; SQL Server AVG over int
-        // truncates, so cast the count to float to keep the fractional average.
+        // SQL Server AVG over int truncates, so cast the count to float to keep the
+        // fractional average.
         // Stats counts any student_progress row (see class header comment on the three 'done' tiers).
         string avgQuery = termId.HasValue
             ? $@"SELECT COALESCE(AVG(CAST(pc.completed AS float)), 0) as avg_completed
@@ -243,7 +242,7 @@ public sealed class AnalyticsController : ControllerBase
         var days = ParseDaysDefault(Request.Query["days"], 30);
 
         // deliberately no is_active filter: completions on since-deactivated steps remain part of the
-        // historical trend (ported from analytics.ts; BuildTrendDateFilter must stay in sync).
+        // historical trend (BuildTrendDateFilter must stay in sync).
         var termFilter = termId.HasValue
             ? "JOIN steps st ON st.id = sp.step_id AND st.term_id = @termId AND COALESCE(st.is_optional, 0) = 0"
             : "JOIN steps st ON st.id = sp.step_id AND COALESCE(st.is_optional, 0) = 0";
@@ -373,7 +372,7 @@ public sealed class AnalyticsController : ControllerBase
         var days = ParseDaysDefault(Request.Query["days"], 14);
         var termFilter = termId.HasValue ? "AND s.term_id = @termId" : "";
 
-        // deadline_date stores 'YYYY-MM-DD' text (ported from CURRENT_DATE::text comparisons); TRY_CAST tolerates legacy free-text values.
+        // deadline_date stores 'YYYY-MM-DD' text; TRY_CAST tolerates legacy free-text values.
         var steps = await _db.QueryAllAsync<DeadlineRiskStep>(
             $@"SELECT s.id, s.title, s.deadline_date,
                 COUNT(DISTINCT st.id) as total_students,
@@ -564,7 +563,7 @@ public sealed class AnalyticsController : ControllerBase
 
         var divisor = totalSteps > 0 ? totalSteps : 1;
 
-        // fixed well-known cohort tags (ported from the old analytics route); matched as substrings of the JSON tags text
+        // fixed well-known cohort tags; matched as substrings of the JSON tags text
         // — exact-token matching is deliberately not attempted here, so keep tag names non-overlapping.
         var tags = new[] { "freshman", "transfer", "first-gen", "honors", "athlete", "eop", "veteran", "out-of-state" };
         var result = new List<CohortComparisonItem>();
@@ -619,7 +618,7 @@ public sealed class AnalyticsController : ControllerBase
     {
         var termId = QueryHelpers.ParseTermId(Request);
 
-        // seconds/86400, not DATEDIFF(day): day counts midnight boundaries, not elapsed 24h periods — same rule as the old Node code.
+        // seconds/86400, not DATEDIFF(day): day counts midnight boundaries, not elapsed 24h periods.
         // (see BuildStalledFilter and BuildVelocityBucketFilter for the same idiom)
         // status = 'completed' only (see class header comment on the three 'done' tiers).
         var students = await _db.QueryAllAsync<VelocityRow>(
@@ -652,8 +651,8 @@ public sealed class AnalyticsController : ControllerBase
 
     // ─── Filter builders (drilldown) ─────────────────────────
 
-    // Translates the old filterBuilders map. Returns the student/count SQL plus
-    // their parameters; throws InvalidFilterException for bad filter_value.
+    // Returns the student/count SQL plus their parameters for a given filter type;
+    // throws InvalidFilterException for bad filter_value.
     private async Task<FilterQuerySet> BuildFilterAsync(
         string filterType, int termId, string? filterValue, int perPage, int offset, int totalActiveSteps)
     {
@@ -971,8 +970,8 @@ public sealed class AnalyticsController : ControllerBase
 
     private FilterQuerySet BuildTrendDateFilter(int termId, string? filterValue, int perPage, int offset)
     {
-        // Mirror JS new Date(filterValue).toLocaleDateString('en-US',
-        // { month: 'short', day: 'numeric', year: 'numeric' }) e.g. "Jan 5, 2026".
+        // Format the date as "MMM d, yyyy" (e.g. "Jan 5, 2026") to match the labels
+        // the trend query groups on.
         var dateStr = filterValue ?? "";
         if (DateTime.TryParse(filterValue, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
             dateStr = parsed.ToString("MMM d, yyyy", CultureInfo.InvariantCulture);
@@ -1001,8 +1000,8 @@ public sealed class AnalyticsController : ControllerBase
 
     // ─── Helpers / DTOs ──────────────────────────────────────
 
-    // parseInt(x, 10) || fallback: NaN or 0 both fall back to the default. Clamped to
-    // 1..3650 — a negative or huge value would overflow DATEADD/int negation and 500.
+    // An unparseable value or 0 falls back to the default. Clamped to 1..3650 — a
+    // negative or huge value would overflow DATEADD/int negation and 500.
     private static int ParseDaysDefault(string? raw, int fallback)
     {
         if (int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) && v > 0)

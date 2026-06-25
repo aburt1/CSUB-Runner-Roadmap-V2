@@ -4,10 +4,10 @@ using Api.Data;
 
 namespace Api.Services;
 
-// Audit-trail writes, ported from server/utils/audit.ts.
+// Audit-trail writes.
 public static class Audit
 {
-    // Who performed the action, from request context (mirrors getAuditActor's order).
+    // Who performed the action, resolved from request context in a fixed precedence order.
     // Endpoints may also pass an explicit actor (e.g. an integration client name).
     public static string ResolveActor(HttpContext http)
     {

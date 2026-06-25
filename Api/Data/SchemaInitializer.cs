@@ -4,9 +4,8 @@ using Microsoft.Extensions.Logging;
 
 namespace Api.Data;
 
-// Database bootstrap on startup, the same way the old Node server did in
-// server/db/init.ts: make sure the database exists, then run the idempotent
-// T-SQL schema script (SqlClient runs the whole multi-statement batch at once).
+// Database bootstrap on startup: make sure the database exists, then run the
+// idempotent T-SQL schema script (SqlClient runs the whole multi-statement batch at once).
 public static class SchemaInitializer
 {
     // Bump when schema.sql changes; recorded (append-only) in dbo.schema_version so an

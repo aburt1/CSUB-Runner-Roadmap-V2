@@ -4,8 +4,7 @@ using System.Text.Json;
 
 namespace Api.IntegrationTests;
 
-// Integration tests for /api/admin/terms (Controllers/Admin/TermsController.cs,
-// ported from server/routes/admin/terms.ts).
+// Integration tests for /api/admin/terms (Controllers/Admin/TermsController.cs).
 //
 // Shared-DB rules: term 1 ("Fall 2026") and the 50 seeded students are relied on
 // by other tests, so we never rename/delete them. Write tests create their own

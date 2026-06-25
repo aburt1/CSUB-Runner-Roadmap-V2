@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers;
 
-// Student-triggered API check runs, ported from server/routes/studentApiChecks.ts.
+// Student-triggered API check runs.
 // Mounted under /api/roadmap and gated by the student JWT.
 //
 // Actions catch locally so the log line names the operation; the global handler in
@@ -57,7 +57,7 @@ public sealed class RoadmapApiChecksController : ControllerBase
                 startedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             });
             // A run is already in flight — report 'started' anyway so the client polls
-            // check-status (same contract as the old server).
+            // check-status.
             if (!claimed)
                 return Ok(new { status = "started" });
 

@@ -15,11 +15,11 @@ export interface ProgressMapEntry {
   completed_at: string | null
 }
 
-// Does a step apply to a student given their tags? (ported from useProgress.ts)
+// Does a step apply to a student given their tags?
 // Exported so the tag-matching rules can be unit-tested directly.
 export function stepApplies(step: Step, studentTags: string[]): boolean {
-  // Malformed tag JSON degrades to "no rule" — the same fallback the server's
-  // Json.SafeParse uses, so client and server stay in agreement.
+  // Malformed tag JSON degrades to "no rule" — the same fallback the server
+  // applies, so client and server stay in agreement on which steps apply.
   const requiredTags = parseMaybeJson<string[] | null>(step.required_tags, null)
   const excludedTags = parseMaybeJson<string[] | null>(step.excluded_tags, null)
   const requiredTagMode: 'all' | 'any' = step.required_tag_mode === 'all' ? 'all' : 'any'
@@ -53,8 +53,8 @@ export function deriveAllStepStatuses(
   })
 }
 
-// Composable port of the old useProgress hook. Fetches steps + progress, polls
-// every 30s, derives statuses, and exposes computed completion metrics.
+// Fetches steps + progress, polls every 30s, derives statuses, and exposes
+// computed completion metrics.
 export function useProgress() {
   const auth = useAuthStore()
   const toast = useToastStore()
@@ -91,8 +91,8 @@ export function useProgress() {
         const map = new Map<number, ProgressMapEntry>()
         for (const p of data.progress) {
           map.set(p.step_id, {
-            // NULL status from legacy rows defaults to 'completed' — the original
-            // app only stored a row when a step was done, so no status = done.
+            // NULL status from legacy rows defaults to 'completed': a row was
+            // only written when a step was done, so a missing status means done.
             status: (p.status || 'completed') as StepStatus,
             completed_at: p.completed_at,
           })

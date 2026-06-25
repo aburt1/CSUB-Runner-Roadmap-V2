@@ -5,7 +5,7 @@ defineProps<{
   firstName: string
 }>()
 
-// framer-motion: initial opacity 0 / y 12 -> animate opacity 1 / y 0 (0.5s)
+// Entrance transition: fade in and slide up from y 12 -> 0 over 0.5s.
 const shown = ref(false)
 onMounted(() => {
   requestAnimationFrame(() => {

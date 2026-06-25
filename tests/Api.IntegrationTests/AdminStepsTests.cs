@@ -11,7 +11,7 @@ namespace Api.IntegrationTests;
 //   PUT    /api/admin/steps/reorder
 //   PUT    /api/admin/steps/bulk-status
 //
-// Ported contract: server/routes/admin/steps.ts -> Controllers/Admin/StepsController.cs.
+// Endpoints: Controllers/Admin/StepsController.cs.
 // Shared seeded DB: never assert exact global counts; create our own uniquely-named
 // steps for write tests and assert on those.
 [Collection("api")]

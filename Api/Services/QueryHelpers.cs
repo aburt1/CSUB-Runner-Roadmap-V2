@@ -2,18 +2,17 @@ using Api.Data;
 
 namespace Api.Services;
 
-// Small query helpers shared across admin endpoints, ported from
-// server/utils/queryHelpers.ts.
+// Small query helpers shared across admin endpoints.
 public static class QueryHelpers
 {
     // SQL fragment for "active, non-optional" steps.
     // Used by admin analytics, exports, and ApiCheckRunner (NULL is_active treated as
-    // INACTIVE — the old ACTIVE_STEP_FILTER convention).
+    // INACTIVE).
     public const string ActiveStepFilter = "is_active = 1 AND COALESCE(is_optional, 0) = 0";
 
     // SQL fragment for student-facing step queries.
     // Treats NULL is_active as ACTIVE — legacy rows that predate the is_active column
-    // have no explicit value, and the old steps.ts route exposed them to students.
+    // have no explicit value, and students must still see them.
     // Admin/analytics paths use ActiveStepFilter above (different convention).
     public const string StudentVisibleStepFilter = "(is_active = 1 OR is_active IS NULL)";
 

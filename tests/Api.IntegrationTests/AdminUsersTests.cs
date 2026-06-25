@@ -6,9 +6,7 @@ using System.Text.Json;
 namespace Api.IntegrationTests;
 
 // Integration tests for the sysadmin-only admin-user management area.
-// Contract sources:
-//   OLD: CSUB-admissions/server/routes/admin/users.ts
-//   NEW: Api/Controllers/Admin/UsersController.cs  (mounted at /api/admin/users)
+// Endpoints: Api/Controllers/Admin/UsersController.cs  (mounted at /api/admin/users)
 //
 // Shared-DB notes: the seed creates exactly one admin row (admin@csub.edu, sysadmin).
 // Other test classes may add admin rows; we never assert exact global counts and we

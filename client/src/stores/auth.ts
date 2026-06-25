@@ -17,8 +17,7 @@ interface SsoLoginResponse {
   student: User
 }
 
-// Pinia port of the old React AuthProvider. The student session token lives in
-// sessionStorage under 'csub_token' (same key as before).
+// The student session token lives in sessionStorage under 'csub_token'.
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const token = ref<string | null>(sessionStorage.getItem('csub_token'))

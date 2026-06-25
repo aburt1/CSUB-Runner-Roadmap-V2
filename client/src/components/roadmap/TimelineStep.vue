@@ -124,7 +124,7 @@ const completedDateLabel = computed(() =>
     : '',
 )
 
-// framer-motion whileInView -> IntersectionObserver-driven reveal (once, margin -20px)
+// Reveal each step once as it scrolls into view, via IntersectionObserver (margin -20px).
 const li = ref<HTMLElement | null>(null)
 const inView = ref(false)
 let observer: IntersectionObserver | null = null

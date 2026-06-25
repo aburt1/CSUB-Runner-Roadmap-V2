@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers;
 
-// Student roadmap steps, ported from server/routes/steps.ts.
+// Student roadmap steps.
 [ApiController]
 [Route("api/steps")]
 public sealed class StepsController : ControllerBase
@@ -23,7 +23,7 @@ public sealed class StepsController : ControllerBase
     public sealed record StatusRequest(string? Status);
 
     // OPTIONAL student auth: returns the student id from a valid Bearer student
-    // token, or null otherwise. Mirrors getOptionalStudentId in steps.ts.
+    // token, or null otherwise.
     private string? GetOptionalStudentId()
     {
         var header = Request.Headers.Authorization.ToString();
@@ -40,7 +40,6 @@ public sealed class StepsController : ControllerBase
         return string.IsNullOrEmpty(studentId) ? null : studentId;
     }
 
-    // Mirrors stepAppliesToStudent in steps.ts.
     private static bool StepAppliesToStudent(Step step, List<string> studentTags)
     {
         var requiredTags = Json.SafeParse<List<string>>(step.required_tags, []);
@@ -184,7 +183,7 @@ public sealed class StepsController : ControllerBase
             await Audit.LogAsync(
                 _db,
                 // Deliberately NOT Audit.ResolveActor (which would yield the token email):
-                // the old app logs the student's display name, falling back to email.
+                // log the student's display name, falling back to email.
                 !string.IsNullOrEmpty(student.display_name) ? student.display_name! : (student.email ?? "system"),
                 "student_progress",
                 student.id,

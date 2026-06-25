@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace Api.Services;
 
-// Manual + derived student tags, ported from server/utils/studentTags.ts.
+// Manual + derived student tags.
 // Manual tags are stored as a JSON array in students.tags; derived tags come
 // from applicant_type / residency / major. Step visibility is filtered on these.
 public static class StudentTags

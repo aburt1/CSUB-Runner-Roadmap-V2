@@ -3,7 +3,7 @@ using Api.Data;
 
 namespace Api.Services;
 
-// Step-key slug + uniqueness logic, ported from server/utils/stepKeys.ts.
+// Step-key slug + uniqueness logic.
 // Keys are slugged titles, made unique per term with -2/-3 suffixes.
 public static class StepKeys
 {

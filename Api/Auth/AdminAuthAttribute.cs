@@ -3,8 +3,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace Api.Auth;
 
-// Admin JWT gate + role check, combining the old server/middleware/adminAuth.ts
-// and requireRole.ts. Usage:
+// Admin JWT gate + role check. Usage:
 //   [AdminAuth]                              -> any authenticated admin
 //   [AdminAuth("admissions", "sysadmin")]    -> only those roles
 // On success it stashes the AdminContext on HttpContext.Items.

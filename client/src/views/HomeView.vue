@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/auth'
 import RoadmapPage from '../pages/RoadmapPage.vue'
 import PublicRoadmapPreview from '../components/PublicRoadmapPreview.vue'
 
-// Port of the old App.tsx: show the roadmap when signed in, otherwise the public preview.
+// Show the roadmap when signed in, otherwise the public preview.
 const auth = useAuthStore()
 const { loading, isAuthenticated } = storeToRefs(auth)
 </script>

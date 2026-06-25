@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace Api.Services;
 
-// Forgiving JSON helpers, ported from server/utils/json.ts (safeJsonParse).
+// Forgiving JSON helpers.
 // Several columns store JSON as text (tags, links, required_tags, contact_info...).
 public static class Json
 {

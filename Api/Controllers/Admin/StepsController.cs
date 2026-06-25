@@ -7,12 +7,11 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers.Admin;
 
-// Admin steps CRUD, ported from server/routes/admin/steps.ts.
+// Admin steps CRUD.
 //
-// The whole admin router is wrapped by adminAuth in the old app (any authenticated
-// admin), and individual mutations add requireRole('admissions_editor', 'sysadmin').
-// We reproduce that by putting [AdminAuth] on the GET list and
-// [AdminAuth("admissions_editor", "sysadmin")] on every mutation.
+// The GET list requires any authenticated admin; every mutation additionally
+// requires the 'admissions_editor' or 'sysadmin' role. So [AdminAuth] is on the
+// GET list and [AdminAuth("admissions_editor", "sysadmin")] on every mutation.
 [ApiController]
 [Route("api/admin/steps")]
 public sealed class StepsController : ControllerBase
@@ -24,9 +23,8 @@ public sealed class StepsController : ControllerBase
         _db = db;
     }
 
-    // Request DTOs. Bound case-insensitively; validated by hand to mirror the zod
-    // schemas and the old route's manual checks. Mutable fields are nullable so we
-    // can tell "absent" (null) from "present" where the old code used `!== undefined`.
+    // Request DTOs. Bound case-insensitively and validated by hand. Mutable fields are
+    // nullable so we can distinguish "absent" (null) from "present" on partial updates.
     public sealed class ReorderItem
     {
         public int id { get; set; }
@@ -77,7 +75,7 @@ public sealed class StepsController : ControllerBase
         if (termIdRaw is null || termIdRaw.Value.ValueKind == JsonValueKind.Null)
             return BadRequest(new { error = "term_id is required" });
 
-        // parseInt(term_id, 10) — accept a number or a numeric string.
+        // Accept a JSON number or a numeric string.
         var termId = ParseIntLike(termIdRaw.Value);
         if (termId is null)
             return BadRequest(new { error = "Invalid term_id" });
@@ -202,7 +200,7 @@ public sealed class StepsController : ControllerBase
         if (step is null)
             return NotFound(new { error = "Step not found" });
 
-        // requestedTermId = body.term_id !== undefined ? parseInt(body.term_id) : step.term_id
+        // When term_id is present on the body, parse it; otherwise keep the step's current term_id.
         int? requestedTermId;
         var termIdRaw = GetElement(body, "term_id");
         if (termIdRaw is not null)
@@ -241,7 +239,7 @@ public sealed class StepsController : ControllerBase
 
             if (field == "links" || field == "required_tags" || field == "excluded_tags" || field == "contact_info")
             {
-                // val ? JSON.stringify(val) : null
+                // Serialize a truthy value to its JSON text; a falsy value stores NULL.
                 parameters.Add(paramName, SerializeElementOrNull(element.Value));
             }
             else if (field == "required_tag_mode")
@@ -317,8 +315,8 @@ public sealed class StepsController : ControllerBase
     [AdminAuth("admissions_editor", "sysadmin")]
     public async Task<IActionResult> Delete(int id)
     {
-        // No 404 on purpose: the old API treats delete as idempotent; the title lookup
-        // is only for the audit entry.
+        // No 404 on purpose: delete is idempotent; the title lookup is only for the
+        // audit entry.
         var step = await _db.QueryOneAsync<TitleRow>("SELECT title FROM steps WHERE id = @id", new { id });
         await _db.ExecuteAsync("UPDATE steps SET is_active = 0 WHERE id = @id", new { id });
 
@@ -380,7 +378,7 @@ public sealed class StepsController : ControllerBase
         return Ok(new { success = true, id = newId });
     }
 
-    // ---- JSON body helpers (mirror reading off req.body) ----
+    // ---- JSON body helpers ----
 
     private static JsonElement? GetElement(JsonElement body, string name)
     {
@@ -419,7 +417,7 @@ public sealed class StepsController : ControllerBase
         return el is not null && Json.IsTruthy(el.Value);
     }
 
-    // For create: `links ? JSON.stringify(links) : null`.
+    // Serialize a named body field to its JSON text, or null when absent/falsy.
     private static string? SerializeOrNull(JsonElement body, string name)
     {
         var el = GetElement(body, name);
@@ -427,7 +425,7 @@ public sealed class StepsController : ControllerBase
         return SerializeElementOrNull(el.Value);
     }
 
-    // `val ? JSON.stringify(val) : null` — JSON null / empty values map to SQL NULL.
+    // Serialize a truthy value to its JSON text; JSON null / empty values map to SQL NULL.
     private static string? SerializeElementOrNull(JsonElement el)
     {
         switch (el.ValueKind)
@@ -469,7 +467,7 @@ public sealed class StepsController : ControllerBase
         }
     }
 
-    // parseInt(x, 10) semantics: accept a JSON number or a leading-digits string.
+    // Accept a JSON number or a leading-digits string, returning null when neither.
     private static int? ParseIntLike(JsonElement el)
     {
         if (el.ValueKind == JsonValueKind.Number)
@@ -487,7 +485,7 @@ public sealed class StepsController : ControllerBase
         return null;
     }
 
-    // Keys present on the request body object, in document order (mirrors Object.keys).
+    // Keys present on the request body object, in document order.
     private static List<string> GetObjectKeys(JsonElement body)
     {
         var keys = new List<string>();

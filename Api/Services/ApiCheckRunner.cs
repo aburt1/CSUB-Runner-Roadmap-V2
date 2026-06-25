@@ -8,13 +8,11 @@ using Api.Models;
 
 namespace Api.Services;
 
-// Runs configured step API checks for a student, ported from
-// server/utils/apiCheckRunner.ts. Registered as a singleton so the in-memory
-// per-student run state survives across requests (matching the module-level
-// Map in the old Node module).
+// Runs configured step API checks for a student. Registered as a singleton so the
+// in-memory per-student run state survives across requests.
 //
-// Boring on purpose: a single HttpClient, hand-written SSRF validation, and the
-// same sequential 15s-capped run loop the old server used.
+// Boring on purpose: a single HttpClient, hand-written SSRF validation, and a
+// sequential 15s-capped run loop.
 public sealed class ApiCheckRunner
 {
     // AllowAutoRedirect = false so a validated URL can't 3xx-redirect to an internal
@@ -65,8 +63,7 @@ public sealed class ApiCheckRunner
     // blocks DNS-rebinding to internal targets.
     private static volatile bool s_allowPrivateConnect;
 
-    // 5s per request keeps one slow upstream from eating most of the 15s run budget
-    // (same values as the old Node runner).
+    // 5s per request keeps one slow upstream from eating most of the 15s run budget.
     private const int PerRequestTimeoutMs = 5_000;
     private const int RunBudgetMs = 15_000;
 
@@ -79,7 +76,7 @@ public sealed class ApiCheckRunner
     // flag, NOT the environment name — see s_allowPrivateConnect.
     private readonly bool _allowPrivateTargets;
 
-    // In-memory run state, keyed by student id (mirrors `runStates` Map).
+    // In-memory run state, keyed by student id.
     private readonly ConcurrentDictionary<string, RunState> _runStates = new();
 
     public ApiCheckRunner(Db db, Encryption encryption, IConfiguration config, ILogger<ApiCheckRunner> logger)
@@ -185,7 +182,7 @@ public sealed class ApiCheckRunner
                      && int.TryParse(part, out var index)
                      && index >= 0 && index < current.GetArrayLength())
             {
-                // Match the old JS extractor, which indexes into arrays via numeric path segments.
+                // Numeric path segments index into arrays.
                 current = current[index];
             }
             else
@@ -300,7 +297,7 @@ public sealed class ApiCheckRunner
             return new UrlValidation { valid = false, reason = "Invalid URL format" };
         }
 
-        // Uri.Scheme has no trailing colon; old code compares against "http:"/"https:".
+        // Uri.Scheme has no trailing colon, so compare against bare "http"/"https".
         if (parsed.Scheme != "http" && parsed.Scheme != "https")
             return new UrlValidation { valid = false, reason = $"Scheme \"{parsed.Scheme}:\" not allowed — only http: and https:" };
 
@@ -586,9 +583,9 @@ public sealed class ApiCheckRunner
                         new { studentId = student.id, stepId = check.step_id });
 
                     // existing rows normally never have status 'not_completed' (ApplyAsync
-                    // deletes them) — this also tolerates legacy rows from the old Node app.
-                    // 'completed'/'waived' rows are left alone so an API check never clobbers
-                    // a manual waive.
+                    // deletes them) — this branch also tolerates any legacy 'not_completed'
+                    // rows. 'completed'/'waived' rows are left alone so an API check never
+                    // clobbers a manual waive.
                     if (existing is null || existing.status == "not_completed")
                     {
                         await Progress.ApplyAsync(_db, new Progress.ProgressChangeInput

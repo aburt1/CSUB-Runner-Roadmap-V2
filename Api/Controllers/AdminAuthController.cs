@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.RateLimiting;
 
 namespace Api.Controllers;
 
-// Admin authentication, ported from server/routes/adminAuth.ts.
+// Admin authentication.
 // The legacy X-API-Key path was dropped per the conversion plan. The break-glass
 // local login is kept and gated by the LocalLogin:Username/Password config.
 [ApiController]
@@ -185,7 +185,7 @@ public sealed class AdminAuthController : ControllerBase
         return Ok(new { token, user = new { id = "break-glass", email = "break-glass", displayName = "Break Glass Admin", role = "sysadmin" } });
     }
 
-    // Length-independent comparison (mirrors the HMAC trick in the old server).
+    // Length-independent comparison to avoid leaking timing information.
     private static bool ConstantTimeEquals(string a, string b)
     {
         var key = RandomNumberGenerator.GetBytes(32);

@@ -18,7 +18,7 @@ const primaryAction = computed<LinkItem | null>(() =>
   links.value.length > 0 ? links.value[0]! : null,
 )
 
-// framer-motion: initial opacity 0 / y 12 -> animate opacity 1 / y 0 (0.4s)
+// Entrance transition: fade in and slide up from y 12 -> 0 over 0.4s.
 const shown = ref(false)
 onMounted(() => {
   requestAnimationFrame(() => {

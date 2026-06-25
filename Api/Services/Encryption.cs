@@ -4,13 +4,12 @@ using System.Text.Json;
 
 namespace Api.Services;
 
-// AES-256-GCM credential encryption, ported from server/utils/encryption.ts.
+// AES-256-GCM credential encryption.
 // The on-disk format is a JSON string { iv, data, tag } with each field hex-
-// encoded, byte-for-byte compatible with the old Node crypto implementation
-// (12-byte IV, 16-byte GCM auth tag).
+// encoded (12-byte IV, 16-byte GCM auth tag).
 //
-// Registered as a singleton; the key is read once from config "ApiCheck:EncryptionKey"
-// (the old API_CHECK_ENCRYPTION_KEY env var), a 64-char hex string = 32 bytes.
+// Registered as a singleton; the key is read once from config "ApiCheck:EncryptionKey",
+// a 64-char hex string = 32 bytes.
 public sealed class Encryption
 {
     private const int IvLength = 12;
@@ -56,7 +55,7 @@ public sealed class Encryption
         return true;
     }
 
-    // Mirrors isEncryptionConfigured(): key present and exactly 64 hex chars.
+    // True when the key is present and exactly 64 hex chars.
     public bool IsConfigured => _isConfigured;
 
     private byte[] GetKey()

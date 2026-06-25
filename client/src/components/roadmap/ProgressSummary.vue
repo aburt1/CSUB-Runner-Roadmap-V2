@@ -9,7 +9,7 @@ const props = defineProps<{
   allComplete: boolean
 }>()
 
-// framer-motion: initial width 0 -> animate to percentage (easeOut, 0.8s)
+// Animate the bar from width 0 to the completion percentage (easeOut, 0.8s).
 const barWidth = ref('0%')
 onMounted(() => {
   requestAnimationFrame(() => {

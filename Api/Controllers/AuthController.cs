@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers;
 
-// Student authentication, ported from server/routes/auth.ts.
+// Student authentication.
 [ApiController]
 [Route("api/auth")]
 public sealed class AuthController : ControllerBase

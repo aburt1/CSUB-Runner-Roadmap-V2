@@ -74,7 +74,7 @@ const contact = computed<ContactInfo | null>(() => {
   return c
 })
 
-// Drives the CSS entrance transitions (matches framer-motion initial -> animate).
+// Drives the CSS entrance transitions (flips from initial to entered state).
 const entered = ref(false)
 
 function handleKeyDown(e: KeyboardEvent): void {

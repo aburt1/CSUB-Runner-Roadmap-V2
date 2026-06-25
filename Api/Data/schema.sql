@@ -1,16 +1,13 @@
 -- T-SQL schema for the CSUB Admissions Roadmap (SQL Server).
 --
--- This is the SQL Server translation of the old Postgres schema in
--- server/db/init.ts. It is run once on startup by SchemaInitializer and is
--- idempotent (safe to re-run): every object is guarded by an existence check.
+-- Run once on startup by SchemaInitializer and idempotent (safe to re-run):
+-- every object is guarded by an existence check.
 --
--- Translation notes (Postgres -> T-SQL):
---   SERIAL                -> INT IDENTITY(1,1)
---   TEXT                  -> NVARCHAR(MAX), or sized NVARCHAR for keys/short cols
---   TIMESTAMPTZ           -> DATETIME2 (UTC), default SYSUTCDATETIME()
---   BOOLEAN               -> BIT
---   integer-boolean flags -> INT (kept as 0/1 to preserve the JSON contract)
---   partial unique index on lower(trim(col)) -> persisted computed column + filtered unique index
+-- Type/convention notes:
+--   Identity keys use INT IDENTITY(1,1); free text is NVARCHAR(MAX) (sized NVARCHAR
+--   for keys/short cols); timestamps are DATETIME2 in UTC, default SYSUTCDATETIME().
+--   integer-boolean flags are INT (kept as 0/1 to preserve the JSON contract).
+--   Case/space-insensitive uniqueness uses a persisted computed column + filtered unique index.
 --
 -- These SET options are REQUIRED before creating persisted computed columns and
 -- filtered indexes (sqlcmd defaults QUOTED_IDENTIFIER OFF; SqlClient defaults it ON).
@@ -41,8 +38,8 @@ CREATE TABLE dbo.students (
     major              NVARCHAR(128) NULL,
     residency          NVARCHAR(64)  NULL,
     admit_term         NVARCHAR(64)  NULL,
-    -- no FK to terms on purpose: mirrors the old schema; terms are deleted via the guarded
-    -- admin flow (TermsController.Delete blocks when students are assigned and removes the
+    -- no FK to terms on purpose: term deletion is handled by the guarded admin flow
+    -- (TermsController.Delete blocks when students are assigned and removes the
     -- term's steps/progress itself).
     term_id            INT           NULL,
     last_synced_at     DATETIME2     NULL,
@@ -91,8 +88,8 @@ CREATE TABLE dbo.steps (
     required_tag_mode NVARCHAR(16)  NULL DEFAULT 'any',
     excluded_tags     NVARCHAR(MAX) NULL,            -- JSON array
     contact_info      NVARCHAR(MAX) NULL,            -- JSON object
-    -- no FK to terms on purpose: mirrors the old schema; terms are deleted via the guarded
-    -- admin flow (TermsController.Delete blocks when students are assigned and removes the
+    -- no FK to terms on purpose: term deletion is handled by the guarded admin flow
+    -- (TermsController.Delete blocks when students are assigned and removes the
     -- term's steps/progress itself).
     term_id           INT           NULL,
     step_key          NVARCHAR(128) NULL,

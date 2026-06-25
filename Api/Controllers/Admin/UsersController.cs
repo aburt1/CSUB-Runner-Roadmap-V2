@@ -8,9 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Api.Controllers.Admin;
 
-// Admin user management, ported from server/routes/admin/users.ts.
-// sysadmin-only. Mounted at /api/admin in the old app (router.use(usersRouter)),
-// so the routes here live under /api/admin/users.
+// Admin user management. sysadmin-only; routes live under /api/admin/users.
 [ApiController]
 [Route("api/admin/users")]
 [AdminAuth("sysadmin")]
@@ -84,7 +82,7 @@ public sealed class UsersController : ControllerBase
         if (user is null)
             return NotFound(new { error = "Admin user not found" });
 
-        // Read the raw body fields, mirroring the old destructure of req.body.
+        // Read the raw body fields.
         var hasRole = Json.TryGetProperty(body, "role", out var roleEl);
         var hasDisplayName = Json.TryGetProperty(body, "displayName", out var displayNameEl);
         var hasIsActive = Json.TryGetProperty(body, "is_active", out var isActiveEl);
@@ -178,7 +176,7 @@ public sealed class UsersController : ControllerBase
         return Ok(new { success = true });
     }
 
-    // Mirrors Object.keys(req.body) for the audit "fields" detail.
+    // Keys present on the request body, for the audit "fields" detail.
     private static List<string> BodyKeys(JsonElement body)
     {
         var keys = new List<string>();
