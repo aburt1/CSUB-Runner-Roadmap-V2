@@ -225,6 +225,33 @@ as environment variables using the ASP.NET Core double-underscore syntax (`Secti
 > `.env` file with locked-down permissions on the host, Docker/compose secrets, or your
 > orchestrator's secret mechanism). `.env.example` documents every variable.
 
+### Azure AD (Entra) SSO — emit the `studentId` claim
+
+For SSO to link a student to the right record, the **ID token must carry the student's ID
+number in a claim named `studentId`** (`Api/Auth/AzureAdTokenValidator.cs` reads exactly
+that claim). On sign-in the app matches by Azure object id first, then by this
+`studentId`; without it, a returning student who was pre-staged by the SIS can't be matched
+and would get a duplicate record. Configure it once in Entra:
+
+1. **Make sure the value is on the user object.** The student ID number must live on each
+   Entra user — typically synced from PeopleSoft/the SIS into a directory attribute
+   (e.g. `employeeId`, an on-prem-synced attribute, or a directory extension /
+   `extensionAttribute`). If it isn't on the user object, no claim can carry it.
+2. **Emit it as `studentId` on the ID token.** In the app registration → **Token
+   configuration**, add the attribute as an **optional claim** on the **ID** token. The
+   claim must arrive **named `studentId`** — if the source attribute's standard claim name
+   differs (e.g. `employeeid`), use an **Entra claims-mapping policy** to map that source to
+   the claim name `studentId` and assign the policy to this app's service principal (set
+   `acceptMappedClaims`). See Microsoft's docs on
+   [optional claims](https://learn.microsoft.com/entra/identity-platform/optional-claims)
+   and [claims mapping policies](https://learn.microsoft.com/entra/identity-platform/saml-claims-customization).
+3. **Verify.** Sign in and decode the resulting ID token (e.g. at [jwt.ms](https://jwt.ms))
+   — confirm a `studentId` claim holding the student's number.
+
+> If your tenant can only emit the ID under a different claim name, that's the one thing to
+> change in code: the claim name in `AzureAdTokenValidator.cs` (a one-line edit). Everything
+> else keys off the student ID number stored on the record (`students.emplid`).
+
 ### Frontend config is baked in at BUILD time
 
 Vite **inlines** `VITE_*` values into the JavaScript bundle when the SPA is built — they
