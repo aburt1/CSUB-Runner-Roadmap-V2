@@ -228,57 +228,14 @@ container is healthy and that your connection string is correct.
 
 ## Running the App
 
-### API
+The run commands are above — **[Quick Start](#quick-start-full-stack-in-docker)** for the
+full Docker stack, **[Local development without containers](#local-development-without-containers)**
+for the host-process loop (`dotnet run` on `:3001` + `npm run dev` on `:3000`), and
+[Starting the containers individually](#starting-the-containers-individually) to bring up
+one service at a time.
 
-**Local dev (host process):**
-
-```bash
-cd Api
-dotnet run            # serves http://localhost:3001, creates DB + schema + seed on boot
-```
-
-In development the API listens on `:3001` (set via `Urls` in
-`appsettings.Development.json`). `dotnet build` compiles without running.
-The raw OpenAPI document is exposed in development at `/openapi/v1.json` (no docs UI is mapped).
-
-**Containerized:**
-
-```bash
-docker compose up -d --build api    # http://localhost:8080
-```
-
-The container runs with `ASPNETCORE_ENVIRONMENT=Production` and listens on
-`:8080`. It waits for the `sqlserver` health check before starting.
-
-### Client
-
-**Local dev (host process):**
-
-```bash
-cd client
-npm install
-npm run dev           # http://localhost:3000, proxies /api -> :3001
-```
-
-**Containerized:**
-
-```bash
-docker compose up -d --build web    # http://localhost:3000
-```
-
-The container builds the Vue bundle and serves it with nginx, reverse-proxying
-`/api` to the `api` container.
-
-### Full stack via Docker (three containers)
-
-```bash
-docker compose up --build   # sqlserver + api + web on http://localhost:3000
-```
-
-This is the canonical "run everything" command — open
-[http://localhost:3000](http://localhost:3000). See
-[Quick Start](#quick-start-full-stack-in-docker) above for the per-service
-details.
+One dev-only extra: the API exposes its raw OpenAPI document at `/openapi/v1.json` (no docs
+UI is mapped), and `dotnet build` compiles without running.
 
 ## Developer quality workflow
 
