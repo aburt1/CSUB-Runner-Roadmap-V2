@@ -586,6 +586,49 @@ The auth filters stash identity on `HttpContext.Items`; controllers read it thro
 
 **Azure AD SSO** is optional. When `AzureAd:ClientId`/`AzureAd:TenantId` are unset, the `/sso` endpoints return `501`. The client reads its SSO config from `VITE_AZURE_AD_*` (see `client/src/auth/msalConfig.ts`). The auth model and roles are summarized in [How the App Works](#how-the-app-works--the-business-logic).
 
+### SSO sign-in flow
+
+SSO follows the standard enterprise premise — **delegate authentication to the identity
+provider, validate what it returns, map the claims to an app user + role, issue an app
+session, then authorize API calls** — implemented with **OpenID Connect** (Azure AD /
+Entra via MSAL):
+
+```mermaid
+sequenceDiagram
+    participant B as User Browser (Vue SPA)
+    participant API as .NET API (relying party)
+    participant IdP as Azure AD / Entra (IdP)
+
+    B->>IdP: Click Sign in — MSAL starts OIDC authorize (openid/profile/email)
+    IdP-->>B: Login / MFA, then return an id_token to the browser
+    B->>API: POST /api/auth/sso with the id_token
+    Note over API: Validate signature (JWKS), issuer, audience, expiry — AzureAdTokenValidator
+    Note over API: Map claims (oid, email, studentId) to a student record + role
+    API-->>B: App session JWT (HS256, 8h)
+    B->>API: API requests with Authorization: Bearer <jwt>
+    API-->>B: Authorized responses ([StudentAuth] / [AdminAuth])
+```
+
+It matches that premise, with three deliberate differences from a classic back-end SAML
+flow (we're flexible on these — the security-relevant steps are identical):
+
+- **OIDC, not SAML.** Entra issues an OIDC `id_token` rather than a SAML assertion, and
+  `POST /api/auth/sso` is the functional equivalent of a SAML **ACS endpoint** — it
+  receives the IdP's token and validates **signature, issuer, audience, and expiry**
+  exactly as a SAML SP would validate an assertion.
+- **The SPA initiates the redirect (MSAL), not a back-end `/auth/login`.** The browser
+  performs the OIDC round-trip and hands the resulting `id_token` to the API; the **API is
+  still the relying party** that validates it, maps claims, and enforces access.
+- **The app session is a bearer JWT** (kept in `sessionStorage`, sent as
+  `Authorization: Bearer`), not a session cookie — which is why CSRF doesn't apply (no
+  ambient credential). `[StudentAuth]`/`[AdminAuth]` enforce it on every request, and
+  admins are re-checked against the database each request so a deactivation takes effect
+  immediately.
+
+Admin SSO (`POST /api/admin/auth/sso`) is the same flow, mapping the validated claims to a
+pre-existing `admin_users` row and its role (SSO never creates admins). For how Entra must
+be configured to emit the `studentId` claim, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ---
 
 ## Integration API
