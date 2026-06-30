@@ -27,6 +27,37 @@ it does** (the business logic). For specific topics it hands off to the sibling 
 - **Self-initializing schema:** the API brings the database to shape on boot, gated by `Database:AutoCreate` and `Database:Seed`. → [Startup Sequence](#startup-sequence-programcs--schemainitializercs)
 - **Deployment:** three containers (`web` / `api` / `sqlserver`), with nginx reverse-proxying `/api` so the browser sees a single origin. → [Deployment Architecture](#deployment-architecture)
 
+### System map
+
+```mermaid
+flowchart LR
+  student([Students]):::actor
+  staff([Admissions staff]):::actor
+  sis(["SIS — e.g. PeopleSoft"]):::actor
+
+  subgraph app["CSUB Runner Roadmap — two deployables"]
+    direction TB
+    web["Vue 3 SPA<br/>served by nginx"]
+    api[".NET API<br/>controllers + Dapper"]
+    db[("SQL Server")]
+    web -->|"REST /api · Bearer JWT"| api
+    api --> db
+  end
+
+  entra(["Azure AD / Entra"]):::ext
+  portals([External portals]):::ext
+
+  student --> web
+  staff --> web
+  web -.->|"SSO sign-in (OIDC)"| entra
+  api -.->|"validate token"| entra
+  sis -->|"integration key — provision students, push completions"| api
+  api -.->|"outbound API checks"| portals
+
+  classDef actor fill:#eef,stroke:#88a
+  classDef ext fill:#f4f4f4,stroke:#999,stroke-dasharray:4 4
+```
+
 ---
 
 ## Tech Stack
@@ -178,28 +209,14 @@ flowchart TB
 
 The frontend and backend are deliberately separated — `client/` produces a static bundle served by its own nginx container, and `Api/` serves only the API — so each can be built, shipped, and scaled independently. The deployment section below covers this.
 
-### Frontend ↔ backend: two deployables, a few shared seams
+### Frontend and backend
 
-It's a **two-part system, not a tangled full-stack monolith.** `client/` (Vue) and `Api/`
-(.NET) are separate codebases — they build independently, ship as separate containers, and
-meet only over the **REST API**. There's no server-rendered HTML, no shared runtime, and no
-C# embedded in the UI, so a frontend developer can own the SPA and a backend developer can
-own the API largely independently.
-
-That said, a handful of bits are deliberately **intertwined** — points where the two sides
-must agree, and changing one without the other breaks things:
-
-- **The REST contract** — paths, JSON shapes, **snake_case** field names, and status codes —
-  is frozen and shared. It *is* the interface between the two halves.
-- **The tag-matching rule lives on both sides** (`StepsController.StepAppliesToStudent` in C#
-  and `useProgress.stepApplies` in TS) so the client can filter steps without a round-trip;
-  they're kept in sync by hand (see [Key Design Decisions](#key-design-decisions)).
-- **The auth/session convention** — the JWT claim names, the `csub_token` `sessionStorage`
-  key, and the `Authorization: Bearer` header — is a shared agreement.
-- **SSO config must match** — the client's `VITE_AZURE_AD_*` build args have to line up with
-  the API's `AzureAd:*` settings.
-
-So "intertwined" is true only at these defined seams; everywhere else the split stays clean.
+Two separate deployables — the Vue SPA and the .NET API (see the [system map](#system-map)) —
+that meet **only over the REST contract**, not a full-stack monolith. The frozen API (paths,
+JSON shapes, snake_case names, status codes) is the interface between them. The one bit of
+logic intentionally duplicated on both sides is the tag-match rule (`StepAppliesToStudent`
+in C# / `stepApplies` in TS), so the client can filter steps without a round-trip — kept in
+sync by hand.
 
 ---
 
