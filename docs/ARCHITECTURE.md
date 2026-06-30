@@ -26,6 +26,7 @@ it does** (the business logic). For specific topics it hands off to the sibling 
 - **One DB site:** `Api/Data/Db.cs` is the only place that opens a connection, and it absorbs transient SQL faults with retry. → [The Data Layer](#the-data-layer-dbcs)
 - **Self-initializing schema:** the API brings the database to shape on boot, gated by `Database:AutoCreate` and `Database:Seed`. → [Startup Sequence](#startup-sequence-programcs--schemainitializercs)
 - **Deployment:** three containers (`web` / `api` / `sqlserver`), with nginx reverse-proxying `/api` so the browser sees a single origin. → [Deployment Architecture](#deployment-architecture)
+- **The design philosophy:** the low-abstraction style follows from five guiding principles, each mapped to the concrete mechanisms it leads to. → [Key Design Decisions](#key-design-decisions)
 
 ### System map
 
@@ -468,7 +469,7 @@ if (app.Configuration.GetValue<bool?>("Database:Seed") ?? true)
     await Seeder.RunAsync(db, app.Configuration, app.Environment);
 ```
 
-`EnsureDatabaseAsync` is also responsible for tolerating a still-warming-up SQL Server. In `docker compose up`, `sqlserver` may accept connections before it is truly ready, so the method retries the `master` connection up to 15 times with a 3-second pause. It also validates the database name against `^[A-Za-z0-9_]+$` before interpolating it into the `CREATE DATABASE` statement, since that one value cannot be parameterized.
+`EnsureDatabaseAsync` is also responsible for tolerating a still-warming-up SQL Server. In `docker compose up`, `sqlserver` may accept connections before it is truly ready, so the method retries the `master` connection up to 15 times with a 3-second pause. This warm-up loop (flat 15 × 3s, tolerating a ~45s cold-container boot) is deliberately a *separate* regime from the per-request exponential backoff in [The Data Layer](#the-data-layer-dbcs) (4 attempts, `200ms · 2ⁿ`): one absorbs a slow first boot, the other absorbs routine transient faults mid-operation, and they should not be merged. `EnsureDatabaseAsync` also validates the database name against `^[A-Za-z0-9_]+$` before interpolating it into the `CREATE DATABASE` statement, since that one value cannot be parameterized.
 
 For the production provisioning story — what a DBA runs by hand, which rights the app login needs, and how `Database:AutoCreate=false` / `Database:Seed=false` fit in — see [DEPLOYMENT.md](DEPLOYMENT.md).
 
@@ -732,6 +733,9 @@ Notable schema choices:
 - integer-boolean flags kept as `INT` 0/1 to preserve the exact JSON contract
 - partial unique indexes on `lower(trim(col))` reproduced via persisted computed columns (e.g., `emplid_norm`) + filtered unique indexes
 - JSON array columns (`tags`, `required_tags`, `excluded_tags`) kept as `NVARCHAR(MAX)` holding JSON text, parsed in C# via `Services/Json.cs`
+- `schema.sql` opens with `SET QUOTED_IDENTIFIER ON` / `SET ANSI_NULLS ON` — SQL Server *requires* these ON to create the persisted computed column and filtered indexes above. Worth knowing: `sqlcmd` defaults `QUOTED_IDENTIFIER` **OFF** while the app's `SqlClient` defaults it **ON**, so the script applies cleanly from the app, and these SET lines keep it working if a DBA runs it through `sqlcmd` too.
+- Dapper is told to bind `DateTime` parameters as `DbType.DateTime2` (a one-line global type-map in the `Db` static ctor). It's a counterpart to the `TIMESTAMPTZ → DATETIME2` column choice: Dapper otherwise binds .NET `DateTime` as legacy SQL `datetime` (3.33 ms precision, min year 1753), which can round or mismatch a comparison against a `DATETIME2` column. A small line, but it keeps date comparisons exact.
+- `step_api_checks` is a newer table, *outside* the original JSON contract, so it's allowed to differ: `is_enabled` is a real `BIT` (rather than the `INT` 0/1 used elsewhere for contract compatibility), and it carries the schema's only `ON DELETE CASCADE` — an api-check config belongs entirely to its step, so the database can clean it up directly instead of going through an app-managed delete.
 
 ---
 
@@ -859,7 +863,45 @@ The `tests/Api.IntegrationTests` project hosts the **real application** via `Web
 
 ## Key Design Decisions
 
-- **No ORM.** Every query is hand-written T-SQL passed to Dapper through the thin `Db` wrapper (`QueryOne`/`QueryAll`/`Execute`/`Transaction`). Parameters are plain anonymous objects (`new { id, term_id }`); no repositories, no LINQ, no query builder. SQL injection is avoided through parameterization rather than string building.
+Almost everything in this codebase follows from a few guiding principles. Once you know them, the individual pieces fit together naturally — here they are, with the concrete things each one leads to:
+
+1. **Boring code** — explicit, low-abstraction, hand-written T-SQL; *duplicate a small block before abstracting*. The flip side is true too: a couple of near-identical blocks are kept **separate on purpose** (see *Deliberately kept separate* below).
+2. **One write path, one DB site** — `Progress.ApplyAsync` is the only writer of `student_progress`; `Db.cs` is the only place a connection opens. Shared settings like the retry policy and the Dapper `DateTime2` type-map live there because that's the single place they apply.
+3. **The contract stays stable for data that already exists** — `INT` 0/1 booleans, the two `NULL`-`is_active` rules, the two sluggers, snake_case keys. These match values that are already stored, so they're kept as-is rather than "tidied," which would change that stored data.
+4. **Security is layered and on by default** — SSRF checks gated on an explicit flag (never the environment name), connect-time IP re-checks, an allowlist for outbound headers, and pinned JWT algorithms. A few of these add a safety margin even around trusted admin actions.
+5. **Self-contained operation** — the app sets up its own schema/seed (turned off for production) and waits out a cold database, so dev needs zero setup and prod starts cleanly.
+
+The map below connects each principle to the concrete things it produces in the code:
+
+```mermaid
+flowchart LR
+  subgraph P["Five stated principles"]
+    direction TB
+    p1["1 · Boring code<br/>explicit, low-abstraction"]
+    p2["2 · One write path /<br/>one DB site"]
+    p3["3 · Contract frozen<br/>against existing data"]
+    p4["4 · Security — layered<br/>and on by default"]
+    p5["5 · Self-contained<br/>operation"]
+  end
+
+  p1 --> m1["Hand-written T-SQL — no ORM,<br/>repository, or query builder"]
+  p1 --> m2["Deliberately NOT DRY:<br/>two Slugify, duplicated accepted-step"]
+  p2 --> m3["Progress.ApplyAsync<br/>UPDLOCK + HOLDLOCK"]
+  p2 --> m4["Db.cs: retry policy +<br/>Dapper DateTime2 type-map"]
+  p3 --> m5["INT 0/1 booleans · snake_case keys ·<br/>omitted-vs-explicit completed_at"]
+  p3 --> m6["Two is_active filters<br/>(students see them; analytics counts clearly-active)"]
+  p4 --> m7["Outbound request safety:<br/>URL + live IP checks, header allowlist, safe CSV export"]
+  p4 --> m8["Token & credential care:<br/>pinned JWT algorithms, constant-time compares"]
+  p5 --> m9["App applies its own schema/seed<br/>(gated off in production)"]
+  p5 --> m10["Warm-up retry loop +<br/>per-request transient backoff"]
+
+  classDef principle fill:#eef,stroke:#88a,font-weight:bold
+  class p1,p2,p3,p4,p5 principle
+```
+
+The concrete decisions:
+
+- **No ORM.** Every query is hand-written T-SQL passed to Dapper through the thin `Db` wrapper (`QueryOne`/`QueryAll`/`Execute`/`Transaction`). Parameters are plain anonymous objects (`new { id, term_id }`); no repositories, no LINQ, no query builder. SQL injection is avoided through parameterization rather than string building. The **one bounded exception** is admin analytics and the student drill-down, which *do* assemble SQL by interpolation — but only from compile-time-constant fragments and server-side-chosen literals (the `ORDER BY` column, the histogram bucket bounds); any value that originates from a request is still bound as a typed `@parameter`, never concatenated. So the "no query builder" rule holds everywhere a request body can actually reach the SQL.
 - **Resilient data layer.** That same `Db` wrapper retries transient SQL faults with exponential backoff (4 attempts), retrying whole transactions rather than individual statements, so routine failover/throttling/deadlock events don't surface as 500s. See [The Data Layer](#the-data-layer-dbcs).
 - **Stable API contract.** Paths, payloads, status codes, error envelopes, snake_case vs. camelCase keys, and UTC `Z` timestamps are treated as a frozen contract (enforced in `Program.cs`: no JSON naming policy, suppressed model-state 400, custom UTC converter). Integration partners and the SPA can rely on shapes not shifting between releases.
 - **App-managed schema + seed, gated for production.** `SchemaInitializer` + `Seeder` run on boot. The schema is idempotent and its version is recorded in `schema_version`; the optional `CREATE DATABASE` is gated behind `Database:AutoCreate` (off in Production, where a DBA provisions the DB) and seeding behind `Database:Seed`. No migration tool, no manual SQL step in dev.
@@ -872,6 +914,9 @@ The `tests/Api.IntegrationTests` project hosts the **real application** via `Web
 - **Split admin API.** The admin surface is split into focused controllers (`Analytics`, `Steps`, `Students`, `Terms`, `Users`, `ApiChecks`) under `/api/admin`, each declaring its own `[AdminAuth(...)]` role gates per action, so each concern stays small and independently authorized.
 - **Shared helpers.** Common patterns (`ParseTermId`, `ParsePagination`, `CountActiveStepsAsync`, the active-step SQL fragment) live in `Api/Services/QueryHelpers.cs` to eliminate duplication across controllers.
 - **Quality as a build contract.** Backend analyzers run with `TreatWarningsAsErrors`; the frontend lints, formats, and unit-tests; a CI workflow set up to exercise both against a real SQL Server is committed but parked. See [Quality Gates & CI](#quality-gates--ci).
+- **Two step-visibility filters, on purpose.** `QueryHelpers` has two `is_active` predicates that handle `NULL` differently. `StudentVisibleStepFilter` treats `NULL` as **active** — older step rows predate the `is_active` column and have no value, and students should still see them. `ActiveStepFilter` (admin analytics, exports, API checks) treats `NULL` as **inactive**, so completion counts only include rows that are clearly active. They're kept as two clearly named, commented constants so it's easy to pick the right one for a new query.
+- **Deliberately kept separate.** A couple of near-identical blocks stay separate on purpose because each matches values that are already stored. `StepKeys.Slugify` strips apostrophes *before* slugging (`Don't → dont`) while `StudentTags.Slugify` does not (`don-t`) — merging them would change the slug a given title produces and stop matching stored `step_key` references and `major:`-derived tags. The duplicated accepted-step auto-complete across the two sign-in paths is the same idea: small and stable, so it's left as-is rather than abstracted.
+- **A safety margin around admin-configured actions.** Outbound API checks are set up by admins, and the app adds a few quiet safeguards so a misconfigured check stays harmless: the target IP is re-checked when the connection is actually made (in case DNS changes between validation and connect), custom outbound headers are limited to a safe set (`Host`/`Content-Length`/`Transfer-Encoding` are set by the app, stray line breaks dropped), and CSV exports prefix leading `=` `+` `-` `@` so a spreadsheet shows them as text rather than running them as formulas. On the auth side, credential comparisons run in constant time, and JWTs accept only their expected algorithms (`HS256` for our tokens, `RS256` for Entra) with no expiry grace window.
 
 ---
 

@@ -133,6 +133,10 @@ The client runs at [http://localhost:3000](http://localhost:3000) and proxies
 `/api` calls to the API at **port 3001** (configured in
 `client/vite.config.ts`). The proxy target defaults to `http://localhost:3001`
 and can be overridden with the `VITE_API_PROXY_TARGET` environment variable.
+This one must be a **shell** variable (`VITE_API_PROXY_TARGET=… npm run dev`):
+`vite.config.ts` reads it via `process.env` *before* Vite loads `.env` files, so
+putting it in `client/.env` — where every other `VITE_*` value works — silently
+has no effect.
 
 There is **no manual database setup** — the API creates the database, applies
 the schema, and seeds defaults idempotently on first boot (see

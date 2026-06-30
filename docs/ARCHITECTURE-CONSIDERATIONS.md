@@ -261,6 +261,7 @@ is preserved:
 | **Term activation does a full-table `UPDATE terms SET is_active = 0`** (no WHERE) inside the txn | A handful of terms, admin-only, very low concurrency — trivially cheap and atomic | A 2nd path sets `is_active`, or term count grows enough to show contention |
 | **`integration_events` / `audit_log` grow unbounded** and store PII (emplid, names, bodies) | Auditability is a feature; volume is low; retention tooling now would be premature | A data-retention/PII policy is adopted, or the tables grow operationally large → add a purge job |
 | **Concurrent admin edits / lost-update** beyond the single progress-write path (two admins editing the same step/term; admin completing a step while an api_check flips it) | `Progress.ApplyAsync` is correctly locked; admin-on-admin contention is rare at this scale | Multiple admins edit concurrently as a norm → add optimistic concurrency (rowversion) on step/term updates |
+| **Seeder targets the *oldest* active term while runtime endpoints pick the *newest*** (`ORDER BY id` vs `ORDER BY id DESC`) — the two queries differ, so it's good to know why | They only diverge if more than one term is active at once, which nothing in the schema prevents; the seeder's ascending order is a dev-only seeding default | Two terms are intentionally active simultaneously → add a single "current term" rule (or a uniqueness guard) so seed and runtime resolve the same term |
 
 ### Performance & frontend
 | Consideration | Why it's fine now | Revisit when |

@@ -128,9 +128,16 @@ Outbound API-check URLs are validated before any request is made (`ApiCheckRunne
 - Private IPv4 ranges: `10.x`, `172.16–31.x`, `192.168.x`, `127.x`, `169.254.x`, and `0.x`
 - Private IPv6: `::1`, and addresses with `fc` / `fd` prefixes
 
-The hostname is **resolved via DNS** and the **resolved address** is checked (the first address returned by `Dns.GetHostAddressesAsync`), so DNS-rebinding a public hostname to a private IP is also rejected. If DNS resolution fails, the URL is rejected with `DNS resolution failed for <host>`.
+The hostname is **resolved via DNS** and **every resolved address** is checked — a host can return multiple A/AAAA records, so the URL is rejected if *any* of them maps to a private/internal range, not just the first. Validation and the actual connection resolve DNS at slightly different moments, so the outbound `HttpClient` also re-checks the IP **at connect time** (`ConnectCallback`): if a hostname resolves to a public address during validation but to a private one when the connection is made, that's caught too. If DNS resolution fails, the URL is rejected with `DNS resolution failed for <host>`.
 
 Private/localhost targets are rejected even in Development **unless** the explicit `ApiCheck:AllowPrivateTargets` flag (env: `ApiCheck__AllowPrivateTargets=true`) is set. That flag exists only so you can point checks at a **local mock server** during dev/test; it defaults to `false` in every environment, including Development, and **must never be `true` in production**.
+
+### Outbound request hygiene
+
+Because API-check URLs and headers are admin-configured, the app tidies up the request before sending it:
+
+- **Headers are limited to a safe set.** `Host`, `Content-Length`, and `Transfer-Encoding` from a check's `headers` are ignored and set by the app instead, since those control how the request is routed and framed.
+- **Stray line breaks are removed.** Any header name or value containing a carriage return or line feed is dropped, because the low-level send path (`TryAddWithoutValidation`) would otherwise pass them through unchanged.
 
 ---
 
@@ -275,6 +282,8 @@ Timestamps are emitted as ISO-8601 UTC with a trailing `Z` (a custom `UtcDateTim
 | `created` | New completion record was created |
 | `updated` | Existing record was changed (e.g., status or note updated) |
 | `noop` | Already in the requested state — no changes made |
+
+> **`completed_at` is compared three ways, so replays stay quiet.** An *omitted* `completed_at` means "keep whatever is already stored," so replaying a request that doesn't resend the timestamp still reports `noop` — no row churn, no spurious audit entry. Only an *explicitly different* `completed_at` (or status/note) counts as a real change. That omitted-vs-same-vs-different distinction is what makes a replay idempotent at the field level, not just at the request level.
 
 When `result` is anything other than `noop`, the change is written to the audit log with an action of `integration_complete`, `integration_waive`, or `integration_uncomplete` (depending on the status), tagged with the integration client name as `source_system` and the `source_event_id`.
 
@@ -543,7 +552,7 @@ Every request **must** include a `source_event_id`. This is the key to safe retr
 2. If the same pair is sent again, the stored response is returned immediately — **byte-for-byte identical** to the original (the stored body is serialized with the same UTC-`Z` timestamp converter), no re-processing occurs.
 3. A different `source_event_id` is always treated as a new request.
 
-> The stored response is keyed by the integration **client** id, so two different clients may safely use the same `source_event_id` string. Idempotency is also race-safe: if two identical requests arrive concurrently and one loses the unique-constraint insert, the loser re-reads and replays the winner's stored response.
+> The stored response is keyed by the integration **client** id, so two different clients may safely use the same `source_event_id` string. Idempotency is also race-safe: if two identical requests arrive concurrently and one loses the unique-constraint insert, the loser re-reads and replays the winner's stored response. And if persisting the idempotency record itself fails for a *non-collision* reason (e.g. a timeout after retries), the error is logged and the row is re-read rather than silently swallowed — otherwise the caller could receive a success while the `source_event_id` was never recorded, and a later retry of the same event would re-execute it (a double completion).
 
 **Choosing good source_event_id values:**
 
@@ -573,7 +582,8 @@ A sysadmin configures an API check on a step (URL, auth, response-field path). W
 flowchart TD
   trigger([Student triggers run]) --> cooldown{"within 5-min cooldown?<br/>(last_api_check_at)"}
   cooldown -->|Yes| skip["Skip run"]
-  cooldown -->|No| load["Load enabled checks<br/>active term, steps active<br/>ordered by sort_order"]
+  cooldown -->|No| stamp["Advance last_api_check_at NOW<br/>(durable throttle, before any check runs)"]
+  stamp --> load["Load enabled checks<br/>active term, steps active<br/>ordered by sort_order"]
   load --> fetch["Per check: substitute student id into URL<br/>GET/POST, extract response_field_path"]
   fetch --> truthy{"extracted value truthy?"}
   truthy -->|Truthy| comp{"step already complete?"}
@@ -582,13 +592,11 @@ flowchart TD
   truthy -->|Falsy| rev{"previously completed by api_check?"}
   rev -->|Yes| revert["Revert to incomplete"]
   rev -->|No| noop2["Leave as-is<br/>(never reverts manual/integration)"]
-  markdone --> upd
-  noop1 --> upd
-  revert --> upd
-  noop2 --> upd["Update last_api_check_at<br/>(end of every run)"]
 ```
 
-A **truthy** value marks the step completed (recorded with `completed_by = api_check`) only if it is not already complete. A **falsy** value reverts the step only if it was previously auto-completed by `api_check` — it never reverts a manual or integration completion. The throttle timestamp (`students.last_api_check_at`) is updated at the end of every run.
+A **truthy** value marks the step completed (recorded with `completed_by = api_check`) only if it is not already complete. A **falsy** value reverts the step only if it was previously auto-completed by `api_check` — it never reverts a manual or integration completion.
+
+The throttle timestamp (`students.last_api_check_at`) is advanced **at the start of the run, before any check executes** — not on success. The in-memory run claim is lost if the process restarts, so this durable timestamp is the real overload guard: a run that throws partway through (or a process that dies mid-run) still counts against the 5-minute cooldown, instead of letting a stuck student re-trigger the full upstream fan-out on every poll.
 
 **Throttling & Timeouts:**
 
