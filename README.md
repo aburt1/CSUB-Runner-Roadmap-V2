@@ -66,7 +66,9 @@ Sign in as `admin@csub.edu` with the `ADMIN_DEFAULT_PASSWORD` from your `.env`.
 
 ## Documentation
 
-**Which doc do I need?** &nbsp; Run it locally → **[SETUP](docs/SETUP.md)** &nbsp;·&nbsp; Deploy to production → **[DEPLOYMENT](docs/DEPLOYMENT.md)** &nbsp;·&nbsp; Integrate an external system → **[API](docs/API-GUIDE.md)** &nbsp;·&nbsp; Understand how & why → **[Architecture](docs/ARCHITECTURE.md)**
+**New here? Pick your team:** **[Documentation by role](docs/README.md)** routes EApps / Web / Infrastructure / Support to the right guide.
+
+**Which doc do I need?** &nbsp; Run it locally → **[SETUP](docs/SETUP.md)** &nbsp;·&nbsp; Deploy to production → **[DEPLOYMENT](docs/DEPLOYMENT.md)** &nbsp;·&nbsp; Integrate an external system → **[API](docs/API-GUIDE.md)** &nbsp;·&nbsp; Support / operate it → **[Operations](docs/OPERATIONS.md)** &nbsp;·&nbsp; Understand how & why → **[Architecture](docs/ARCHITECTURE.md)**
 
 | Document | For |
 |----------|-----|
@@ -74,6 +76,7 @@ Sign in as `admin@csub.edu` with the `ADMIN_DEFAULT_PASSWORD` from your `.env`.
 | [Architecture](docs/ARCHITECTURE.md) | How the app works and *why* — business logic, request/data flow, design decisions, topology |
 | [Deployment](docs/DEPLOYMENT.md) | Production runbook: the three run modes, DBA provisioning, secrets, TLS, health probes, go-live checklist |
 | [API Integration](docs/API-GUIDE.md) | REST contract for external systems (inbound push + outbound API checks) + health endpoints |
+| [Operations & Support](docs/OPERATIONS.md) | Support runbook — health checks, where the logs are, symptom→action triage, escalation, plus the logging/observability roadmap |
 | [Architecture Considerations](docs/ARCHITECTURE-CONSIDERATIONS.md) | Deliberate trade-offs and their "revisit when…" triggers |
 | [Working with Claude Code](docs/WORKING-WITH-CLAUDE.md) | Using the AI assistant on this repo — the `CLAUDE.md` context file, the `.claude/launch.json` preview config, and what it's good for |
 | [docs/history/](docs/history/) | Historical audit records |

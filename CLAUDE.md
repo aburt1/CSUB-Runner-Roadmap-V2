@@ -59,7 +59,10 @@ root, not from `Api/`. Tests need the `sqlserver` container running.
 
 ## Docs map
 
+**Start by team:** [docs/README.md](docs/README.md) routes EApps / Web / Infrastructure / Support to the right guide.
+
 [SETUP](docs/SETUP.md) (run locally) · [DEPLOYMENT](docs/DEPLOYMENT.md) (production) ·
 [ARCHITECTURE](docs/ARCHITECTURE.md) (how & why) · [API-GUIDE](docs/API-GUIDE.md)
-(integration contract) · [ARCHITECTURE-CONSIDERATIONS](docs/ARCHITECTURE-CONSIDERATIONS.md)
+(integration contract) · [OPERATIONS](docs/OPERATIONS.md) (support runbook + observability) ·
+[ARCHITECTURE-CONSIDERATIONS](docs/ARCHITECTURE-CONSIDERATIONS.md)
 (trade-offs) · [Working with Claude](docs/WORKING-WITH-CLAUDE.md) (using the assistant here).

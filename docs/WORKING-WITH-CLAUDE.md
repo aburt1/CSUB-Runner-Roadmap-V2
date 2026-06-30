@@ -60,3 +60,7 @@ you doing it by hand. (The API and SQL Server are started separately — see
 - **The REST contract is frozen.** Renaming a field or changing a status code breaks
   integration partners and the SPA; flag such a need explicitly rather than letting it
   happen as a refactor.
+
+## Operational remediation (Support)
+
+There's an intended Support workflow where Claude Code triages a recurring production error and opens a **human-reviewable** PR, with adversarial agents posting a go/no-go verdict — a human always merges. It's documented (as the model, not yet wired up) in the [Operations runbook → Claude-assisted remediation](OPERATIONS.md#7-claude-assisted-remediation).
