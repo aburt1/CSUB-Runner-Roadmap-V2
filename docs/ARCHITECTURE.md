@@ -178,6 +178,29 @@ flowchart TB
 
 The frontend and backend are deliberately separated — `client/` produces a static bundle served by its own nginx container, and `Api/` serves only the API — so each can be built, shipped, and scaled independently. The deployment section below covers this.
 
+### Frontend ↔ backend: two deployables, a few shared seams
+
+It's a **two-part system, not a tangled full-stack monolith.** `client/` (Vue) and `Api/`
+(.NET) are separate codebases — they build independently, ship as separate containers, and
+meet only over the **REST API**. There's no server-rendered HTML, no shared runtime, and no
+C# embedded in the UI, so a frontend developer can own the SPA and a backend developer can
+own the API largely independently.
+
+That said, a handful of bits are deliberately **intertwined** — points where the two sides
+must agree, and changing one without the other breaks things:
+
+- **The REST contract** — paths, JSON shapes, **snake_case** field names, and status codes —
+  is frozen and shared. It *is* the interface between the two halves.
+- **The tag-matching rule lives on both sides** (`StepsController.StepAppliesToStudent` in C#
+  and `useProgress.stepApplies` in TS) so the client can filter steps without a round-trip;
+  they're kept in sync by hand (see [Key Design Decisions](#key-design-decisions)).
+- **The auth/session convention** — the JWT claim names, the `csub_token` `sessionStorage`
+  key, and the `Authorization: Bearer` header — is a shared agreement.
+- **SSO config must match** — the client's `VITE_AZURE_AD_*` build args have to line up with
+  the API's `AzureAd:*` settings.
+
+So "intertwined" is true only at these defined seams; everywhere else the split stays clean.
+
 ---
 
 ## How Student Steps Work
@@ -628,6 +651,30 @@ flow (we're flexible on these — the security-relevant steps are identical):
 Admin SSO (`POST /api/admin/auth/sso`) is the same flow, mapping the validated claims to a
 pre-existing `admin_users` row and its role (SSO never creates admins). For how Entra must
 be configured to emit the `studentId` claim, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+### OIDC vs SAML — and could we use SAML?
+
+Both are federated-SSO protocols: delegate authentication to an IdP and return a signed
+proof of identity + claims. They differ in era and format:
+
+| | SAML 2.0 | OIDC (what we use) |
+|---|---|---|
+| Format | signed **XML** assertion | signed **JSON** token (JWT) |
+| Best fit | legacy enterprise web apps | SPAs + APIs (modern) |
+| Proof arrives | POSTed to a SP **ACS endpoint** | as an `id_token` to the SPA |
+| Validation | XML signature, issuer, audience, conditions | JWT signature (JWKS), issuer, audience, expiry |
+
+We use **OIDC** because it's the natural fit for a SPA + API and is what MSAL/Entra do out of
+the box. **Entra supports both**, so this is a choice, not a constraint — the student ID we
+key off is an `id_token` claim under OIDC and would be a SAML *attribute claim* under SAML
+(configured on a different Entra screen).
+
+**If a campus IdP ever requires SAML**, switching is possible and confined to the *front
+half* of the flow: add a .NET SAML SP (e.g. Sustainsys.Saml2 / ITfoxtec) with an
+AuthnRequest + ACS endpoint and a back-end-initiated redirect (which actually mirrors the
+classic SAML sequence more literally). Everything after "validate the assertion + read its
+claims" — mapping claims to the student/admin record, issuing the app JWT, and the RBAC
+filters — is protocol-agnostic and would be reused unchanged.
 
 ---
 
