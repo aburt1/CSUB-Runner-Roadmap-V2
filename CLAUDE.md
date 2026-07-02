@@ -37,7 +37,7 @@ This codebase is **deliberately low-abstraction**; match it.
 - **The REST contract is frozen.** Paths, JSON payloads, **snake_case field names**, status codes, and JWT claim names are a contract integration partners and the SPA depend on. Don't rename or reshape them.
 - **snake_case DTO/row properties** are intentional (they mirror the JSON/SQL contract); the `CA1707` analyzer warning is suppressed on purpose in `.editorconfig`.
 - **The app applies its own schema on boot** (`SchemaInitializer` runs `schema.sql`, idempotent). Adding a brand-new table/index there is fine; *altering an existing populated table* needs a real migration (see [ARCHITECTURE-CONSIDERATIONS.md](docs/ARCHITECTURE-CONSIDERATIONS.md)).
-- **Production fail-fast:** the API refuses to start with missing/weak secrets (`Jwt:Secret`, `ApiCheck:EncryptionKey`, admin/break-glass passwords). Dev uses safe defaults from `appsettings.Development.json`.
+- **Production fail-fast:** the API refuses to start with a missing/weak `Jwt:Secret` or `ApiCheck:EncryptionKey`. A weak/placeholder break-glass password does **not** fail startup — instead the `local-login` endpoint is disabled (returns `NotFound` at request time) in Production. Dev uses safe defaults from `appsettings.Development.json`.
 - **CI is parked** (`.github/workflows/ci.yml.disabled`) — run the checks locally (below).
 - **Behavior-preserving changes** unless asked otherwise; keep the test suite green.
 

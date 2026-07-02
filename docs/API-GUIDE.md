@@ -172,7 +172,7 @@ Discover the available steps and their `step_key` values. Call this first to kno
 |-----------|------|----------|-------------|
 | `term_id` | integer | No | Filter to a specific term. If omitted, returns steps for **all** terms (newest term first, then by step `sort_order`). A non-numeric or zero value returns 400. |
 
-> The `term_id` parser reads the leading integer of the value; `0`, a negative, or a non-numeric value means "no term filter" (all terms).
+> The `term_id` parser reads the leading integer of the value (JS `parseInt` semantics). A value that parses to `0` or has no leading digits (non-numeric) returns `400`. A value that parses to a term id that doesn't exist (including a negative) is a valid filter that simply matches no rows (empty array). Only omitting `term_id` entirely returns all terms.
 
 **Example Request:**
 
@@ -916,7 +916,7 @@ The `timestamp` is `DateTime.UtcNow.ToString("o")` (round-trip ISO-8601, UTC, wi
 
 ### GET /api/health/ready
 
-Readiness. Probes the database by running a trivial `SELECT 1` through the same `Db` connection path the rest of the app uses (which includes the transient-fault retry described in [docs/ARCHITECTURE.md](ARCHITECTURE.md)). The status code is the signal:
+Readiness. Probes the database by running a trivial `SELECT 1` on a dedicated connection with a **3-second** connect/command timeout and **no retry** — it deliberately bypasses the transient-fault retry `Db` path used by the rest of the app (described in [docs/ARCHITECTURE.md](ARCHITECTURE.md)), so the probe answers quickly (≤ ~3 s) instead of spending a minute retrying before admitting the DB is down. The status code is the signal:
 
 - **DB reachable →** `200` with `status: "ready"`.
 - **DB unreachable →** `503` with `status: "not_ready"`. The probe swallows the underlying SQL exception and reports `db: "disconnected"` rather than leaking an error.

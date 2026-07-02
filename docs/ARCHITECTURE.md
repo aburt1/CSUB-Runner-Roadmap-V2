@@ -530,8 +530,23 @@ The DB probe is intentionally minimal and swallows exceptions:
 ```csharp
 private async Task<bool> DbReachableAsync()
 {
-    try { await _db.QueryOneAsync<int>("SELECT 1"); return true; }
-    catch { return false; }
+    try
+    {
+        // _probeConnectionString is the app's connection string with ConnectTimeout = 3;
+        // a fresh connection each probe deliberately bypasses the Db retry layer.
+        await using var connection = new SqlConnection(_probeConnectionString);
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1";
+        command.CommandTimeout = 3;
+        await command.ExecuteScalarAsync();
+        return true;
+    }
+    catch (Exception ex)
+    {
+        _logger.LogWarning(ex, "Readiness DB probe failed");
+        return false;
+    }
 }
 ```
 

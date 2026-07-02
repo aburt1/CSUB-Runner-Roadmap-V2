@@ -37,7 +37,8 @@ Conservative actions only — check, restart, or escalate. Nothing here deletes 
 
 | Symptom | Likely cause | What to check | Action |
 |---------|--------------|---------------|--------|
-| API won't start / crashes on boot | Missing or weak required secret (`Jwt:Secret`, `ApiCheck:EncryptionKey`, admin/break-glass password) — the app **fails fast** in Production by design | the startup log line naming the bad/missing key | this is config, not a code bug → escalate to whoever owns the deployment secrets |
+| API won't start / crashes on boot | Missing or weak startup secret (`Jwt:Secret`, `ApiCheck:EncryptionKey`) — the app **fails fast** in Production by design | the startup log line naming the bad/missing key | this is config, not a code bug → escalate to whoever owns the deployment secrets |
+| Break-glass `local-login` returns `404 Not Found` in Production | `LocalLogin:Password` is missing or too weak — the endpoint is **disabled at request time** (it does *not* fail startup, unlike the JWT/encryption secrets above) | the "Break-glass login is disabled in Production" warning line in the log | set a strong `LocalLogin:Password` (same strength policy as the seeded admin) → escalate to whoever owns the deployment secrets |
 | `/api/health/ready` returns 503 | Database unreachable | is SQL Server up? network/firewall? credentials? | bring the DB back; the app reconnects on its own (it retries) — no app restart needed |
 | Users can't sign in via SSO | Entra (Azure AD) misconfig, or the `studentId` claim isn't being sent | recent Entra changes; the SSO failure line in the log | escalate to the EApps/identity owner with the log line |
 | An outbound API check always fails | Target down, or the URL resolves to a private/internal IP (rejected by design) | the check's URL and the rejection reason in the log | "Resolved to private IP" = expected safety behavior, fix the URL; otherwise it's a target-side issue |
