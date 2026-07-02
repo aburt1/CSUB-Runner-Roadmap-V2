@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import type { AdminApi } from '../../../composables/useAdminApi'
 import type { DrillDownPayload } from './types'
+import { parseLocalDate } from '../../../utils/dates'
 
 interface RiskStep {
   id: number
@@ -41,7 +42,7 @@ watch(
 )
 
 function formatDeadline(date: string): string {
-  return new Date(date).toLocaleDateString('en-US', {
+  return parseLocalDate(date).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',

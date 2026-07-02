@@ -5,6 +5,7 @@ import type { ChartData, ChartOptions } from 'chart.js'
 import './registerCharts'
 import { CSUB_BLUE, CSUB_GOLD, AXIS_COLOR, AXIS_FONT_SIZE, GRID_COLOR } from './chartTheme'
 import type { DrillDownPayload, TrendPoint } from './types'
+import { parseLocalDate } from '../../../utils/dates'
 
 const props = defineProps<{
   data: TrendPoint[] | null
@@ -20,7 +21,7 @@ interface ChartRow {
 const chartData = computed<ChartRow[]>(() => {
   if (!props.data?.length) return []
   return props.data.map((d) => ({
-    date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    date: parseLocalDate(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     rawDate: d.date,
     completions: d.completions,
   }))
