@@ -26,13 +26,15 @@ public static class Progress
         if (string.IsNullOrEmpty(normalized))
             return new StudentResolution { ErrorCode = "invalid_student_id_number", Error = "student_id_number is required" };
 
-        // Compare on the trimmed value; the DB's case-insensitive collation handles
-        // casing and the emplid_norm computed column guarantees no case-variant duplicates.
+        // Match on the emplid_norm PERSISTED computed column (LOWER(LTRIM(RTRIM(emplid)))),
+        // so the filtered unique index is used instead of scanning every row. Lowercase the
+        // param the same way the column does — mirror the auth paths' emplid_norm lookup.
+        var emplidNorm = normalized.ToLowerInvariant();
         var rows = await db.QueryAllAsync<ResolvedStudent>(
             @"SELECT id, display_name, email, emplid, term_id
               FROM students
-              WHERE LTRIM(RTRIM(COALESCE(emplid, ''))) = @normalized",
-            new { normalized });
+              WHERE emplid_norm = @emplidNorm",
+            new { emplidNorm });
 
         if (rows.Count == 0)
             return new StudentResolution { ErrorCode = "student_not_found", Error = "Student not found" };
