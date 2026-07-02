@@ -266,6 +266,7 @@ directory.
 | Script | Command it runs | What it does |
 |--------|-----------------|--------------|
 | `npm run dev` | `vite` | Start the Vite dev server on `:3000` with hot reload, proxying `/api` to `VITE_API_PROXY_TARGET` (default `:3001`). |
+| `npm run typecheck` | `vue-tsc -b` | Type-check the whole project **without** bundling — fast type feedback for contributors, CI, and tooling. |
 | `npm run build` | `vue-tsc -b && vite build` | Type-check the whole project (`vue-tsc`) **then** produce the production bundle. A type error fails the build — this is the gate the `web` image build relies on. |
 | `npm run preview` | `vite preview` | Serve the already-built `dist/` locally to sanity-check a production bundle. |
 | `npm run test` | `vitest run` | Run the Vitest unit suite **once** and exit. This is the CI form. |
@@ -280,6 +281,7 @@ A typical pre-push loop:
 cd client
 npm run lint          # correctness
 npm run format:check  # layout (use `npm run format` to auto-fix)
+npm run typecheck     # types only (fast, no bundle)
 npm run test          # unit tests, run-once
 npm run build         # type-check + bundle
 ```

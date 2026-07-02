@@ -50,7 +50,7 @@ cd Api && dotnet run                          # API on :3001 (creates DB + schem
 cd client && npm install && npm run dev       # Vue client on :3000, proxies /api → :3001
 
 # Before declaring work done — run the full quality loop:
-cd client && npm run lint && npm run format:check && npm run test && npm run build
+cd client && npm run lint && npm run format:check && npm run typecheck && npm run test && npm run build
 dotnet test                                   # from the repo ROOT (needs the sqlserver container up)
 ```
 
