@@ -121,7 +121,7 @@ CREATE TABLE dbo.student_progress (
     completed_at  DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
     status        NVARCHAR(20)  NULL DEFAULT 'completed',  -- 'completed' | 'waived' | 'not_completed'
     note          NVARCHAR(MAX) NULL,
-    completed_by  NVARCHAR(20)  NULL DEFAULT 'manual',     -- 'manual' | 'integration' | 'api_check' | 'auto'
+    completed_by  NVARCHAR(20)  NULL DEFAULT 'manual',     -- 'manual' | 'integration' | 'api_check' (the auto-completed 'accepted' step is recorded as the default 'manual')
     CONSTRAINT pk_student_progress PRIMARY KEY (student_id, step_id),
     CONSTRAINT fk_progress_student FOREIGN KEY (student_id) REFERENCES dbo.students (id),
     CONSTRAINT fk_progress_step    FOREIGN KEY (step_id)    REFERENCES dbo.steps (id)

@@ -233,7 +233,7 @@ Each student's roadmap is built from four things:
    - **Manual tags**: Set by admissions staff and stored as a JSON array in `students.tags` (e.g., `honors`, `athlete`, `eop`, `first-gen`, `veteran`).
    - **Derived tags**: Auto-generated from profile fields — `applicant_type` containing "transfer"/"freshman"/"readmit" produces the `transfer`/`freshman`/`readmit` tag; `residency` produces `out-of-state`/`in-state`; and `major` produces a slugged `major:<slug>` tag (e.g., `major: "Computer Science"` produces `major:computer-science`).
 
-4. **Progress records** — Each step can be `completed`, `waived`, or `not_completed`. Progress is tracked in the `student_progress` table (primary key `student_id` + `step_id`) with `completed_at`, `status`, `note`, and a `completed_by` attribution (`manual` | `integration` | `api_check` | `auto`). All writes flow through `Progress.ApplyAsync`.
+4. **Progress records** — Each step can be `completed`, `waived`, or `not_completed`. Progress is tracked in the `student_progress` table (primary key `student_id` + `step_id`) with `completed_at`, `status`, `note`, and a `completed_by` attribution (`manual` | `integration` | `api_check`). All writes flow through `Progress.ApplyAsync`.
 
 **Step keys.** Each step has a stable `step_key` (a slugged title, made unique per term with `-2`/`-3` suffixes — see `Api/Services/StepKeys.cs`). Integrations and API checks reference steps by `(term, step_key)` rather than by database id, so the same key is portable across cloned terms.
 
