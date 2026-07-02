@@ -534,16 +534,29 @@ public class AdminAnalyticsTests
     [Fact]
     public async Task DeadlineRisk_excludes_a_waived_student_from_step()
     {
-        // Default 14-day window has a seeded future-deadline step ("Register for
-        // Orientation", 2026-07-01) for term 1.
+        // Arrange our own in-window step rather than relying on a seed deadline that would
+        // rot as the calendar advances: insert an active term-1 step whose deadline_date is
+        // 7 days out (safely inside the default 14-day window: > today and <= today + 14).
+        // Only ADDING a step — this matches the shared-DB seed invariants (SmokeTests) and
+        // shifts no other test's counts. Fresh step_key keeps the unique (term_id, step_key)
+        // index happy across repeated runs against the shared test DB.
+        var inWindowDate = DateTime.UtcNow.AddDays(7).ToString("yyyy-MM-dd");
+        var stepKey = "deadline-risk-inwindow-" + Guid.NewGuid().ToString("N");
+        await _fx.ExecSqlAsync(
+            $@"INSERT INTO steps (title, sort_order, deadline_date, term_id, step_key, is_active, is_optional)
+               VALUES (N'Deadline Risk In-Window Step', 9999, '{inWindowDate}', 1, '{stepKey}', 1, 0)");
+
         var before = await (await _fx.Admin().GetAsync("/api/admin/analytics/deadline-risk?term_id=1"))
             .Content.ReadFromJsonAsync<JsonElement>();
 
-        // Pick any in-window step that has at least one at-risk student to waive.
+        // Find the step we just inserted (by its deadline_date + title); a fresh step with no
+        // progress rows leaves every term-1 student at risk, so it always has students to waive.
         JsonElement targetStep = default;
         string? studentId = null;
         foreach (var step in before.EnumerateArray())
         {
+            if (step.GetProperty("deadline_date").GetString() != inWindowDate) continue;
+            if (step.GetProperty("title").GetString() != "Deadline Risk In-Window Step") continue;
             var students = step.GetProperty("students");
             if (students.GetArrayLength() > 0)
             {
@@ -553,7 +566,7 @@ public class AdminAnalyticsTests
             }
         }
 
-        Assert.NotNull(studentId); // seed must surface at least one at-risk student in-window
+        Assert.NotNull(studentId); // the in-window step must surface at least one at-risk student
         var stepId = targetStep.GetProperty("id").GetInt32();
         var beforeAtRisk = targetStep.GetProperty("at_risk_count").GetInt32();
 
