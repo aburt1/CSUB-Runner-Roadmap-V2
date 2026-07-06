@@ -52,9 +52,13 @@ services:
       # CREATE DATABASE here. Real deployments (external SQL Server, DBA-provisioned DB)
       # use docker-compose.prod.yml, which turns this off — see docs/DEPLOYMENT.md.
       Database__AutoCreate: "true"
-      # Secrets are REQUIRED (no weak defaults). `${VAR:?msg}` makes compose fail with
+      # App secrets are REQUIRED (no weak defaults). `${VAR:?msg}` makes compose fail with
       # the message if the var is unset — copy .env.example to .env and fill these in.
-      ConnectionStrings__Default: "Server=sqlserver,1433;Database=csub_admissions;User Id=sa;Password=${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;Encrypt=False"
+      # Exception: the SA password defaults to the committed non-secret dev value (same as the
+      # sqlserver service below) so `docker compose up -d sqlserver` works with zero setup;
+      # compose interpolates the whole file even for a single-service `up`, so both uses must
+      # default in lockstep. Override MSSQL_SA_PASSWORD in .env to change both at once.
+      ConnectionStrings__Default: "Server=sqlserver,1433;Database=csub_admissions;User Id=sa;Password=${MSSQL_SA_PASSWORD:-Csub_Local_Dev_2026!};TrustServerCertificate=True;Encrypt=False"
       Jwt__Secret: "${JWT_SECRET:?set JWT_SECRET to a random 32+ character string in .env}"
       Admin__DefaultEmail: "${ADMIN_DEFAULT_EMAIL:-admin@csub.edu}"
       Admin__DefaultPassword: "${ADMIN_DEFAULT_PASSWORD:?set ADMIN_DEFAULT_PASSWORD in .env}"
@@ -83,7 +87,12 @@ services:
     container_name: csub-sqlserver
     environment:
       ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env}"
+      # Defaults to the committed non-secret dev password so `docker compose up -d sqlserver`
+      # works with zero setup for the host-process dev loop (dotnet run / dotnet test). The
+      # api service above still REQUIRES real secrets, so the full stack is unaffected. This is
+      # a throwaway Developer-edition container bound to localhost only; production uses
+      # docker-compose.prod.yml, which has no sqlserver service.
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:-Csub_Local_Dev_2026!}"
       MSSQL_PID: "Developer"
     ports:
       # Localhost only — not exposed to the network.

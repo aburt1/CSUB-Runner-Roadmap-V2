@@ -119,8 +119,8 @@ For the tightest edit/run loop, run SQL Server in Docker but run the API and the
 client directly on the host:
 
 ```bash
-# 1. Start SQL Server (Docker). Requires MSSQL_SA_PASSWORD in .env — use
-#    Csub_Local_Dev_2026! locally (see Database Setup for why).
+# 1. Start SQL Server (Docker). Defaults its SA password to Csub_Local_Dev_2026!
+#    with no .env needed (see Database Setup for why).
 docker compose up -d sqlserver
 
 # 2. Run the API (creates DB + schema + seed on first boot)
@@ -189,13 +189,15 @@ In production both are typically off or DBA-handled — see [Deployment](DEPLOYM
 docker compose up -d sqlserver
 ```
 
-This starts **SQL Server 2022** on `localhost:1433`. The SA password is **required —
-compose has no default**: copy `.env.example` to `.env` and set `MSSQL_SA_PASSWORD`
-first. For the host-process dev loop, set it to **`Csub_Local_Dev_2026!`** — that is
-the password hardcoded in `Api/appsettings.Development.json` (used by `dotnet run`)
-and in the integration-test fixture (`tests/Api.IntegrationTests/WebAppFixture.cs`),
-so a different value breaks `dotnet run` and `dotnet test` until you update those too.
-Data persists in the `csub_sqlserver_data` volume. The compose file defines a
+This starts **SQL Server 2022** on `localhost:1433`. The `sqlserver` service **defaults
+its SA password** to **`Csub_Local_Dev_2026!`** when `MSSQL_SA_PASSWORD` is unset, so this
+command works with **zero setup** — no `.env` file needed for the host-process dev loop.
+That default matches the password hardcoded in `Api/appsettings.Development.json` (used by
+`dotnet run`) and in the integration-test fixture (`tests/Api.IntegrationTests/WebAppFixture.cs`),
+so `dotnet run` and `dotnet test` connect to it out of the box. If you set `MSSQL_SA_PASSWORD`
+in `.env` to something else you must also update those two files, or `dotnet run`/`dotnet test`
+break. (The `api` service still requires real secrets, so the *full* `docker compose up` stack
+is unaffected.) Data persists in the `csub_sqlserver_data` volume. The compose file defines a
 health check (`sqlcmd ... SELECT 1`) so the API can wait for the database to be
 ready before it starts.
 
@@ -478,7 +480,7 @@ the full set with their defaults.
 > `Cors__Origin`. Only set it if you deliberately serve the client from a
 > different origin and bypass the proxy.
 
-The `sqlserver` service requires `MSSQL_SA_PASSWORD` (no default — set it in `.env`; use `Csub_Local_Dev_2026!` locally — see [Database Setup](#local-sql-server-via-docker-recommended)), plus `ACCEPT_EULA=Y` and `MSSQL_PID=Developer`. The same `MSSQL_SA_PASSWORD` value is interpolated into the `api` service's connection string, so overriding it in one place keeps both in sync.
+The `sqlserver` service **defaults `MSSQL_SA_PASSWORD` to `Csub_Local_Dev_2026!`** (the committed non-secret dev value — see [Database Setup](#local-sql-server-via-docker-recommended)) so it starts with no `.env`, plus `ACCEPT_EULA=Y` and `MSSQL_PID=Developer`. The same `MSSQL_SA_PASSWORD` value is interpolated into the `api` service's connection string, so overriding it in one place keeps both in sync — but the `api` service's *other* secrets have no default and still require `.env`.
 
 ### Vite / client (dev only)
 
