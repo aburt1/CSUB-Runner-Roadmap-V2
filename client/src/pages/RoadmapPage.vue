@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import { useProgress } from '../composables/useProgress'
+import { useStudentApi } from '../composables/useStudentApi'
 import ProgressSummary from '../components/roadmap/ProgressSummary.vue'
 import CurrentStepCallout from '../components/roadmap/CurrentStepCallout.vue'
 import RoadmapTimeline from '../components/roadmap/RoadmapTimeline.vue'
@@ -13,12 +14,13 @@ import HelpSection from '../components/roadmap/HelpSection.vue'
 import CompletionBanner from '../components/roadmap/CompletionBanner.vue'
 import Celebration from '../components/Celebration.vue'
 import HighContrastToggle from '../components/HighContrastToggle.vue'
-import type { StepWithStatus } from '../types/api'
+import type { StepWithStatus, CheckStatusResponse } from '../types/api'
 
 type ViewMode = 'timeline' | 'list'
 
 const auth = useAuthStore()
 const toast = useToastStore()
+const api = useStudentApi()
 const { user, token } = storeToRefs(auth)
 const { logout } = auth
 
@@ -63,12 +65,9 @@ watch(
     if (loading.value || !token.value || steps.value.length === 0) return
 
     const myGeneration = currentGeneration
-    const currentToken = token.value
 
-    fetch('/api/roadmap/run-api-checks', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${currentToken}` },
-    })
+    api
+      .raw('/roadmap/run-api-checks', { method: 'POST' })
       .then((res) => res.json())
       .then((data: { status: string }) => {
         if (myGeneration !== currentGeneration || data.status !== 'started') return
@@ -84,10 +83,8 @@ watch(
             return
           }
           try {
-            const res = await fetch('/api/roadmap/check-status', {
-              headers: { Authorization: `Bearer ${currentToken}` },
-            })
-            const poll: { checkedSteps?: number[]; status: string } = await res.json()
+            const res = await api.raw('/roadmap/check-status')
+            const poll: CheckStatusResponse = await res.json()
             if (poll.checkedSteps?.length && poll.checkedSteps.length > 0) retry()
             if (poll.status === 'complete') clearInterval(myInterval)
           } catch {
@@ -140,18 +137,7 @@ const currentStepNumber = computed(() =>
 async function handleOptionalStepStatusChange(step: StepWithStatus, status: string) {
   updatingOptionalStepId.value = step.id
   try {
-    const res = await fetch(`/api/steps/${step.id}/status`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token.value}`,
-      },
-      body: JSON.stringify({ status }),
-    })
-
-    if (!res.ok) {
-      throw new Error('Unable to update optional step')
-    }
+    await api.put(`/steps/${step.id}/status`, { status })
 
     await retry()
     if (showOnlyIncomplete.value && status === 'completed') {

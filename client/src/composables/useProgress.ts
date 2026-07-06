@@ -1,11 +1,10 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '../stores/auth'
-import { useToastStore } from '../stores/toast'
+import { useStudentApi } from './useStudentApi'
 import type { Step, StepWithStatus, StepStatus, ProgressResponse, Term } from '../types/api'
 import { parseMaybeJson } from '../utils/json'
 
-const API_BASE = '/api'
 // 30 seconds: long enough to avoid hammering the server, short enough that a
 // step completed by an admin on behalf of a student becomes visible promptly.
 const POLL_INTERVAL = 30000
@@ -57,7 +56,7 @@ export function deriveAllStepStatuses(
 // computed completion metrics.
 export function useProgress() {
   const auth = useAuthStore()
-  const toast = useToastStore()
+  const api = useStudentApi()
   const { token, isAuthenticated } = storeToRefs(auth)
 
   const rawSteps = ref<Step[]>([])
@@ -71,8 +70,9 @@ export function useProgress() {
 
   async function fetchSteps(): Promise<void> {
     try {
-      const headers = token.value ? { Authorization: `Bearer ${token.value}` } : undefined
-      const res = await fetch(`${API_BASE}/steps`, { headers })
+      // Works anonymously (public preview) or authenticated — the token header is added
+      // automatically when present. raw() so a non-ok status is a data problem, not a throw.
+      const res = await api.raw('/steps')
       if (res.ok) rawSteps.value = await res.json()
       else error.value = 'Failed to load checklist steps.'
     } catch {
@@ -83,9 +83,9 @@ export function useProgress() {
   async function fetchProgress(): Promise<void> {
     if (!token.value) return
     try {
-      const res = await fetch(`${API_BASE}/steps/progress`, {
-        headers: { Authorization: `Bearer ${token.value}` },
-      })
+      // raw() so we can keep stale data on a 5xx instead of surfacing an error; a 401 has
+      // already toasted + logged out inside useStudentApi.
+      const res = await api.raw('/steps/progress')
       if (res.ok) {
         const data: ProgressResponse = await res.json()
         const map = new Map<number, ProgressMapEntry>()
@@ -107,13 +107,10 @@ export function useProgress() {
         studentTags.value = data.tags || []
         if (data.term) term.value = data.term
         error.value = null
-      } else if (res.status === 401) {
-        // Token expired/invalid — drop back to the public/login view.
-        toast.error('Your session expired — please sign in again.')
-        auth.logout()
-      } else if (progressMap.value.size === 0) {
-        // Non-ok, non-401 (e.g. 5xx) with no prior data: surface an error so the
-        // student sees a retry path instead of a silently wiped checklist. If we
+      } else if (res.status !== 401 && progressMap.value.size === 0) {
+        // A 401 already toasted + logged out inside useStudentApi, so it is excluded here.
+        // Any other non-ok status (e.g. 5xx) with no prior data surfaces a retryable error
+        // so the student sees a retry path instead of a silently wiped checklist. If we
         // already have progress loaded, keep it stale rather than overwrite.
         error.value = 'Unable to load your progress. Please try again.'
       }

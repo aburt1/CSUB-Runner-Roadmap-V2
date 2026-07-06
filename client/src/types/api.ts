@@ -86,6 +86,19 @@ export interface ProgressResponse {
   term: Term | null
 }
 
+// A step whose status flipped during an API-check run. Mirrors the API's
+// ApiCheckRunner.CheckedStep — each entry is an object, not a bare step id.
+export interface CheckedStep {
+  stepId: number
+  newStatus: string
+}
+
+// GET /api/roadmap/check-status — poll response while background checks run.
+export interface CheckStatusResponse {
+  status: string // no_run | running | complete
+  checkedSteps?: CheckedStep[]
+}
+
 // Audit log entry as returned by GET /audit
 export interface AuditLog {
   id: number
