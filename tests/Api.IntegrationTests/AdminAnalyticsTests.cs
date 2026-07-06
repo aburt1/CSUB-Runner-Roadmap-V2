@@ -233,6 +233,78 @@ public class AdminAnalyticsTests
         Assert.True(sawNonNullTimestamp);
     }
 
+    // The chart-feeding bucketed endpoint must bucket by the SAME rules as the drilldown
+    // (BuildStalledFilter): MAX(completed_at) filtered to status='completed', and a created_at
+    // gate for zero-completion students. A waived-only student and a just-created (day-one)
+    // student are the two cases the old client re-bucketing got wrong.
+    [Fact]
+    public async Task StalledBuckets_agree_with_drilldown_for_waived_only_and_day_one_students()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+
+        // Isolated term so only these two students exist in it -> deterministic bucket counts.
+        await _fx.ExecSqlAsync(
+            $@"INSERT INTO terms (name, is_active) VALUES ('Stalled Bucket Term {suffix}', 0);
+               DECLARE @term INT = SCOPE_IDENTITY();
+
+               -- An active step in this term (referenced by the progress rows below).
+               INSERT INTO steps (title, sort_order, term_id, step_key, is_active, is_optional)
+               VALUES ('Bucket Step {suffix}', 950, @term, 'bucket-step-{suffix}', 1, 0);
+               DECLARE @step INT = SCOPE_IDENTITY();
+
+               -- Waived-only student: created 100 days ago, one WAIVED row 5 days ago,
+               -- zero 'completed' rows. Canonical rule: COUNT(completed)=0 -> bucket by
+               -- created_at (~100 days) -> '3+ months'. The old chart used the waive's
+               -- completed_at (~5 days) and wrongly put them in '7-14 days'.
+               INSERT INTO students (id, display_name, email, term_id, created_at)
+               VALUES ('bucket-waived-{suffix}', 'Waived Only', 'w-{suffix}@t.edu', @term,
+                       DATEADD(day, -100, SYSUTCDATETIME()));
+               INSERT INTO student_progress (student_id, step_id, status, completed_at)
+               VALUES ('bucket-waived-{suffix}', @step, 'waived',
+                       DATEADD(day, -5, SYSUTCDATETIME()));
+
+               -- Day-one student: created now, zero completions. Canonical rule: created_at
+               -- gate (~0 days) -> NOT stalled (< 7 days) -> no bucket. The old chart put a
+               -- null-last-completion student in '3+ months'.
+               INSERT INTO students (id, display_name, email, term_id, created_at)
+               VALUES ('bucket-dayone-{suffix}', 'Day One', 'd-{suffix}@t.edu', @term,
+                       SYSUTCDATETIME());");
+
+        // term_id for the isolated term.
+        var termId = Convert.ToInt32(await _fx.ScalarAsync(
+            $"SELECT id FROM terms WHERE name = 'Stalled Bucket Term {suffix}'"));
+
+        // Chart-feeding bucketed endpoint.
+        var res = await _fx.Admin().GetAsync($"/api/admin/analytics/stalled-students/buckets?term_id={termId}");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var buckets = await res.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Array, buckets.ValueKind);
+
+        int BucketCount(string name) => buckets.EnumerateArray()
+            .Where(b => b.GetProperty("bucket").GetString() == name)
+            .Select(b => b.GetProperty("student_count").GetInt32())
+            .Single();
+
+        // Waived-only -> 3+ months (created_at gate, filtered MAX ignores the waive).
+        Assert.Equal(1, BucketCount("3+ months"));
+        // Day-one -> not stalled, so absent from every bucket.
+        Assert.Equal(0, BucketCount("7-14 days"));
+        Assert.Equal(0, BucketCount("2-4 weeks"));
+        Assert.Equal(0, BucketCount("1-3 months"));
+
+        // The drilldown population for each bucket must match the chart bucket counts.
+        async Task<int> DrilldownTotal(string bucket) =>
+            (await (await _fx.Admin().GetAsync(
+                $"/api/admin/analytics/students?term_id={termId}&filter_type=stalled&filter_value={Uri.EscapeDataString(bucket)}"))
+                .Content.ReadFromJsonAsync<JsonElement>())
+                .GetProperty("total").GetInt32();
+
+        Assert.Equal(BucketCount("3+ months"), await DrilldownTotal("3+ months"));
+        Assert.Equal(BucketCount("7-14 days"), await DrilldownTotal("7-14 days"));
+        Assert.Equal(BucketCount("2-4 weeks"), await DrilldownTotal("2-4 weeks"));
+        Assert.Equal(BucketCount("1-3 months"), await DrilldownTotal("1-3 months"));
+    }
+
     // ─── analytics/cohort-comparison ─────────────────────────
 
     [Fact]

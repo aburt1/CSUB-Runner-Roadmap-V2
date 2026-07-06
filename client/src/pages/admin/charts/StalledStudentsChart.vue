@@ -7,11 +7,6 @@ import type { AdminApi } from '../../../composables/useAdminApi'
 import { COLOR_DANGER, AXIS_COLOR, AXIS_FONT_SIZE, GRID_COLOR, BAR_RADIUS } from './chartTheme'
 import type { DrillDownPayload } from './types'
 
-interface StalledStudent {
-  id: number
-  last_completion_date: string | null
-}
-
 interface BucketItem {
   bucket: string
   student_count: number
@@ -31,38 +26,11 @@ watch(
   () => {
     const fetchData = async () => {
       try {
-        const students = await props.api.get<StalledStudent[]>('/analytics/stalled-students', {
+        // The server buckets by the same rules as the drilldown, so the chart and its
+        // drilldown always agree (no client-side re-bucketing).
+        data.value = await props.api.get<BucketItem[]>('/analytics/stalled-students/buckets', {
           term_id: props.termId,
-          days: 7,
         })
-
-        // Group into buckets
-        const buckets: Record<string, number> = {
-          '7-14 days': 0,
-          '2-4 weeks': 0,
-          '1-3 months': 0,
-          '3+ months': 0,
-        }
-
-        const now = Date.now()
-        for (const student of students) {
-          if (!student.last_completion_date) {
-            buckets['3+ months']!++
-            continue
-          }
-          const daysInactive = Math.floor(
-            (now - new Date(student.last_completion_date).getTime()) / (1000 * 60 * 60 * 24),
-          )
-          if (daysInactive <= 14) buckets['7-14 days']!++
-          else if (daysInactive <= 28) buckets['2-4 weeks']!++
-          else if (daysInactive <= 90) buckets['1-3 months']!++
-          else buckets['3+ months']!++
-        }
-
-        data.value = Object.entries(buckets).map(([bucket, count]) => ({
-          bucket,
-          student_count: count,
-        }))
       } catch (err) {
         console.error('[stalled-students]', err)
       } finally {

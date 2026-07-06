@@ -473,6 +473,70 @@ public sealed class AnalyticsController : ControllerBase
         return Ok(outRows);
     }
 
+    // Ordered stalled buckets — the single source for the bucket labels and their day
+    // bounds, shared by the bucketed endpoint below and mirrored by BuildStalledFilter.
+    // A student is "stalled" only past minDays 7; anything more recent is not emitted.
+    private static readonly (string Bucket, int MinDays, int MaxDays)[] StalledBuckets =
+        { ("7-14 days", 7, 14), ("2-4 weeks", 15, 28), ("1-3 months", 29, 90), ("3+ months", 91, 99999) };
+
+    // GET /api/admin/analytics/stalled-students/buckets?term_id=
+    // Server-side bucketing so the chart and its drilldown agree. Buckets by days inactive
+    // using the SAME rule as BuildStalledFilter: for a student with completions, days since
+    // MAX(completed_at) FILTERED TO status='completed' (a waive is not activity); for a
+    // zero-completion student, days since created_at.
+    [HttpGet("analytics/stalled-students/buckets")]
+    public async Task<IActionResult> StalledStudentBuckets()
+    {
+        var termId = QueryHelpers.ParseTermId(Request);
+        var termFilter = termId.HasValue ? "WHERE st.term_id = @termId" : "";
+
+        // Per-student days inactive, then classify into the ordered buckets. seconds/86400,
+        // not DATEDIFF(day), to match BuildStalledFilter (see CompletionVelocity comment).
+        var rows = await _db.QueryAllAsync<StalledBucketCountRow>(
+            $@"WITH per_student AS (
+                 SELECT
+                   CASE
+                     WHEN COUNT(CASE WHEN sp.status = 'completed' THEN 1 END) = 0
+                       THEN DATEDIFF(second, st.created_at, SYSUTCDATETIME()) / 86400
+                     ELSE DATEDIFF(second, MAX(CASE WHEN sp.status = 'completed' THEN sp.completed_at END), SYSUTCDATETIME()) / 86400
+                   END AS days_inactive
+                 FROM students st
+                 LEFT JOIN student_progress sp ON sp.student_id = st.id
+                 {termFilter}
+                 GROUP BY st.id, st.created_at
+               )
+               SELECT
+                 CASE
+                   WHEN days_inactive BETWEEN 7 AND 14 THEN '7-14 days'
+                   WHEN days_inactive BETWEEN 15 AND 28 THEN '2-4 weeks'
+                   WHEN days_inactive BETWEEN 29 AND 90 THEN '1-3 months'
+                   WHEN days_inactive >= 91 THEN '3+ months'
+                 END AS bucket,
+                 COUNT(*) AS student_count
+               FROM per_student
+               WHERE days_inactive >= 7
+               GROUP BY
+                 CASE
+                   WHEN days_inactive BETWEEN 7 AND 14 THEN '7-14 days'
+                   WHEN days_inactive BETWEEN 15 AND 28 THEN '2-4 weeks'
+                   WHEN days_inactive BETWEEN 29 AND 90 THEN '1-3 months'
+                   WHEN days_inactive >= 91 THEN '3+ months'
+                 END",
+            new { termId });
+
+        var counts = new Dictionary<string, int>();
+        foreach (var r in rows)
+            if (r.bucket is not null)
+                counts[r.bucket] = r.student_count;
+
+        // Emit every bucket in order, zero-filled, so the chart's x-axis is stable.
+        var outRows = new List<object>();
+        foreach (var (bucket, _, _) in StalledBuckets)
+            outRows.Add(new { bucket, student_count = counts.TryGetValue(bucket, out var c) ? c : 0 });
+
+        return Ok(outRows);
+    }
+
     // ─── Analytics Students Drilldown ────────────────────────
 
     // GET /api/admin/analytics/students?term_id=&filter_type=&filter_value=&page=1&per_page=50
@@ -879,9 +943,9 @@ public sealed class AnalyticsController : ControllerBase
                   AND @minDays <= DATEDIFF(second, st.created_at, SYSUTCDATETIME()) / 86400
                   AND DATEDIFF(second, st.created_at, SYSUTCDATETIME()) / 86400 <= @maxDays
                 ) OR (
-                  MAX(sp.completed_at) IS NOT NULL
-                  AND @minDays <= DATEDIFF(second, MAX(sp.completed_at), SYSUTCDATETIME()) / 86400
-                  AND DATEDIFF(second, MAX(sp.completed_at), SYSUTCDATETIME()) / 86400 <= @maxDays
+                  MAX(CASE WHEN sp.status = 'completed' THEN sp.completed_at END) IS NOT NULL
+                  AND @minDays <= DATEDIFF(second, MAX(CASE WHEN sp.status = 'completed' THEN sp.completed_at END), SYSUTCDATETIME()) / 86400
+                  AND DATEDIFF(second, MAX(CASE WHEN sp.status = 'completed' THEN sp.completed_at END), SYSUTCDATETIME()) / 86400 <= @maxDays
                 )
                 ORDER BY st.display_name
                 OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
@@ -897,9 +961,9 @@ public sealed class AnalyticsController : ControllerBase
                     AND @minDays <= DATEDIFF(second, st.created_at, SYSUTCDATETIME()) / 86400
                     AND DATEDIFF(second, st.created_at, SYSUTCDATETIME()) / 86400 <= @maxDays
                   ) OR (
-                    MAX(sp.completed_at) IS NOT NULL
-                    AND @minDays <= DATEDIFF(second, MAX(sp.completed_at), SYSUTCDATETIME()) / 86400
-                    AND DATEDIFF(second, MAX(sp.completed_at), SYSUTCDATETIME()) / 86400 <= @maxDays
+                    MAX(CASE WHEN sp.status = 'completed' THEN sp.completed_at END) IS NOT NULL
+                    AND @minDays <= DATEDIFF(second, MAX(CASE WHEN sp.status = 'completed' THEN sp.completed_at END), SYSUTCDATETIME()) / 86400
+                    AND DATEDIFF(second, MAX(CASE WHEN sp.status = 'completed' THEN sp.completed_at END), SYSUTCDATETIME()) / 86400 <= @maxDays
                   )
                 ) sub",
         };
@@ -1091,6 +1155,12 @@ public sealed class AnalyticsController : ControllerBase
         public string? email { get; set; }
         public DateTime? last_completion_date { get; set; }
         public int completed_count { get; set; }
+    }
+
+    private sealed class StalledBucketCountRow
+    {
+        public string? bucket { get; set; }
+        public int student_count { get; set; }
     }
 
     private sealed class DrilldownStudent
