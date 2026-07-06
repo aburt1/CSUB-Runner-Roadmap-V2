@@ -54,5 +54,11 @@ services:
       Cors__Origin: "${CORS_ORIGIN:-}"
       Integration__DefaultName: "${INTEGRATION_DEFAULT_NAME:-}"
       Integration__DefaultKey: "${INTEGRATION_DEFAULT_KEY:-}"
+      # Trust X-Forwarded-For ONLY from the proxy network so a direct-to-api caller can't
+      # spoof it to dodge per-IP rate limiting / poison audit IPs. Set this to the CIDR(s)
+      # the api sees nginx connecting from (docker's bridge subnet), e.g.
+      # "172.16.0.0/12;10.0.0.0/8" — semicolon-separated. Empty keeps the permissive
+      # default, which is safe ONLY because the api port is unpublished (see §7).
+      ForwardedHeaders__KnownNetworks: "${FORWARDED_HEADERS_KNOWN_NETWORKS:-}"
     # No ports: the api is internal-only behind web's nginx.
     restart: unless-stopped

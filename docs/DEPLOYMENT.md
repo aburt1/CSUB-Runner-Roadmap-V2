@@ -357,13 +357,21 @@ The API exposes two endpoints (see `Api/Controllers/HealthController.cs`):
   limiting and audit logging record the **real client IP**, not the proxy's. The internal
   nginx already sets these headers; if you add another proxy layer, make sure it forwards
   them too.
-- Because the API trusts forwarded headers unconditionally (it is only reachable through
-  the trusted internal nginx), **do not expose the api container's port publicly.** Keep
-  it on the internal network only.
-- If your topology ever requires exposing the api more widely, set
-  `ForwardedHeaders__KnownNetworks` to the proxy's CIDR list (semicolon-separated, e.g.
-  `"172.16.0.0/12;10.0.0.0/8"`). The API then only honors `X-Forwarded-*` from those
-  networks, so a direct caller cannot spoof its IP to dodge per-IP rate limiting.
+- Because the API trusts forwarded headers unconditionally **by default** (the trust list
+  starts empty = "trust any source"), this is safe **only** because the api is reachable
+  only through the trusted internal nginx: **do not expose the api container's port
+  publicly.** Keep it on the internal network only.
+- **Pin the trust list as defense-in-depth (recommended).** Set
+  `ForwardedHeaders__KnownNetworks` to the CIDR(s) the api sees nginx connecting from
+  (semicolon-separated, e.g. `"172.16.0.0/12;10.0.0.0/8"` — Docker's default bridge
+  subnet). The API then honors `X-Forwarded-For` **only** from those networks, so even a
+  direct-to-api misconfiguration (a stray published port, a shared network) can't let an
+  attacker spoof `X-Forwarded-For` to dodge per-IP rate limiting or poison audit-log IPs.
+  `docker-compose.prod.yml` wires this to the `FORWARDED_HEADERS_KNOWN_NETWORKS` env var
+  (empty by default → keeps the permissive behavior). Confirm the value by checking the
+  source address the api logs for a proxied request and setting its containing CIDR.
+  > Local dev keeps the permissive default (empty) on purpose — everything is on
+  > `localhost` and rate limiting is typically disabled there.
 
 ---
 
