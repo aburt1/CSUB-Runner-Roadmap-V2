@@ -286,6 +286,18 @@ npm run test          # unit tests, run-once
 npm run build         # type-check + bundle
 ```
 
+**Optional: the pre-commit hook.** A checked-in, dependency-free hook at
+`.githooks/pre-commit` runs the *fast* subset of the loop — client `eslint`,
+`prettier --check`, and `typecheck`, plus `dotnet build Api/Api.csproj` — but
+only for the areas you actually staged. It deliberately skips the SQL-backed
+test suites, which stay in the manual pre-push loop above. Opt in once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Bypass a single commit with `git commit --no-verify` when you need to.
+
 **About the unit tests.** Vitest is configured in `client/vite.config.ts`: it
 picks up `src/**/*.test.ts` and runs them under **jsdom**, so stores and
 composables that touch `sessionStorage`, `fetch`, and timers behave like the

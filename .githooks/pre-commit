@@ -1,0 +1,50 @@
+#!/bin/sh
+# Fast pre-commit quality gate. Dependency-free (no husky) — opt in with:
+#   git config core.hooksPath .githooks
+#
+# Runs only the fast checks against the areas that actually have staged files.
+# The SQL-backed test suites (client `npm run test`, `dotnet test`) stay in the
+# manual pre-push loop — this hook is meant to be quick enough to run on every
+# commit.
+
+# Absolute repo root, so the checks work regardless of the commit cwd.
+repo_root=$(git rev-parse --show-toplevel)
+
+staged=$(git diff --cached --name-only)
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+# Did we stage anything under client/ or Api/?
+client_touched=$(printf '%s\n' "$staged" | grep -c '^client/')
+api_touched=$(printf '%s\n' "$staged" | grep -c '^Api/')
+
+failed=0
+
+if [ "$client_touched" -gt 0 ]; then
+  echo "pre-commit: client files staged — running eslint, prettier --check, typecheck"
+  (
+    cd "$repo_root/client" || exit 1
+    npx eslint . && npx prettier --check src && npm run typecheck
+  )
+  if [ $? -ne 0 ]; then
+    echo "pre-commit: client checks FAILED (eslint / prettier --check / typecheck)"
+    failed=1
+  fi
+fi
+
+if [ "$api_touched" -gt 0 ]; then
+  echo "pre-commit: Api files staged — running dotnet build"
+  dotnet build "$repo_root/Api/Api.csproj"
+  if [ $? -ne 0 ]; then
+    echo "pre-commit: API build FAILED (dotnet build Api/Api.csproj)"
+    failed=1
+  fi
+fi
+
+if [ "$failed" -ne 0 ]; then
+  echo "pre-commit: aborting commit — fix the failures above (or commit with --no-verify to bypass)"
+  exit 1
+fi
+
+exit 0

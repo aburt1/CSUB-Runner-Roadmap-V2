@@ -57,6 +57,14 @@ dotnet test                                   # from the repo ROOT (needs the sq
 `dotnet test` resolves `CsubRunnerRoadmapV2.slnx` (API + tests) — run it from the repo
 root, not from `Api/`. Tests need the `sqlserver` container running.
 
+Optional pre-commit hook (dependency-free, opt-in): runs the fast client checks
+(`eslint` + `prettier --check` + `typecheck`) and `dotnet build Api/Api.csproj` on
+staged files only — no SQL-backed tests. Enable once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
 ## Docs map
 
 **Start by team:** [docs/README.md](docs/README.md) routes EApps / Web / Infrastructure / Support to the right guide.
