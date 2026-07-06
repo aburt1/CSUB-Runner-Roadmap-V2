@@ -41,6 +41,9 @@ const emit = defineEmits<{
   (e: 'cancel'): void
 }>()
 
+// KEEP IN SYNC with the `tags` array in Api/Controllers/Admin/AnalyticsController.cs
+// (CohortComparison): the two lists are maintained independently, and cohort comparison
+// only counts a tag an admin can actually set here.
 const TAG_PRESETS = [
   'freshman',
   'transfer',

@@ -647,6 +647,8 @@ public sealed class AnalyticsController : ControllerBase
         // fixed well-known cohort tags; matched as substrings of the JSON tags text
         // — exact-token matching is deliberately not attempted here, so keep tag names
         // non-overlapping. The order here is the source of truth for the tag{N} columns below.
+        // KEEP IN SYNC with TAG_PRESETS in client/src/pages/admin/StepForm.vue: the two lists are
+        // maintained independently, and cohort comparison only counts a tag an admin can actually set.
         var tags = new[] { "freshman", "transfer", "first-gen", "honors", "athlete", "eop", "veteran", "out-of-state" };
 
         var termFilter = termId.HasValue ? "AND s.term_id = @termId" : "";
