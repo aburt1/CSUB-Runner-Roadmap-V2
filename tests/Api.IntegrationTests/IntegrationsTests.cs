@@ -412,11 +412,51 @@ public class IntegrationsTests
         var activeTerm = Convert.ToInt32(await _fx.ScalarAsync("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC"));
         Assert.Equal(activeTerm, body.GetProperty("term_id").GetInt32());
 
-        // The "accepted" step was auto-completed on create.
+        // The "accepted" step was auto-completed on create — exactly one row, not just
+        // "at least one" (a duplicate insert would still pass a >= 1 check).
         var studentId = body.GetProperty("student_id").GetString();
         var acceptedCount = Convert.ToInt32(await _fx.ScalarAsync(
             $"SELECT COUNT(*) FROM student_progress sp JOIN steps s ON s.id = sp.step_id WHERE sp.student_id = '{studentId}' AND s.step_key = 'accepted'"));
-        Assert.True(acceptedCount >= 1);
+        Assert.Equal(1, acceptedCount);
+    }
+
+    [Fact]
+    public async Task Put_student_provisioned_accepted_step_renders_completed_via_student_endpoint()
+    {
+        // TESTS-07 parity: a PUSH-provisioned student must display identically to a
+        // sign-in-provisioned one. The auto-complete writes a student_progress row with a
+        // NULL status, and the read layer treats NULL as "completed" — so we prove the
+        // completed state through the student endpoint (mirroring StepsTests:110-118), not
+        // by reading the DB row's status.
+        var emplid = FreshEmplid();
+        var create = await _fx.Integration().PutAsJsonAsync(
+            "/api/integrations/v1/students",
+            new { emplid, display_name = "Push Parity", email = $"{emplid}@t.edu", source_event_id = Guid.NewGuid().ToString() });
+        Assert.Equal(HttpStatusCode.OK, create.StatusCode);
+        Assert.Equal("created", (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("result").GetString());
+
+        // Dev-login with the SAME emplid links to the provisioned row (emplid_norm match)
+        // instead of creating a new student.
+        var client = _fx.Anonymous();
+        var loginRes = await client.PostAsJsonAsync(
+            "/api/auth/dev-login", new { name = "Push Parity", email = $"{emplid}@t.edu", emplid });
+        loginRes.EnsureSuccessStatusCode();
+        var token = (await loginRes.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+        client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        // Resolve the seeded "accepted" step id from the public listing (ids aren't fixed).
+        var steps = await (await _fx.Anonymous().GetAsync("/api/steps")).Content.ReadFromJsonAsync<JsonElement>();
+        var acceptedId = steps.EnumerateArray()
+            .Single(s => s.GetProperty("step_key").GetString() == "accepted")
+            .GetProperty("id").GetInt32();
+
+        var body = await (await client.GetAsync("/api/steps/progress")).Content.ReadFromJsonAsync<JsonElement>();
+        var acceptedProgress = body.GetProperty("progress").EnumerateArray()
+            .Single(p => p.GetProperty("step_id").GetInt32() == acceptedId);
+        Assert.Equal("completed", acceptedProgress.GetProperty("status").GetString());
+        var completedAt = acceptedProgress.GetProperty("completed_at").GetString();
+        Assert.NotNull(completedAt);
+        Assert.EndsWith("Z", completedAt!);
     }
 
     [Fact]
