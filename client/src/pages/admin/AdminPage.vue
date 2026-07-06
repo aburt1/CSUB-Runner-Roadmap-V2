@@ -326,25 +326,31 @@ const onTermSelectChange = (e: Event) => {
       :id="`tabpanel-${activeTab}`"
       :aria-labelledby="`tab-${activeTab}`"
     >
-      <StudentsTab
-        v-if="activeTab === 'students'"
-        :api="api"
-        :steps="steps"
-        :role="role"
-        :term-id="selectedTermId"
-      />
-      <TermStepsTab
-        v-if="activeTab === 'termSteps'"
-        :api="api"
-        :role="role"
-        :terms="terms"
-        :selected-term-id="selectedTermId"
-        @terms-change="handleTermsChange"
-        @select-term="onSelectTerm"
-      />
-      <AnalyticsTab v-if="activeTab === 'analytics'" :api="api" :term-id="selectedTermId" />
-      <AuditLogTab v-if="activeTab === 'audit'" :api="api" />
-      <AdminUsersTab v-if="activeTab === 'users' && role === 'sysadmin'" :api="api" />
+      <!-- KeepAlive caches each tab so switching away and back does not remount it (the
+           Analytics tab in particular refires ~9 aggregate requests on every mount). A term
+           change still refetches because each tab watches its term-id prop. The blocks form
+           a single v-if/v-else-if chain so KeepAlive only ever sees one child at a time. -->
+      <KeepAlive>
+        <StudentsTab
+          v-if="activeTab === 'students'"
+          :api="api"
+          :steps="steps"
+          :role="role"
+          :term-id="selectedTermId"
+        />
+        <TermStepsTab
+          v-else-if="activeTab === 'termSteps'"
+          :api="api"
+          :role="role"
+          :terms="terms"
+          :selected-term-id="selectedTermId"
+          @terms-change="handleTermsChange"
+          @select-term="onSelectTerm"
+        />
+        <AnalyticsTab v-else-if="activeTab === 'analytics'" :api="api" :term-id="selectedTermId" />
+        <AuditLogTab v-else-if="activeTab === 'audit'" :api="api" />
+        <AdminUsersTab v-else-if="activeTab === 'users' && role === 'sysadmin'" :api="api" />
+      </KeepAlive>
     </div>
   </div>
 </template>
