@@ -131,6 +131,15 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
         return await cmd.ExecuteScalarAsync();
     }
 
+    // Opens a raw connection to the test DB so a test can hold its OWN transaction/lock
+    // (e.g. to deterministically gate a concurrent writer). Caller disposes it.
+    public async Task<SqlConnection> OpenConnectionAsync()
+    {
+        var conn = new SqlConnection(TestConn);
+        await conn.OpenAsync();
+        return conn;
+    }
+
     public HttpClient Admin()
     {
         var client = CreateClient();

@@ -97,6 +97,32 @@ public static class Progress
                   WHERE student_id = @studentId AND step_id = @stepId",
                 new { studentId = input.StudentId, stepId = input.StepId });
 
+            // Optional guards, evaluated against the LOCK-READ row so the caller's decision
+            // is atomic. A mismatch is a noop with no write (defaults null => never fires).
+            if (input.SkipIfCurrentStatusIn is { Length: > 0 } skipStatuses
+                && current is not null
+                && Array.IndexOf(skipStatuses, current.status) >= 0)
+            {
+                return new ProgressChangeResult
+                {
+                    Result = "noop",
+                    Status = current.status,
+                    CompletedAt = current.completed_at,
+                    CompletedBy = CompletedByOrManual(current.completed_by),
+                };
+            }
+            if (input.OnlyIfCompletedBy is not null
+                && (current is null || CompletedByOrManual(current.completed_by) != input.OnlyIfCompletedBy))
+            {
+                return new ProgressChangeResult
+                {
+                    Result = "noop",
+                    Status = current?.status ?? nextStatus,
+                    CompletedAt = current?.completed_at,
+                    CompletedBy = current is null ? normalizedCompletedBy : CompletedByOrManual(current.completed_by),
+                };
+            }
+
             if (nextStatus == "not_completed")
             {
                 if (current is null)
@@ -188,6 +214,22 @@ public static class Progress
         public string? Note { get; set; }
         public string? CompletedAt { get; set; }
         public string? CompletedBy { get; set; }
+
+        // Optional preconditions evaluated against the row read UNDER the write lock
+        // (UPDLOCK), so a guarded caller's read-then-write decision is atomic. Both default
+        // to null (no guard) — every existing caller is byte-for-byte behavior-unchanged.
+        // On a guard mismatch ApplyAsync makes NO write and returns Result = "noop".
+        //
+        // ApiCheckRunner uses these so a run racing a manual waive/completion can't clobber
+        // the human action: complete only when the locked row is not already terminal;
+        // revert only when the locked row is still the api-check's own completion.
+
+        // Skip (noop) if the locked row exists and its status is in this set.
+        public string[]? SkipIfCurrentStatusIn { get; set; }
+
+        // Apply only if the locked row EXISTS and its effective completed_by equals this
+        // ("manual" when the stored value is blank); otherwise noop.
+        public string? OnlyIfCompletedBy { get; set; }
     }
 
     public sealed class ProgressChangeResult

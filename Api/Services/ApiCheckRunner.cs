@@ -577,45 +577,40 @@ public sealed class ApiCheckRunner
 
                 if (isTruthy)
                 {
-                    // Mark complete only if not already completed.
-                    var existing = await _db.QueryOneAsync<ProgressStatusRow>(
-                        "SELECT status FROM student_progress WHERE student_id = @studentId AND step_id = @stepId",
-                        new { studentId = student.id, stepId = check.step_id });
-
-                    // existing rows normally never have status 'not_completed' (ApplyAsync
-                    // deletes them) — this branch also tolerates any legacy 'not_completed'
-                    // rows. 'completed'/'waived' rows are left alone so an API check never
-                    // clobbers a manual waive.
-                    if (existing is null || existing.status == "not_completed")
+                    // Mark complete only if the step is not ALREADY terminal. The guard is
+                    // evaluated against the row read under ApplyAsync's write lock, so a
+                    // manual waive/completion landing concurrently is never clobbered:
+                    // SkipIfCurrentStatusIn makes the change a noop when the locked row is
+                    // already 'completed' or 'waived' (by anyone). (existing rows are never
+                    // 'not_completed' — ApplyAsync deletes those — so a missing row means
+                    // "not yet done" and the completion proceeds.)
+                    var result = await Progress.ApplyAsync(_db, new Progress.ProgressChangeInput
                     {
-                        await Progress.ApplyAsync(_db, new Progress.ProgressChangeInput
-                        {
-                            StudentId = student.id,
-                            StepId = check.step_id,
-                            Status = "completed",
-                            CompletedBy = "api_check",
-                        });
+                        StudentId = student.id,
+                        StepId = check.step_id,
+                        Status = "completed",
+                        CompletedBy = "api_check",
+                        SkipIfCurrentStatusIn = new[] { "completed", "waived" },
+                    });
+                    if (result.Result is "created" or "updated")
                         checkedSteps.Add(new CheckedStep { stepId = check.step_id, newStatus = "completed" });
-                    }
                 }
                 else
                 {
-                    // Only revert if completed_by is 'api_check'.
-                    var existing = await _db.QueryOneAsync<ProgressStatusByRow>(
-                        "SELECT status, completed_by FROM student_progress WHERE student_id = @studentId AND step_id = @stepId",
-                        new { studentId = student.id, stepId = check.step_id });
-
-                    if (existing is not null && existing.status == "completed" && existing.completed_by == "api_check")
+                    // Revert only the api-check's OWN completion. The guard is evaluated
+                    // against the lock-read row, so a manual completion landing concurrently
+                    // (completed_by = 'manual') is never reverted: OnlyIfCompletedBy makes the
+                    // change a noop unless the locked row is still completed_by = 'api_check'.
+                    var result = await Progress.ApplyAsync(_db, new Progress.ProgressChangeInput
                     {
-                        await Progress.ApplyAsync(_db, new Progress.ProgressChangeInput
-                        {
-                            StudentId = student.id,
-                            StepId = check.step_id,
-                            Status = "not_completed",
-                            CompletedBy = "api_check",
-                        });
+                        StudentId = student.id,
+                        StepId = check.step_id,
+                        Status = "not_completed",
+                        CompletedBy = "api_check",
+                        OnlyIfCompletedBy = "api_check",
+                    });
+                    if (result.Result == "updated")
                         checkedSteps.Add(new CheckedStep { stepId = check.step_id, newStatus = "not_completed" });
-                    }
                 }
             }
             catch (Exception err)
@@ -639,17 +634,6 @@ public sealed class ApiCheckRunner
         public string student_param_name { get; set; } = "studentId";
         public string student_param_source { get; set; } = "emplid";
         public string response_field_path { get; set; } = "";
-    }
-
-    private sealed class ProgressStatusRow
-    {
-        public string? status { get; set; }
-    }
-
-    private sealed class ProgressStatusByRow
-    {
-        public string? status { get; set; }
-        public string? completed_by { get; set; }
     }
 
     private sealed class BasicCreds

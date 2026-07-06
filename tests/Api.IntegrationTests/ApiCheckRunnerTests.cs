@@ -6,6 +6,7 @@ using Api.Models;
 using Api.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.IntegrationTests;
@@ -198,6 +199,68 @@ public class ApiCheckRunnerTests
             Assert.DoesNotContain(checkedSteps, c => c.stepId == stepId);
             var (status, completedBy) = await ReadProgressAsync(studentId, stepId);
             Assert.Equal("completed", status);
+            Assert.Equal("manual", completedBy);
+        }
+        finally { await app.DisposeAsync(); }
+    }
+
+    // ---- concurrency: a run racing a manual waive must not clobber it -------
+
+    // Deterministically reproduces the clobber the bug allowed: the runner reads step status
+    // OUTSIDE ApplyAsync's write lock, so a manual waive that commits AFTER that read but
+    // BEFORE the runner's write used to be overwritten to completed/api_check.
+    //
+    // We force exactly that interleaving with a gating transaction that holds the (student,
+    // step) row's key-range lock (UPDLOCK+HOLDLOCK on the absent row). The runner's own
+    // status read (no lock hint, no committed row) does NOT block, so it decides "not done"
+    // — but its ApplyAsync write blocks on our lock. While it is blocked we INSERT the manual
+    // waive and commit; the runner then unblocks and its LOCK-READ sees the waived row.
+    // Pre-fix (no guard) it clobbered the waive to completed/api_check; post-fix the guard
+    // makes it a noop and the human waive survives.
+    [Fact]
+    public async Task Run_racing_a_manual_waive_committed_before_its_write_never_clobbers_it()
+    {
+        var (baseUrl, app) = await StartLoopbackAsync();
+        try
+        {
+            var (studentId, _) = await CreateStudentAsync();
+            var stepId = await CreateStepAsync();
+            await ConfigureCheckAsync(stepId, $"{baseUrl}/truthy", "data.enrolled");
+
+            // Gating transaction: hold the absent row's key-range lock so the runner's
+            // ApplyAsync write blocks. Its plain status read still returns "no row".
+            await using var gate = await _fx.OpenConnectionAsync();
+            var tran = (SqlTransaction)await gate.BeginTransactionAsync();
+            await using (var lockCmd = gate.CreateCommand())
+            {
+                lockCmd.Transaction = tran;
+                lockCmd.CommandText =
+                    $@"SELECT student_id FROM student_progress WITH (UPDLOCK, HOLDLOCK)
+                       WHERE student_id = '{studentId}' AND step_id = {stepId}";
+                await lockCmd.ExecuteNonQueryAsync();
+            }
+
+            // Start the runner; it reads "not done", then blocks on our lock at its write.
+            var runTask = Task.Run(() => RunForStudentAsync(studentId));
+
+            // Give the runner time to reach its blocked ApplyAsync write, then commit the
+            // human waive INSIDE our lock and release it — so the runner's lock-read sees it.
+            await Task.Delay(750);
+            await using (var waiveCmd = gate.CreateCommand())
+            {
+                waiveCmd.Transaction = tran;
+                waiveCmd.CommandText =
+                    $@"INSERT INTO student_progress (student_id, step_id, completed_at, status, note, completed_by)
+                       VALUES ('{studentId}', {stepId}, SYSUTCDATETIME(), 'waived', 'manual exemption', 'manual')";
+                await waiveCmd.ExecuteNonQueryAsync();
+            }
+            await tran.CommitAsync();
+
+            await runTask; // runner now proceeds against the committed waived row.
+
+            // The human waive must survive: the truthy api-check may not overwrite it.
+            var (status, completedBy) = await ReadProgressAsync(studentId, stepId);
+            Assert.Equal("waived", status);
             Assert.Equal("manual", completedBy);
         }
         finally { await app.DisposeAsync(); }
