@@ -286,45 +286,6 @@ public sealed class StudentsController : ControllerBase
 
         var (page, perPage, offset) = QueryHelpers.ParsePagination(Request);
 
-        // Canonical completed-vs-total scope (shared with the analytics drilldown): count
-        // only steps that are active, non-optional, and IN THE STUDENT'S TERM, with progress
-        // status IN ('completed','waived'). tc.total is that same term-scoped active-step
-        // population, so completed can never exceed it.
-        const string baseQuery = $@"
-            SELECT s.id, s.display_name, s.email, s.azure_id, s.tags, s.created_at, s.term_id,
-                   s.emplid, s.applicant_type, s.major, s.residency, s.admit_term,
-                   COALESCE(pc.completed, 0) as completed_steps,
-                   COALESCE(tc.total, 0) as total,
-                   COALESCE(ov.overdue_count, 0) as overdue_step_count
-            FROM students s
-            LEFT JOIN (
-              SELECT sp.student_id, COUNT(*) as completed
-              FROM student_progress sp
-              JOIN students s_req ON s_req.id = sp.student_id
-              JOIN steps st_req ON st_req.id = sp.step_id
-                AND st_req.{QueryHelpers.ActiveStepFilter}
-                AND st_req.term_id = s_req.term_id
-              WHERE sp.status IN ('completed', 'waived')
-              GROUP BY sp.student_id
-            ) pc ON pc.student_id = s.id
-            LEFT JOIN (
-              SELECT term_id, COUNT(*) as total
-              FROM steps
-              WHERE {QueryHelpers.ActiveStepFilter} AND term_id IS NOT NULL
-              GROUP BY term_id
-            ) tc ON tc.term_id = s.term_id
-            LEFT JOIN (
-              SELECT s2.id as student_id, COUNT(st.id) as overdue_count
-              FROM students s2
-              -- deadline_date is ISO yyyy-MM-dd text, so string compare orders correctly and tolerates legacy free-text values (the analytics endpoint uses TRY_CAST for the same column).
-              JOIN steps st ON st.is_active = 1 AND COALESCE(st.is_optional, 0) = 0 AND st.deadline_date IS NOT NULL AND st.deadline_date < CONVERT(varchar(10), CAST(SYSUTCDATETIME() AS date), 23)
-                AND (st.term_id = s2.term_id OR st.term_id IS NULL)
-              LEFT JOIN student_progress sp ON sp.student_id = s2.id AND sp.step_id = st.id
-              WHERE sp.student_id IS NULL
-              GROUP BY s2.id
-            ) ov ON ov.student_id = s.id
-        ";
-
         var where = new List<string>();
         var parameters = new Dictionary<string, object?>();
 
@@ -343,6 +304,47 @@ public sealed class StudentsController : ControllerBase
             where.Add("COALESCE(ov.overdue_count, 0) > 0");
         }
 
+        // When a term is selected the outer WHERE already restricts to that term's students,
+        // so scoping the pc/ov derived tables to the same term is result-preserving but keeps
+        // them from aggregating every other term's rows. tc stays keyed by term (a tiny
+        // per-term COUNT) and is looked up by the student's own term either way.
+        var pcTermFilter = termId is not null ? "AND s_req.term_id = @termId" : "";
+        var ovTermFilter = termId is not null ? "AND s2.term_id = @termId" : "";
+
+        // Canonical completed-vs-total scope (shared with the analytics drilldown): count
+        // only steps that are active, non-optional, and IN THE STUDENT'S TERM, with progress
+        // status IN ('completed','waived'). tc.total is that same term-scoped active-step
+        // population, so completed can never exceed it.
+        var completedJoin = $@"
+            LEFT JOIN (
+              SELECT sp.student_id, COUNT(*) as completed
+              FROM student_progress sp
+              JOIN students s_req ON s_req.id = sp.student_id {pcTermFilter}
+              JOIN steps st_req ON st_req.id = sp.step_id
+                AND st_req.{QueryHelpers.ActiveStepFilter}
+                AND st_req.term_id = s_req.term_id
+              WHERE sp.status IN ('completed', 'waived')
+              GROUP BY sp.student_id
+            ) pc ON pc.student_id = s.id
+            LEFT JOIN (
+              SELECT term_id, COUNT(*) as total
+              FROM steps
+              WHERE {QueryHelpers.ActiveStepFilter} AND term_id IS NOT NULL
+              GROUP BY term_id
+            ) tc ON tc.term_id = s.term_id";
+
+        var overdueJoin = $@"
+            LEFT JOIN (
+              SELECT s2.id as student_id, COUNT(st.id) as overdue_count
+              FROM students s2
+              -- deadline_date is ISO yyyy-MM-dd text, so string compare orders correctly and tolerates legacy free-text values (the analytics endpoint uses TRY_CAST for the same column).
+              JOIN steps st ON st.is_active = 1 AND COALESCE(st.is_optional, 0) = 0 AND st.deadline_date IS NOT NULL AND st.deadline_date < CONVERT(varchar(10), CAST(SYSUTCDATETIME() AS date), 23)
+                AND (st.term_id = s2.term_id OR st.term_id IS NULL)
+              LEFT JOIN student_progress sp ON sp.student_id = s2.id AND sp.step_id = st.id
+              WHERE sp.student_id IS NULL {ovTermFilter}
+              GROUP BY s2.id
+            ) ov ON ov.student_id = s.id";
+
         var whereClause = where.Count > 0 ? $"WHERE {string.Join(" AND ", where)}" : "";
 
         // Sort mapping.
@@ -358,14 +360,26 @@ public sealed class StudentsController : ControllerBase
             default: orderBy = "s.created_at DESC"; break;
         }
 
+        // pc/tc never appear in WHERE and only feed the SELECT, so the COUNT skips them
+        // entirely; ov is only needed when overdue_only filters on it. Counting a bare
+        // (optionally ov-joined) students table gives the same total as the page query.
+        var countJoins = overdueOnly == "1" ? overdueJoin : "";
         var total = await _db.QueryOneAsync<int>(
-            $"SELECT COUNT(*) as count FROM ({baseQuery} {whereClause}) sub",
+            $"SELECT COUNT(*) as count FROM students s {countJoins} {whereClause}",
             parameters);
 
         parameters["perPage"] = perPage;
         parameters["offset"] = offset;
         var students = await _db.QueryAllAsync<StudentListRow>(
-            $"{baseQuery} {whereClause} ORDER BY {orderBy} OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
+            $@"SELECT s.id, s.display_name, s.email, s.azure_id, s.tags, s.created_at, s.term_id,
+                      s.emplid, s.applicant_type, s.major, s.residency, s.admit_term,
+                      COALESCE(pc.completed, 0) as completed_steps,
+                      COALESCE(tc.total, 0) as total,
+                      COALESCE(ov.overdue_count, 0) as overdue_step_count
+               FROM students s
+               {completedJoin}
+               {overdueJoin}
+               {whereClause} ORDER BY {orderBy} OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
             parameters);
 
         return Ok(new { students, total, page, per_page = perPage });
