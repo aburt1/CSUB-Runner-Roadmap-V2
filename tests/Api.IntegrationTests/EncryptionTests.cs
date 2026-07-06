@@ -159,6 +159,42 @@ public class EncryptionTests
     public void Missing_or_malformed_key_in_production_is_rejected(string? badKey) =>
         Assert.Throws<InvalidOperationException>(() => new Encryption(Config(badKey), Production));
 
+    // SEC-02: the committed dev encryption key is a valid 64-hex string but NOT
+    // all-same-character, so the old IsWeakKey (all-same only) let it PASS the Production
+    // fail-safe. Read the real committed value from appsettings.Development.json at test
+    // time (never hardcode the secret here) and assert Production rejects it.
+    [Fact]
+    public void Committed_dev_encryption_key_in_production_is_rejected()
+    {
+        var committedDevKey = CommittedDevEncryptionKey();
+        // Sanity: the value is well-formed hex (so only the strength check can reject it).
+        Assert.Equal(64, committedDevKey.Length);
+
+        Assert.Throws<InvalidOperationException>(() => new Encryption(Config(committedDevKey), Production));
+    }
+
+    // A short repeating unit tiled to 64 hex chars is low-entropy and must be rejected,
+    // even though it is not all-same-character.
+    [Theory]
+    [InlineData("abababababababababababababababababababababababababababababababab")] // "ab" x32
+    [InlineData("deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef")] // "deadbeef" x8
+    public void Low_entropy_repeating_pattern_key_in_production_is_rejected(string weakKey) =>
+        Assert.Throws<InvalidOperationException>(() => new Encryption(Config(weakKey), Production));
+
+    // Loads ApiCheck:EncryptionKey from the committed appsettings.Development.json copied
+    // next to the test binaries (CopyToOutputDirectory). Keeps the secret VALUE out of
+    // this source file.
+    private static string CommittedDevEncryptionKey()
+    {
+        var devConfig = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.Development.json", optional: false)
+            .Build();
+        var key = devConfig["ApiCheck:EncryptionKey"];
+        Assert.False(string.IsNullOrEmpty(key), "appsettings.Development.json must define ApiCheck:EncryptionKey");
+        return key!;
+    }
+
     private static bool IsLowerHex(string value)
     {
         foreach (var c in value)

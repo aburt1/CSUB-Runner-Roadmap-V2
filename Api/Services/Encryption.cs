@@ -32,7 +32,7 @@ public sealed class Encryption
                     "ApiCheck:EncryptionKey must be a 64-character hex string (32 bytes) in Production. Generate one: openssl rand -hex 32");
             if (IsWeakKey(hex))
                 throw new InvalidOperationException(
-                    "ApiCheck:EncryptionKey is a placeholder/weak value (repeated single character); set a real random key in Production.");
+                    "ApiCheck:EncryptionKey is a placeholder/weak value (the committed dev key or a low-entropy repeating pattern); set a real random key in Production. Generate one: openssl rand -hex 32");
         }
 
         if (!string.IsNullOrEmpty(hex) && IsHex64(hex))
@@ -47,12 +47,31 @@ public sealed class Encryption
         }
     }
 
-    // A 64-hex key made of one repeated character (e.g. all zeros) is a placeholder.
-    private static bool IsWeakKey(string hex)
+    // A key is weak if it is a low-entropy repeating pattern: a short unit tiled to fill
+    // the 64 chars (all-same-character, a 2-char unit x32, an 8-char unit x8, etc.). This
+    // also catches the committed dev key in Api/appsettings.Development.json:ApiCheck:
+    // EncryptionKey (a 16-char hex unit tiled x4), which is valid 64-hex and so slipped
+    // past the old all-same-char-only check. Mirrors JwtService's known-placeholder guard:
+    // a well-formed but guessable/published key must not pass the Production fail-safe.
+    // (The dev value is referenced by location + type, not inlined, so this file holds no
+    // secret literal.)
+    private static bool IsWeakKey(string hex) => IsRepeatingPattern(hex);
+
+    // True when the value is a unit of length < len repeated to fill it (unit lengths that
+    // divide the string: 1, 2, 4, 8, 16, 32 for a 64-char key). Compared case-insensitively
+    // so "AAAA..." and "aaaa..." are both caught.
+    private static bool IsRepeatingPattern(string hex)
     {
-        for (var i = 1; i < hex.Length; i++)
-            if (char.ToLowerInvariant(hex[i]) != char.ToLowerInvariant(hex[0])) return false;
-        return true;
+        var len = hex.Length;
+        for (var unit = 1; unit <= len / 2; unit++)
+        {
+            if (len % unit != 0) continue;
+            var matches = true;
+            for (var i = unit; i < len && matches; i++)
+                if (char.ToLowerInvariant(hex[i]) != char.ToLowerInvariant(hex[i - unit])) matches = false;
+            if (matches) return true;
+        }
+        return false;
     }
 
     // True when the key is present and exactly 64 hex chars.

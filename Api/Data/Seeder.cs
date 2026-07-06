@@ -116,6 +116,18 @@ public static class Seeder
         || password == "admin123"
         || password.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase);
 
+    // A production integration key is unacceptable if it is too short, the committed dev
+    // default (the "dev-"-prefixed value in Api/appsettings.Development.json:Integration:
+    // DefaultKey), or a placeholder from .env.example. Mirrors the admin-password and
+    // JWT/encryption placeholder guards. (An empty key is handled by the caller's "skip in
+    // production when unset" branch, not seeded as weak. The dev value is referenced by
+    // location + type, not inlined.)
+    public static bool IsWeakIntegrationKey(string? key) =>
+        string.IsNullOrEmpty(key)
+        || key.Length < 16
+        || key.StartsWith("dev-", StringComparison.OrdinalIgnoreCase)
+        || key.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase);
+
     private static async Task SeedDefaultAdminAsync(Db db, IConfiguration config, bool isProduction, ILogger? logger)
     {
         var count = await db.QueryOneAsync<int>("SELECT COUNT(*) FROM admin_users");
@@ -149,6 +161,11 @@ public static class Seeder
                 count, isProduction && string.IsNullOrEmpty(defaultKey));
             return;
         }
+
+        // Fail safe in production: if a default integration key IS provided, refuse to seed
+        // a weak/committed-dev/placeholder value (an unset key already returned above).
+        if (isProduction && IsWeakIntegrationKey(defaultKey))
+            throw new InvalidOperationException("Integration:DefaultKey must be a strong, non-default value in Production. Refusing to seed a weak integration credential.");
 
         // Use IsNullOrEmpty consistent with the rest of the app (compose passes unset vars
         // as empty strings, not null, so ?? alone would seed a client with name "").

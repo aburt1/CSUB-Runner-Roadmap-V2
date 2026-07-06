@@ -67,6 +67,36 @@ public class SecurityHardeningTests
     public void Strong_admin_passwords_are_accepted(string password) =>
         Assert.False(Seeder.IsWeakAdminPassword(password));
 
+    // SEC-02: the integration default key had no strength check, so the committed dev key
+    // could seed a live integration credential in Production. Read the committed value from
+    // appsettings.Development.json (do not hardcode the secret) and assert it's rejected.
+    [Fact]
+    public void Committed_dev_integration_key_is_rejected()
+    {
+        var devConfig = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.Development.json", optional: false)
+            .Build();
+        var committedDevKey = devConfig["Integration:DefaultKey"];
+        Assert.False(string.IsNullOrEmpty(committedDevKey), "appsettings.Development.json must define Integration:DefaultKey");
+
+        Assert.True(Seeder.IsWeakIntegrationKey(committedDevKey));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("short")]                              // < 16 chars
+    [InlineData("CHANGE_ME_integration_key")]          // .env.example placeholder
+    public void Weak_integration_keys_are_rejected(string? key) =>
+        Assert.True(Seeder.IsWeakIntegrationKey(key));
+
+    [Theory]
+    [InlineData("Zx9-q7Km2Vn4-Rt6Ws8Lp1Bd3")]         // random-ish, >= 16 chars, no placeholder marker
+    [InlineData("prod-peoplesoft-2026-a1b2c3d4e5f6")]
+    public void Strong_integration_keys_are_accepted(string key) =>
+        Assert.False(Seeder.IsWeakIntegrationKey(key));
+
     // Break-glass with a weak/placeholder password is fail-closed in Production: the
     // endpoint behaves as if unconfigured (404) so a guessable emergency credential can
     // never grant sysadmin. The weak-password path returns before touching DB/HttpContext.
