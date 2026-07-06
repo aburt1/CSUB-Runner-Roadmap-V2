@@ -1,8 +1,11 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Text.Json;
 using Api.Auth;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Routing;
 
 namespace Api.IntegrationTests;
 
@@ -106,6 +109,59 @@ public class AdminRolesTests
         var res = await client.GetAsync("/api/admin/steps");
 
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+    }
+
+    // ---- structural default-deny: every admin action is [AdminAuth]-gated ----
+
+    // SEC-03: a future action added to an admin controller without its own [AdminAuth]
+    // must still be denied by a class-level [AdminAuth] backstop. Reflect over every
+    // controller in the Api.Controllers.Admin namespace (the protected admin surface —
+    // AdminAuthController lives in Api.Controllers precisely because it has anonymous
+    // login/SSO endpoints) and assert every public HTTP action carries [AdminAuth] at
+    // the class or action level.
+    [Fact]
+    public void Every_admin_namespace_action_is_gated_by_AdminAuth()
+    {
+        var adminControllers = typeof(Api.Controllers.Admin.StepsController).Assembly
+            .GetTypes()
+            .Where(t => t.Namespace == "Api.Controllers.Admin"
+                        && typeof(ControllerBase).IsAssignableFrom(t)
+                        && !t.IsAbstract)
+            .ToList();
+
+        // Guard the guard: if the namespace scan ever finds nothing, the test would be
+        // vacuously green. We know there are several admin controllers.
+        Assert.True(adminControllers.Count >= 6,
+            $"expected the Api.Controllers.Admin scan to find the admin controllers; found {adminControllers.Count}");
+
+        var ungated = new List<string>();
+        var missingClassBackstop = new List<string>();
+        foreach (var controller in adminControllers)
+        {
+            var classGated = controller.GetCustomAttribute<AdminAuthAttribute>(inherit: true) is not null;
+
+            // The structural default-deny: EVERY admin controller must carry a class-level
+            // [AdminAuth] so an action added later without its own attribute is still denied.
+            if (!classGated)
+                missingClassBackstop.Add(controller.Name);
+
+            var actions = controller
+                .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(m => !m.IsSpecialName
+                            && m.GetCustomAttributes<HttpMethodAttribute>(inherit: true).Any());
+
+            foreach (var action in actions)
+            {
+                var actionGated = action.GetCustomAttribute<AdminAuthAttribute>(inherit: true) is not null;
+                if (!classGated && !actionGated)
+                    ungated.Add($"{controller.Name}.{action.Name}");
+            }
+        }
+
+        Assert.True(missingClassBackstop.Count == 0,
+            "admin controllers lacking a class-level [AdminAuth] default-deny backstop: " + string.Join(", ", missingClassBackstop));
+        Assert.True(ungated.Count == 0,
+            "admin actions reachable without [AdminAuth] (class or action level): " + string.Join(", ", ungated));
     }
 
     // ---- mid-session role demotion: the per-request DB re-check re-authorizes on the CURRENT role ----

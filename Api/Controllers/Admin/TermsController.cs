@@ -8,12 +8,13 @@ using Microsoft.AspNetCore.Mvc;
 namespace Api.Controllers.Admin;
 
 // Admin term management + clone.
-// Every route requires an authenticated admin (any role); the mutation routes
-// additionally require the 'admissions_editor' or 'sysadmin' role. So GET is
-// [AdminAuth] (authenticated admin) and the mutations are
-// [AdminAuth("admissions_editor", "sysadmin")].
+// Class-level [AdminAuth] is the default-deny backstop: every route requires at least an
+// authenticated admin even if a future action lacks its own attribute. The GET list needs
+// only that; the mutation routes additionally require the 'admissions_editor' or 'sysadmin'
+// role via [AdminAuth("admissions_editor", "sysadmin")].
 [ApiController]
 [Route("api/admin/terms")]
+[AdminAuth]
 public sealed class TermsController : ControllerBase
 {
     private readonly Db _db;
@@ -28,8 +29,8 @@ public sealed class TermsController : ControllerBase
     public sealed record CloneTermRequest(string? Name, string? Start_date, string? End_date, int[]? Step_ids);
 
     // GET /api/admin/terms
+    // Covered by the class-level [AdminAuth] (any authenticated admin); no extra role gate.
     [HttpGet]
-    [AdminAuth]
     public async Task<IActionResult> List()
     {
         var terms = await _db.QueryAllAsync<TermWithCounts>(@"

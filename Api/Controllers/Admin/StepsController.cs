@@ -9,11 +9,13 @@ namespace Api.Controllers.Admin;
 
 // Admin steps CRUD.
 //
-// The GET list requires any authenticated admin; every mutation additionally
-// requires the 'admissions_editor' or 'sysadmin' role. So [AdminAuth] is on the
-// GET list and [AdminAuth("admissions_editor", "sysadmin")] on every mutation.
+// Class-level [AdminAuth] is the default-deny backstop: every action requires at least
+// an authenticated admin even if a future action is added without its own attribute.
+// The GET list needs only that; every mutation additionally requires the
+// 'admissions_editor' or 'sysadmin' role via [AdminAuth("admissions_editor", "sysadmin")].
 [ApiController]
 [Route("api/admin/steps")]
+[AdminAuth]
 public sealed class StepsController : ControllerBase
 {
     private readonly Db _db;
@@ -43,8 +45,8 @@ public sealed class StepsController : ControllerBase
     }
 
     // GET /api/admin/steps — list all steps (including inactive), optional ?term_id=
+    // Covered by the class-level [AdminAuth] (any authenticated admin); no extra role gate.
     [HttpGet]
-    [AdminAuth]
     public async Task<IActionResult> List()
     {
         var termId = QueryHelpers.ParseTermId(Request);
