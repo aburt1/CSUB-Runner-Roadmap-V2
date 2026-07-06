@@ -183,7 +183,16 @@ public sealed class AnalyticsController : ControllerBase
         }
 
         var datePart = DateTime.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        Response.Headers.ContentDisposition = $"attachment; filename=\"progress-{termName}-{datePart}.csv\"";
+        var fileName = $"progress-{termName}-{datePart}.csv";
+
+        // termName is admin-controlled (a term's name), so it can contain a double quote
+        // (which would break the Content-Disposition token) or non-ASCII characters like
+        // "Otoño 2026" (which throw under Kestrel's ASCII-only header encoding). Build the
+        // header via ContentDispositionHeaderValue.SetHttpFileName, which emits a safe ASCII
+        // `filename` fallback plus an RFC 5987 `filename*` (percent-encoded UTF-8).
+        var contentDisposition = new Microsoft.Net.Http.Headers.ContentDispositionHeaderValue("attachment");
+        contentDisposition.SetHttpFileName(fileName);
+        Response.Headers.ContentDisposition = contentDisposition.ToString();
         return Content(csvContent, "text/csv");
     }
 

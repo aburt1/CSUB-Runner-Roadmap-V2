@@ -82,6 +82,39 @@ public class AdminAnalyticsTests
         Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
     }
 
+    // SEC-07: the export interpolated the admin-controlled term name into the
+    // Content-Disposition filename unescaped. A double quote broke the token and a
+    // non-ASCII name (e.g. "Otoño") threw a 500 under Kestrel's ASCII header encoding.
+    // The name here has BOTH a non-ASCII char and a quote; the export must be 200 with a
+    // well-formed Content-Disposition (safe ASCII `filename` + RFC 5987 `filename*`).
+    [Fact]
+    public async Task ExportProgress_with_nonascii_and_quote_term_name_is_200_with_valid_content_disposition()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        // Term name with a non-ASCII char (ñ, ó) AND a double quote.
+        var termName = $"Otoño \"2026\" {suffix}";
+        await _fx.ExecSqlAsync(
+            $"INSERT INTO terms (name, is_active) VALUES (N'{termName}', 0)");
+        var termId = Convert.ToInt32(await _fx.ScalarAsync(
+            $"SELECT id FROM terms WHERE name = N'{termName}'"));
+
+        var res = await _fx.Admin().GetAsync($"/api/admin/export/progress?term_id={termId}");
+
+        // Before the fix this 500'd (ASCII header encoding) or produced a broken token.
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.Equal("text/csv", res.Content.Headers.ContentType?.MediaType);
+
+        var cd = res.Content.Headers.ContentDisposition;
+        Assert.NotNull(cd);
+        Assert.Equal("attachment", cd!.DispositionType);
+        // A safe ASCII fallback filename is present and quoted; the raw quote/non-ASCII
+        // from the term name must NOT appear verbatim in the ASCII `filename` token.
+        Assert.False(string.IsNullOrEmpty(cd.FileName));
+        // FileNameStar carries the full (percent-encoded UTF-8) name per RFC 5987.
+        Assert.False(string.IsNullOrEmpty(cd.FileNameStar));
+        Assert.EndsWith(".csv", cd.FileNameStar!);
+    }
+
     // ─── analytics/step-completion ───────────────────────────
 
     [Fact]
