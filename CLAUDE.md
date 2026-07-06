@@ -51,6 +51,7 @@ cd client && npm install && npm run dev       # Vue client on :3000, proxies /ap
 
 # Before declaring work done — run the full quality loop:
 cd client && npm run lint && npm run format:check && npm run typecheck && npm run test && npm run build
+dotnet format --verify-no-changes             # from the repo ROOT — C# formatting gate
 dotnet test                                   # from the repo ROOT (needs the sqlserver container up)
 ```
 

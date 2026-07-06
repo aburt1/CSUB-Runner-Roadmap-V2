@@ -34,10 +34,15 @@ if [ "$client_touched" -gt 0 ]; then
 fi
 
 if [ "$api_touched" -gt 0 ]; then
-  echo "pre-commit: Api files staged — running dotnet build"
+  echo "pre-commit: Api files staged — running dotnet build + dotnet format --verify-no-changes"
   dotnet build "$repo_root/Api/Api.csproj"
   if [ $? -ne 0 ]; then
     echo "pre-commit: API build FAILED (dotnet build Api/Api.csproj)"
+    failed=1
+  fi
+  dotnet format "$repo_root/CsubRunnerRoadmapV2.slnx" --verify-no-changes
+  if [ $? -ne 0 ]; then
+    echo "pre-commit: dotnet format check FAILED — run 'dotnet format' from the repo root to fix"
     failed=1
   fi
 fi

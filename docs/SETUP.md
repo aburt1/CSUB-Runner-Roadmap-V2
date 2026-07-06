@@ -18,6 +18,7 @@ Before you push:
 
 ```bash
 cd client && npm run lint && npm run format:check && npm run test && npm run build
+dotnet format --verify-no-changes             # from the repo root — C# formatting gate
 dotnet build && dotnet test                   # from the repo root
 ```
 
@@ -272,8 +273,8 @@ directory.
 | `npm run test` | `vitest run` | Run the Vitest unit suite **once** and exit. This is the CI form. |
 | `npm run test:watch` | `vitest` | Run Vitest in watch mode — re-runs the affected tests as you edit. Use this while developing. |
 | `npm run lint` | `eslint .` | Lint with the flat ESLint config (`eslint.config.js`). ESLint owns *correctness* rules; `skip-formatting` hands *layout* to Prettier so the two don't fight. |
-| `npm run format` | `prettier --write src` | Rewrite files under `src/` to match Prettier's style (no semicolons, single quotes, 100-col, trailing commas — see `.prettierrc.json`). |
-| `npm run format:check` | `prettier --check src` | Verify formatting **without** changing files. Exits non-zero if anything is mis-formatted — this is what CI runs. |
+| `npm run format` | `prettier --write .` | Rewrite files across the client root to match Prettier's style (no semicolons, single quotes, 100-col, trailing commas — see `.prettierrc.json`; `.prettierignore` excludes `dist`/`node_modules`/etc.). |
+| `npm run format:check` | `prettier --check .` | Verify formatting **without** changing files. Exits non-zero if anything is mis-formatted — this is what CI runs. |
 
 A typical pre-push loop:
 
