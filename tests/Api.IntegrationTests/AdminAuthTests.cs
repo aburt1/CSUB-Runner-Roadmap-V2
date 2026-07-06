@@ -176,6 +176,52 @@ public class AdminAuthTests
         Assert.Equal("Azure AD is not configured", body.GetProperty("error").GetString());
     }
 
+    // SEC-05: when an Entra token's email matches a pre-provisioned admin row that has no
+    // azure_id yet, the SSO handler binds that identity (stamps azure_id). That first bind
+    // must leave an audit trail (action admin_sso_link) so the linking is not silent.
+    [Fact]
+    public async Task Sso_email_link_stamps_azure_id_and_writes_admin_sso_link_audit()
+    {
+        var email = $"sso-link-{Guid.NewGuid():N}@csub.edu";
+        var oid = $"oid-{Guid.NewGuid():N}";
+        // Pre-provision an active admin by email only — no azure_id (the email-link case).
+        await _fx.ExecSqlAsync(
+            $"INSERT INTO admin_users (email, password_hash, role, display_name, is_active) " +
+            $"VALUES ('{email}', 'x', 'admissions', 'SSO Link Admin', 1)");
+
+        _fx.FakeAzure.Configured = true;
+        _fx.FakeAzure.NextClaims = (oid, email, "SSO Link Admin", null);
+        HttpResponseMessage res;
+        try
+        {
+            res = await _fx.Anonymous().PostAsJsonAsync(
+                "/api/admin/auth/sso", new { idToken = "fake-token" });
+        }
+        finally
+        {
+            _fx.FakeAzure.Configured = false;
+            _fx.FakeAzure.NextClaims = null;
+        }
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+
+        // azure_id is now stamped onto the matched row.
+        Assert.Equal(oid, Convert.ToString(await _fx.ScalarAsync(
+            $"SELECT azure_id FROM admin_users WHERE email = '{email}'")));
+
+        // Exactly one admin_sso_link audit row exists for this admin, recording the oid.
+        var count = Convert.ToInt32(await _fx.ScalarAsync(
+            $"SELECT COUNT(*) FROM audit_log WHERE action = 'admin_sso_link' AND changed_by = '{email}'"));
+        Assert.Equal(1, count);
+
+        var details = Convert.ToString(await _fx.ScalarAsync(
+            $"SELECT TOP 1 details FROM audit_log WHERE action = 'admin_sso_link' AND changed_by = '{email}' ORDER BY id DESC"));
+        Assert.NotNull(details);
+        var detailsJson = JsonDocument.Parse(details!).RootElement;
+        Assert.Equal(oid, detailsJson.GetProperty("azure_oid").GetString());
+        Assert.Equal("email", detailsJson.GetProperty("matched_by").GetString());
+    }
+
     // ----------------------------------------------------------- local-login
 
     [Fact]

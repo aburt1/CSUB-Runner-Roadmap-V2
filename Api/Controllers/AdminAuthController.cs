@@ -109,8 +109,12 @@ public sealed class AdminAuthController : ControllerBase
         }
 
         var admin = await _db.QueryOneAsync<AdminUser>("SELECT * FROM admin_users WHERE azure_id = @oid", new { oid });
+        var matchedByEmail = false;
         if (admin is null && !string.IsNullOrEmpty(email))
+        {
             admin = await _db.QueryOneAsync<AdminUser>("SELECT * FROM admin_users WHERE LOWER(email) = LOWER(@email)", new { email });
+            matchedByEmail = admin is not null;
+        }
 
         if (admin is null)
             return StatusCode(403, new { error = "No admin account found. Contact your system administrator." });
@@ -118,7 +122,23 @@ public sealed class AdminAuthController : ControllerBase
             return StatusCode(403, new { error = "Account is inactive" });
 
         if (string.IsNullOrEmpty(admin.azure_id))
+        {
             await _db.ExecuteAsync("UPDATE admin_users SET azure_id = @oid WHERE id = @id", new { oid, id = admin.id });
+
+            // Audit the first-time binding of an Entra identity to a pre-provisioned admin.
+            // This is the moment a token's `oid` claims that admin row; without a record it
+            // happens silently. Actor is the admin being linked; oid/email are identifiers,
+            // not secrets. `matchedByEmail` distinguishes the email-link path (a token whose
+            // email matched a row that had no azure_id yet) from any other first bind.
+            await Audit.LogAsync(_db, admin.email, "admin_user", admin.id, "admin_sso_link",
+                new
+                {
+                    admin_email = admin.email,
+                    azure_oid = oid,
+                    token_email = string.IsNullOrEmpty(email) ? null : email,
+                    matched_by = matchedByEmail ? "email" : "azure_id",
+                });
+        }
         if (!string.IsNullOrEmpty(name) && name != admin.display_name)
             await _db.ExecuteAsync("UPDATE admin_users SET display_name = @name WHERE id = @id", new { name, id = admin.id });
 
