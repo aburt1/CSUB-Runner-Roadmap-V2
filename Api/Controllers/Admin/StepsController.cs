@@ -114,8 +114,8 @@ public sealed class StepsController : ControllerBase
         var isOptional = IsTruthy(body, "is_optional") ? 1 : 0;
 
         var newId = await _db.InsertReturningAsync<int>(
-            @"INSERT INTO steps (title, description, icon, sort_order, deadline, deadline_date, guide_content, links, required_tags, required_tag_mode, excluded_tags, contact_info, term_id, step_key, is_active, is_public, is_optional)
-              VALUES (@title, @description, @icon, @sort_order, @deadline, @deadline_date, @guide_content, @links, @required_tags, @required_tag_mode, @excluded_tags, @contact_info, @term_id, @step_key, 1, @is_public, @is_optional);
+            $@"INSERT INTO steps {StepColumns.InsertColumns}
+              VALUES {StepColumns.InsertValues};
               SELECT CAST(SCOPE_IDENTITY() AS int);",
             new
             {
@@ -133,6 +133,7 @@ public sealed class StepsController : ControllerBase
                 contact_info = contactInfo,
                 term_id = termId.Value,
                 step_key = nextStepKey,
+                is_active = 1,
                 is_public = isPublic,
                 is_optional = isOptional,
             });
@@ -218,13 +219,9 @@ public sealed class StepsController : ControllerBase
         if (term is null)
             return BadRequest(new { error = "Invalid term_id" });
 
-        // Build the dynamic SET clause exactly over the same field list/order.
-        string[] fields =
-        {
-            "title", "description", "icon", "sort_order", "deadline", "deadline_date",
-            "guide_content", "links", "required_tags", "required_tag_mode", "excluded_tags",
-            "contact_info", "term_id", "is_active", "is_public", "is_optional",
-        };
+        // Build the dynamic SET clause over the canonical writable column set (step_key is
+        // regenerated below, never patched from the body).
+        string[] fields = StepColumns.UpdateWhitelist;
 
         var setClauses = new List<string>();
         // Dapper accepts IDictionary<string, object?> directly — no wrapper needed.
@@ -350,8 +347,8 @@ public sealed class StepsController : ControllerBase
             fallback: $"step-{step.id}-copy");
 
         var newId = await _db.InsertReturningAsync<int>(
-            @"INSERT INTO steps (title, description, icon, sort_order, deadline, deadline_date, guide_content, links, required_tags, required_tag_mode, excluded_tags, contact_info, term_id, step_key, is_active, is_public, is_optional)
-              VALUES (@title, @description, @icon, @sort_order, @deadline, @deadline_date, @guide_content, @links, @required_tags, @required_tag_mode, @excluded_tags, @contact_info, @term_id, @step_key, 1, @is_public, @is_optional);
+            $@"INSERT INTO steps {StepColumns.InsertColumns}
+              VALUES {StepColumns.InsertValues};
               SELECT CAST(SCOPE_IDENTITY() AS int);",
             new
             {
@@ -369,6 +366,7 @@ public sealed class StepsController : ControllerBase
                 contact_info = step.contact_info,
                 term_id = step.term_id,
                 step_key = duplicatedStepKey,
+                is_active = 1,
                 is_public = step.is_public ?? 0,
                 is_optional = step.is_optional ?? 0,
             });

@@ -191,8 +191,8 @@ public sealed class TermsController : ControllerBase
             foreach (var step in sourceSteps)
             {
                 var newStepId = await txDb.InsertReturningAsync<int>(
-                    @"INSERT INTO steps (title, description, icon, sort_order, deadline, deadline_date, guide_content, links, required_tags, required_tag_mode, excluded_tags, contact_info, term_id, step_key, is_active, is_public, is_optional)
-                       VALUES (@title, @description, @icon, @sort_order, @deadline, @deadline_date, @guide_content, @links, @required_tags, @required_tag_mode, @excluded_tags, @contact_info, @term_id, @step_key, @is_active, @is_public, @is_optional);
+                    $@"INSERT INTO steps {StepColumns.InsertColumns}
+                       VALUES {StepColumns.InsertValues};
                       SELECT CAST(SCOPE_IDENTITY() AS int);",
                     new
                     {

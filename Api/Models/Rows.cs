@@ -27,6 +27,9 @@ public sealed class Student
     public DateTime created_at { get; set; }
 }
 
+// The writable columns of this row (everything except id) are enumerated canonically in
+// Api/Data/StepColumns.cs, which drives every full-row INSERT + the admin update whitelist.
+// Adding a persisted column here means adding it there (and to the Seeder's INSERT) too.
 public sealed class Step
 {
     public int id { get; set; }

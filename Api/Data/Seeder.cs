@@ -77,6 +77,10 @@ public static class Seeder
                     ? JsonSerializer.Serialize(item.required_tags)
                     : null;
 
+                // This INSERT deliberately reorders the columns and hard-codes NULL for
+                // excluded_tags/contact_info/links (the manifest never carries them), so it
+                // does NOT use StepColumns. If you add a column to the steps table, update
+                // both this list and StepColumns.Insert (Api/Data/StepColumns.cs).
                 await tx.ExecuteAsync(
                     @"INSERT INTO steps
                         (title, description, icon, sort_order, deadline, deadline_date, guide_content,
