@@ -559,9 +559,9 @@ public sealed class IntegrationsController : ControllerBase
         _ => null,
     };
 
-    // Resolve the target cohort. THE single swappable place for cohort resolution: an
-    // explicit term_id is validated against dbo.terms; otherwise we fall back to the
-    // current active term (same SQL AuthController uses on provisioning).
+    // Resolve the target cohort: an explicit term_id is validated against dbo.terms;
+    // otherwise we fall back to the current active term (QueryHelpers.GetActiveTermIdAsync,
+    // the same resolution AuthController uses on provisioning).
     private async Task<TermResolution> ResolveTermIdAsync(int? requested)
     {
         if (requested.HasValue)
@@ -573,8 +573,7 @@ public sealed class IntegrationsController : ControllerBase
             return new TermResolution { TermId = found.Value };
         }
 
-        var active = await _db.QueryOneAsync<int?>(
-            "SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
+        var active = await QueryHelpers.GetActiveTermIdAsync(_db);
         if (active is null)
             return new TermResolution { ErrorCode = "no_active_term", Error = "No active term to assign the student to" };
         return new TermResolution { TermId = active.Value };

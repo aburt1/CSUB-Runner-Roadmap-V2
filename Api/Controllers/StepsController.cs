@@ -80,8 +80,7 @@ public sealed class StepsController : ControllerBase
 
         if (termId is null)
         {
-            termId = await _db.QueryOneAsync<int?>(
-                "SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
+            termId = await QueryHelpers.GetActiveTermIdAsync(_db);
         }
 
         IReadOnlyList<Step> steps = termId is not null

@@ -26,6 +26,12 @@ public static class QueryHelpers
         return (page, perPage, (page - 1) * perPage);
     }
 
+    // The current active term: newest active term wins (ORDER BY id DESC).
+    // Used when provisioning students and resolving an unspecified cohort.
+    // NOTE: the seeder deliberately picks the OLDEST active term instead — do not fold that in.
+    public static Task<int?> GetActiveTermIdAsync(Db db) =>
+        db.QueryOneAsync<int?>("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
+
     public static Task<int> CountActiveStepsAsync(Db db, int termId) =>
         db.QueryOneAsync<int>(
             $"SELECT COUNT(*) FROM steps WHERE {ActiveStepFilter} AND term_id = @termId",

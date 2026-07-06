@@ -1,5 +1,6 @@
 using Api.Auth;
 using Api.Data;
+using Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 
@@ -56,7 +57,7 @@ public sealed class AuthController : ControllerBase
         if (student is null)
         {
             var studentId = Guid.NewGuid().ToString();
-            var termId = await _db.QueryOneAsync<int?>("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
+            var termId = await QueryHelpers.GetActiveTermIdAsync(_db);
             await _db.ExecuteAsync(
                 "INSERT INTO students (id, display_name, email, emplid, term_id) VALUES (@studentId, @name, @email, @emplid, @termId)",
                 new { studentId, name, email, emplid = string.IsNullOrWhiteSpace(emplid) ? null : emplid.Trim(), termId });
@@ -136,7 +137,7 @@ public sealed class AuthController : ControllerBase
                 // Genuinely new student. Record their student ID number so a later SIS push
                 // (keyed on it) links to this row instead of creating a duplicate.
                 var studentId = Guid.NewGuid().ToString();
-                var termId = await _db.QueryOneAsync<int?>("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
+                var termId = await QueryHelpers.GetActiveTermIdAsync(_db);
                 var normalizedEmplid = string.IsNullOrWhiteSpace(emplid) ? null : emplid.Trim();
                 try
                 {
