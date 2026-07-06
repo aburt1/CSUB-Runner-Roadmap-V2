@@ -43,16 +43,15 @@ const viewMode = ref<ViewMode>('timeline')
 const showOnlyIncomplete = ref<boolean>(false)
 const updatingOptionalStepId = ref<number | null>(null)
 
-// API check polling — trigger background checks and poll for results
-let intervalId: ReturnType<typeof setInterval> | null = null
-let stopped = false
+// API check polling — trigger background checks and poll for results.
+// Each watch firing starts its own run; a monotonically increasing generation
+// counter lets an orphaned run (from an overlapping re-fire or unmount) notice
+// it is no longer the current owner and self-terminate. cleanupPolling() bumps
+// the generation so no run's callback can clear a *later* run's interval.
+let currentGeneration = 0
 
 function cleanupPolling() {
-  stopped = true
-  if (intervalId) {
-    clearInterval(intervalId)
-    intervalId = null
-  }
+  currentGeneration++
 }
 
 watch(
@@ -63,7 +62,7 @@ watch(
 
     if (loading.value || !token.value || steps.value.length === 0) return
 
-    stopped = false
+    const myGeneration = currentGeneration
     const currentToken = token.value
 
     fetch('/api/roadmap/run-api-checks', {
@@ -72,12 +71,16 @@ watch(
     })
       .then((res) => res.json())
       .then((data: { status: string }) => {
-        if (stopped || data.status !== 'started') return
+        if (myGeneration !== currentGeneration || data.status !== 'started') return
 
         const startTime = Date.now()
-        intervalId = setInterval(async () => {
+        const myInterval = setInterval(async () => {
+          if (myGeneration !== currentGeneration) {
+            clearInterval(myInterval)
+            return
+          }
           if (Date.now() - startTime > 30000) {
-            clearInterval(intervalId!)
+            clearInterval(myInterval)
             return
           }
           try {
@@ -86,9 +89,9 @@ watch(
             })
             const poll: { checkedSteps?: number[]; status: string } = await res.json()
             if (poll.checkedSteps?.length && poll.checkedSteps.length > 0) retry()
-            if (poll.status === 'complete') clearInterval(intervalId!)
+            if (poll.status === 'complete') clearInterval(myInterval)
           } catch {
-            clearInterval(intervalId!)
+            clearInterval(myInterval)
           }
         }, 2000)
       })
