@@ -642,43 +642,75 @@ public sealed class AnalyticsController : ControllerBase
         var divisor = totalSteps > 0 ? totalSteps : 1;
 
         // fixed well-known cohort tags; matched as substrings of the JSON tags text
-        // — exact-token matching is deliberately not attempted here, so keep tag names non-overlapping.
+        // — exact-token matching is deliberately not attempted here, so keep tag names
+        // non-overlapping. The order here is the source of truth for the tag{N} columns below.
         var tags = new[] { "freshman", "transfer", "first-gen", "honors", "athlete", "eop", "veteran", "out-of-state" };
-        var result = new List<CohortComparisonItem>();
 
-        var termFilter = termId.HasValue ? "AND st.term_id = @termId" : "";
+        var termFilter = termId.HasValue ? "AND s.term_id = @termId" : "";
+        var studentFilter = termId.HasValue ? "WHERE st.term_id = @termId" : "";
 
-        foreach (var tag in tags)
-        {
-            var tagPattern = $"%{tag}%";
-
-            // status = 'completed' only (see class header comment on the three 'done' tiers).
-            var cohort = await _db.QueryOneAsync<CohortComparisonRow>(
-                $@"SELECT COUNT(DISTINCT st.id) as student_count,
-                    ROUND(AVG(CAST(COALESCE(pc.done, 0) AS float) / @divisor) * 100, 0) as avg_completion_pct
-                   FROM students st
-                   LEFT JOIN (
-                     SELECT student_id, COUNT(*) as done
-                     FROM student_progress sp
-                     JOIN steps s ON s.id = sp.step_id AND s.{QueryHelpers.ActiveStepFilter}
-                     WHERE sp.status = 'completed'
-                     GROUP BY student_id
-                   ) pc ON pc.student_id = st.id
-                   WHERE st.tags LIKE @tagPattern {termFilter}",
-                new { tagPattern, termId, divisor });
-
-            if (cohort is not null && cohort.student_count > 0)
+        // One pass: compute each student's completion pct once (pc is term-scoped like Stats,
+        // so cohort numbers are term-scoped), then fan out into per-tag conditional aggregates
+        // — one COUNT of members and one AVG of their completion pct per tag. This matches the
+        // old per-tag COUNT(DISTINCT)/ROUND(AVG(...)*100). A student contributes to every
+        // cohort whose tag it matches (tags are LIKE substrings).
+        // status = 'completed' only (see class header comment on the three 'done' tiers).
+        var cohort = await _db.QueryOneAsync<CohortComparisonRow>(
+            $@"WITH student_pct AS (
+                 SELECT st.tags, CAST(COALESCE(pc.done, 0) AS float) / @divisor * 100 as pct
+                 FROM students st
+                 LEFT JOIN (
+                   SELECT student_id, COUNT(*) as done
+                   FROM student_progress sp
+                   JOIN steps s ON s.id = sp.step_id AND s.{QueryHelpers.ActiveStepFilter} {termFilter}
+                   WHERE sp.status = 'completed'
+                   GROUP BY student_id
+                 ) pc ON pc.student_id = st.id
+                 {studentFilter}
+               )
+               SELECT
+                 COUNT(CASE WHEN tags LIKE @tag0 THEN 1 END) as count0, ROUND(AVG(CASE WHEN tags LIKE @tag0 THEN pct END), 0) as avg0,
+                 COUNT(CASE WHEN tags LIKE @tag1 THEN 1 END) as count1, ROUND(AVG(CASE WHEN tags LIKE @tag1 THEN pct END), 0) as avg1,
+                 COUNT(CASE WHEN tags LIKE @tag2 THEN 1 END) as count2, ROUND(AVG(CASE WHEN tags LIKE @tag2 THEN pct END), 0) as avg2,
+                 COUNT(CASE WHEN tags LIKE @tag3 THEN 1 END) as count3, ROUND(AVG(CASE WHEN tags LIKE @tag3 THEN pct END), 0) as avg3,
+                 COUNT(CASE WHEN tags LIKE @tag4 THEN 1 END) as count4, ROUND(AVG(CASE WHEN tags LIKE @tag4 THEN pct END), 0) as avg4,
+                 COUNT(CASE WHEN tags LIKE @tag5 THEN 1 END) as count5, ROUND(AVG(CASE WHEN tags LIKE @tag5 THEN pct END), 0) as avg5,
+                 COUNT(CASE WHEN tags LIKE @tag6 THEN 1 END) as count6, ROUND(AVG(CASE WHEN tags LIKE @tag6 THEN pct END), 0) as avg6,
+                 COUNT(CASE WHEN tags LIKE @tag7 THEN 1 END) as count7, ROUND(AVG(CASE WHEN tags LIKE @tag7 THEN pct END), 0) as avg7
+               FROM student_pct",
+            new
             {
-                var avg = cohort.avg_completion_pct.HasValue
-                    ? (int)cohort.avg_completion_pct.Value
-                    : 0;
-                result.Add(new CohortComparisonItem
-                {
-                    tag = tag,
-                    student_count = cohort.student_count,
-                    avg_completion_pct = avg,
-                });
-            }
+                termId,
+                divisor,
+                tag0 = $"%{tags[0]}%",
+                tag1 = $"%{tags[1]}%",
+                tag2 = $"%{tags[2]}%",
+                tag3 = $"%{tags[3]}%",
+                tag4 = $"%{tags[4]}%",
+                tag5 = $"%{tags[5]}%",
+                tag6 = $"%{tags[6]}%",
+                tag7 = $"%{tags[7]}%",
+            });
+
+        var counts = cohort is null
+            ? new int[tags.Length]
+            : new[] { cohort.count0, cohort.count1, cohort.count2, cohort.count3, cohort.count4, cohort.count5, cohort.count6, cohort.count7 };
+        var avgs = cohort is null
+            ? new double?[tags.Length]
+            : new[] { cohort.avg0, cohort.avg1, cohort.avg2, cohort.avg3, cohort.avg4, cohort.avg5, cohort.avg6, cohort.avg7 };
+
+        var result = new List<CohortComparisonItem>();
+        for (var i = 0; i < tags.Length; i++)
+        {
+            if (counts[i] <= 0)
+                continue;
+            var avg = avgs[i].HasValue ? (int)avgs[i]!.Value : 0;
+            result.Add(new CohortComparisonItem
+            {
+                tag = tags[i],
+                student_count = counts[i],
+                avg_completion_pct = avg,
+            });
         }
 
         result.Sort((a, b) => b.student_count.CompareTo(a.student_count));
@@ -1186,10 +1218,26 @@ public sealed class AnalyticsController : ControllerBase
         public int done { get; set; }
     }
 
+    // One row of per-tag conditional aggregates from CohortComparison's single pass:
+    // count{N}/avg{N} correspond positionally to the fixed tags array in that method.
     private sealed class CohortComparisonRow
     {
-        public int student_count { get; set; }
-        public double? avg_completion_pct { get; set; }
+        public int count0 { get; set; }
+        public int count1 { get; set; }
+        public int count2 { get; set; }
+        public int count3 { get; set; }
+        public int count4 { get; set; }
+        public int count5 { get; set; }
+        public int count6 { get; set; }
+        public int count7 { get; set; }
+        public double? avg0 { get; set; }
+        public double? avg1 { get; set; }
+        public double? avg2 { get; set; }
+        public double? avg3 { get; set; }
+        public double? avg4 { get; set; }
+        public double? avg5 { get; set; }
+        public double? avg6 { get; set; }
+        public double? avg7 { get; set; }
     }
 
     private sealed class CohortComparisonItem
