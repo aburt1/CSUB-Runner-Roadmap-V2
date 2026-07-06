@@ -882,7 +882,7 @@ public sealed class AnalyticsController : ControllerBase
         double lo, hi;
         switch (filterValue)
         {
-            case "1-25%":  lo = 0;    hi = 0.25; break;
+            case "1-25%": lo = 0; hi = 0.25; break;
             case "26-50%": lo = 0.25; hi = 0.50; break;
             case "51-75%": lo = 0.50; hi = 0.75; break;
             case "76-100%": lo = 0.75; hi = 1.0; break;

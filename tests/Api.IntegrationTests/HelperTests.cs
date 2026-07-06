@@ -11,17 +11,17 @@ public class HelperTests
     // ---- Json.IsTruthy (JavaScript Boolean() semantics) ----
 
     [Theory]
-    [InlineData("true",  true)]
+    [InlineData("true", true)]
     [InlineData("false", false)]
-    [InlineData("null",  false)]
-    [InlineData("0",     false)]
-    [InlineData("1",     true)]
-    [InlineData("-1",    true)]
-    [InlineData("\"\"",  false)]  // empty string is falsy in JS
+    [InlineData("null", false)]
+    [InlineData("0", false)]
+    [InlineData("1", true)]
+    [InlineData("-1", true)]
+    [InlineData("\"\"", false)]  // empty string is falsy in JS
     [InlineData("\"0\"", true)]   // non-empty string is truthy even if "0"
-    [InlineData("{}",    true)]   // objects are always truthy
-    [InlineData("[]",    true)]   // arrays are always truthy
-    [InlineData("[0]",   true)]   // non-empty array is truthy
+    [InlineData("{}", true)]   // objects are always truthy
+    [InlineData("[]", true)]   // arrays are always truthy
+    [InlineData("[0]", true)]   // non-empty array is truthy
     public void IsTruthy_matches_js_boolean_semantics(string json, bool expected)
     {
         var el = JsonDocument.Parse(json).RootElement;
@@ -78,10 +78,10 @@ public class HelperTests
 
         var runningState = new ApiCheckRunner.RunState { status = "running" };
 
-        var first  = runner.TryBeginRun("student-abc", runningState);
+        var first = runner.TryBeginRun("student-abc", runningState);
         var second = runner.TryBeginRun("student-abc", runningState);
 
-        Assert.True(first,   "first call should claim the slot");
+        Assert.True(first, "first call should claim the slot");
         Assert.False(second, "second call should see 'running' and return false");
         Assert.Equal("running", runner.GetRunState("student-abc").status);
     }
@@ -95,7 +95,7 @@ public class HelperTests
             config: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<ApiCheckRunner>.Instance);
 
-        var runningState  = new ApiCheckRunner.RunState { status = "running" };
+        var runningState = new ApiCheckRunner.RunState { status = "running" };
         var completeState = new ApiCheckRunner.RunState { status = "complete" };
 
         Assert.True(runner.TryBeginRun("s1", runningState));

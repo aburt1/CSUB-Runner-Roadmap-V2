@@ -274,10 +274,20 @@ public static class Seeder
                          @preferredName, @phone, @applicantType, @major, @residency, 'Fall 2026', @lastSyncedAt)",
                     new
                     {
-                        id, name, email, azureId,
+                        id,
+                        name,
+                        email,
+                        azureId,
                         tags = manualTags.Length > 0 ? JsonSerializer.Serialize(manualTags) : null,
-                        termId, createdAt, emplid, preferredName, phone,
-                        applicantType, major, residency, lastSyncedAt,
+                        termId,
+                        createdAt,
+                        emplid,
+                        preferredName,
+                        phone,
+                        applicantType,
+                        major,
+                        residency,
+                        lastSyncedAt,
                     });
 
                 var stepsCompleted = progressionPool[i % progressionPool.Count];
