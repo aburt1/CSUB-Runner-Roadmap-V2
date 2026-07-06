@@ -35,6 +35,9 @@ public sealed class TermsController : ControllerBase
     {
         var terms = await _db.QueryAllAsync<TermWithCounts>(@"
             SELECT t.*,
+              -- step_count is the full active-step count for the term and DELIBERATELY includes
+              -- optional steps, so it is bare `is_active = 1` rather than QueryHelpers.ActiveStepFilter
+              -- (which excludes optional steps for progress math). Not an accidental third convention.
               (SELECT COUNT(*) FROM steps s WHERE s.term_id = t.id AND s.is_active = 1) as step_count,
               (SELECT COUNT(*) FROM students st WHERE st.term_id = t.id) as student_count
             FROM terms t ORDER BY t.created_at DESC");
