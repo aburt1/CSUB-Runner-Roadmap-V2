@@ -39,7 +39,7 @@ and the API + client as host processes; in production all three are containers.
 | Tool | Version | Needed for |
 |------|---------|------------|
 | **.NET SDK** | **10.0** | Building/running the ASP.NET Core API and the xUnit test project |
-| **Node.js** | **20+** (LTS) and **npm 9+** | Building/running/testing/linting the Vue 3 client |
+| **Node.js** | **22** (LTS) and **npm 9+** | Building/running/testing/linting the Vue 3 client |
 | **Docker** | Rancher Desktop **or** Docker Desktop | Running SQL Server locally, and the full containerized stack |
 
 You only need .NET and Node if you intend to run the API/client directly on the
