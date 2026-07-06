@@ -24,6 +24,7 @@ interface StudentListItem {
   applicant_type?: string
   residency?: string
   completed_steps: number
+  total: number
   overdue_step_count: number
 }
 
@@ -59,20 +60,11 @@ const students = ref<StudentListItem[]>([])
 const search = ref('')
 const selectedStudent = ref<StudentListItem | null>(null)
 const loading = ref(true)
-const totalActiveSteps = ref(0)
 
 const page = ref(1)
 const totalStudents = ref(0)
 const sortBy = ref('date_desc')
 const overdueOnly = ref(false)
-
-watch(
-  () => props.steps,
-  () => {
-    totalActiveSteps.value = props.steps.filter((s) => s.is_active !== 0).length
-  },
-  { immediate: true },
-)
 
 const fetchStudents = async () => {
   loading.value = true
@@ -289,7 +281,7 @@ const rangeEnd = computed(() => Math.min(page.value * PER_PAGE, totalStudents.va
                   >{{ s.overdue_step_count }} overdue</span
                 >
                 <span class="font-body text-xs text-csub-gray"
-                  >{{ s.completed_steps }}/{{ totalActiveSteps }}</span
+                  >{{ s.completed_steps }}/{{ s.total }}</span
                 >
               </div>
             </div>
@@ -297,11 +289,9 @@ const rangeEnd = computed(() => Math.min(page.value * PER_PAGE, totalStudents.va
               <div
                 class="h-full rounded-full transition-all duration-300"
                 :style="{
-                  width: `${totalActiveSteps > 0 ? Math.round((s.completed_steps / totalActiveSteps) * 100) : 0}%`,
+                  width: `${s.total > 0 ? Math.round((s.completed_steps / s.total) * 100) : 0}%`,
                   background:
-                    (totalActiveSteps > 0
-                      ? Math.round((s.completed_steps / totalActiveSteps) * 100)
-                      : 0) === 100
+                    (s.total > 0 ? Math.round((s.completed_steps / s.total) * 100) : 0) === 100
                       ? 'linear-gradient(90deg, #003594, #FFC72C)'
                       : 'linear-gradient(90deg, #003594, #0052CC)',
                 }"

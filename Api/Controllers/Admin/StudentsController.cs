@@ -286,18 +286,33 @@ public sealed class StudentsController : ControllerBase
 
         var (page, perPage, offset) = QueryHelpers.ParsePagination(Request);
 
-        const string baseQuery = @"
+        // Canonical completed-vs-total scope (shared with the analytics drilldown): count
+        // only steps that are active, non-optional, and IN THE STUDENT'S TERM, with progress
+        // status IN ('completed','waived'). tc.total is that same term-scoped active-step
+        // population, so completed can never exceed it.
+        const string baseQuery = $@"
             SELECT s.id, s.display_name, s.email, s.azure_id, s.tags, s.created_at, s.term_id,
                    s.emplid, s.applicant_type, s.major, s.residency, s.admit_term,
                    COALESCE(pc.completed, 0) as completed_steps,
+                   COALESCE(tc.total, 0) as total,
                    COALESCE(ov.overdue_count, 0) as overdue_step_count
             FROM students s
             LEFT JOIN (
-              SELECT student_id, COUNT(*) as completed
+              SELECT sp.student_id, COUNT(*) as completed
               FROM student_progress sp
-              JOIN steps st_req ON st_req.id = sp.step_id AND COALESCE(st_req.is_optional, 0) = 0
-              GROUP BY student_id
+              JOIN students s_req ON s_req.id = sp.student_id
+              JOIN steps st_req ON st_req.id = sp.step_id
+                AND st_req.{QueryHelpers.ActiveStepFilter}
+                AND st_req.term_id = s_req.term_id
+              WHERE sp.status IN ('completed', 'waived')
+              GROUP BY sp.student_id
             ) pc ON pc.student_id = s.id
+            LEFT JOIN (
+              SELECT term_id, COUNT(*) as total
+              FROM steps
+              WHERE {QueryHelpers.ActiveStepFilter} AND term_id IS NOT NULL
+              GROUP BY term_id
+            ) tc ON tc.term_id = s.term_id
             LEFT JOIN (
               SELECT s2.id as student_id, COUNT(st.id) as overdue_count
               FROM students s2
@@ -565,6 +580,7 @@ public sealed class StudentsController : ControllerBase
         public string? residency { get; set; }
         public string? admit_term { get; set; }
         public int completed_steps { get; set; }
+        public int total { get; set; }
         public int overdue_step_count { get; set; }
     }
 

@@ -510,12 +510,17 @@ public sealed class AnalyticsController : ControllerBase
         if (studentIds.Count > 0)
         {
             // IN-list is safe here: studentIds is one page, capped at per_page <= 100 by ParsePagination — far below the 2100-parameter limit (cf. the export comment above).
+            // Canonical completed scope (shared with the students list): only active,
+            // non-optional steps IN THIS TERM count, so done can never exceed totalActiveSteps.
             var completions = await _db.QueryAllAsync<CompletionCountRow>(
-                @"SELECT student_id, COUNT(*) as done
-                  FROM student_progress
-                  WHERE student_id IN @studentIds AND status IN ('completed', 'waived')
-                  GROUP BY student_id",
-                new { studentIds });
+                $@"SELECT sp.student_id, COUNT(*) as done
+                  FROM student_progress sp
+                  JOIN steps s ON s.id = sp.step_id
+                    AND s.{QueryHelpers.ActiveStepFilter}
+                    AND s.term_id = @termId
+                  WHERE sp.student_id IN @studentIds AND sp.status IN ('completed', 'waived')
+                  GROUP BY sp.student_id",
+                new { studentIds, termId = termId.Value });
             foreach (var c in completions)
                 completionMap[c.student_id] = c.done;
         }

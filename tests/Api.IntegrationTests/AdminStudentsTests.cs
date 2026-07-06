@@ -70,6 +70,55 @@ public class AdminStudentsTests
     }
 
     [Fact]
+    public async Task List_completed_steps_never_exceeds_total_across_terms_and_inactive_steps()
+    {
+        // A student in term 1 with two completed progress rows that must NOT count toward
+        // their term-1 total: one for an INACTIVE step (in term 1), one for a step in a
+        // DIFFERENT term. Before the fix, the list's completed count filtered only on
+        // is_optional (no is_active, no term scope, no status), so both counted and
+        // completed_steps could exceed the term's active-step total.
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var studentId = $"scope-test-{suffix}";
+        var emplid = $"scope{suffix}";
+
+        await _fx.ExecSqlAsync(
+            $@"INSERT INTO students (id, display_name, email, term_id, emplid)
+               VALUES ('{studentId}', 'Scope Test', 'scope-{suffix}@t.edu', 1, '{emplid}');
+
+               -- An inactive step in term 1 (must NOT count toward the total or completed).
+               INSERT INTO steps (title, sort_order, term_id, step_key, is_active, is_optional)
+               VALUES ('Inactive Step {suffix}', 900, 1, 'scope-inactive-{suffix}', 0, 0);
+               DECLARE @inactiveStep INT = SCOPE_IDENTITY();
+
+               -- A step in a DIFFERENT (new) term (cross-term; must NOT count).
+               INSERT INTO terms (name, is_active) VALUES ('Scope Term {suffix}', 0);
+               DECLARE @otherTerm INT = SCOPE_IDENTITY();
+               INSERT INTO steps (title, sort_order, term_id, step_key, is_active, is_optional)
+               VALUES ('Other Term Step {suffix}', 901, @otherTerm, 'scope-other-{suffix}', 1, 0);
+               DECLARE @otherStep INT = SCOPE_IDENTITY();
+
+               -- Both marked completed for this student.
+               INSERT INTO student_progress (student_id, step_id, status)
+               VALUES ('{studentId}', @inactiveStep, 'completed'),
+                      ('{studentId}', @otherStep, 'completed');");
+
+        var body = await (await _fx.Admin().GetAsync($"/api/admin/students?search={emplid}&per_page=100"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+
+        var row = body.GetProperty("students").EnumerateArray()
+            .Single(s => s.GetProperty("id").GetString() == studentId);
+
+        var completed = row.GetProperty("completed_steps").GetInt32();
+        // The list API must now surface the per-student total (denominator).
+        var total = row.GetProperty("total").GetInt32();
+
+        // The two out-of-scope progress rows must not be counted.
+        Assert.Equal(0, completed);
+        // And progress can never exceed 100%.
+        Assert.True(completed <= total, $"completed ({completed}) must not exceed total ({total})");
+    }
+
+    [Fact]
     public async Task List_search_matches_seeded_emplid()
     {
         var body = await (await _fx.Admin().GetAsync("/api/admin/students?search=001000000"))
