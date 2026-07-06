@@ -20,7 +20,7 @@ RUN npm run build
 
 # Unprivileged nginx: runs as a non-root user (uid 101) and listens on 8080.
 # The image still renders templates from /etc/nginx/templates at startup.
-FROM nginxinc/nginx-unprivileged:1.27-alpine AS final
+FROM nginxinc/nginx-unprivileged:1.28-alpine AS final
 # Template is rendered at startup with the API_URL env var (envsubst).
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /client/dist /usr/share/nginx/html
