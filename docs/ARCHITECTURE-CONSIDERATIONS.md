@@ -273,6 +273,12 @@ is preserved:
 | **Admin JS bundle ~1.05MB, not internally code-split** | Already behind a lazy route boundary; audience is a few internal staff | Admins report slow `/admin` first load, or the bundle grows past ~1.5MB → split the chart.js vendor chunk |
 | **Student JWT expiry is server-driven only** (admin flow also checks `exp` client-side) | Correct and arguably safer (server is source of truth; transient 5xx don't log students out) | The on-load authenticated flash before a `/me` 401 becomes annoying → unify on one token-validity helper |
 
+### Dependencies
+| Consideration | Why it's fine now | Revisit when |
+|---|---|---|
+| **DEPS-05 — `vue3-emoji-picker` is dormant** (last release Oct 2023), used at one site (`client/src/pages/admin/StepForm.vue`), no known advisory — decision: **monitor** | Single integration point and the surface is tiny (it emits one emoji string); a stale-but-working picker carries no live risk | It breaks against a future Vue/Vite, or an advisory lands → vendor the small picker or swap to a maintained equivalent (integration surface is one emitted emoji string) |
+| **DEPS-06 — the auth stack uses the legacy `JwtSecurityTokenHandler`** rather than `JsonWebTokenHandler` — decision: **stay on it until a removal timeline exists** | Wire format and claim names are unchanged either way, so there is no contract or behavior difference today; the strengthened JWT tests guard a later swap | Microsoft announces a removal/deprecation timeline for `JwtSecurityTokenHandler`, or a perf/allocation issue surfaces → migrate to `JsonWebTokenHandler` (the JWT tests cover the wire format + claims) |
+
 ---
 
 ## Part 4 — Cross-cutting gaps to keep on the radar
