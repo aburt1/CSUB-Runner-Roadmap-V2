@@ -40,10 +40,19 @@ layer(base);
   }
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/*
+  Global reset lives in @layer base so Tailwind's utilities (in the later
+  @layer utilities) still win. In Tailwind v4 all utilities are inside native
+  cascade layers, and un-layered rules beat layered ones regardless of
+  specificity — leaving this reset un-layered silently zeroed every px-/mx-/
+  space-y- utility (broke all padding, centering, and spacing).
+*/
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
 }
 
 body {
