@@ -35,6 +35,28 @@ public class AdminStudentsTests
         return steps[0].GetProperty("id").GetInt32();
     }
 
+    // Resolve a term-1 step that a freshly dev-logged-in student does NOT already have
+    // progress on. New students auto-complete the step_key='accepted' step (see
+    // AuthController.AutoCompleteAcceptedStepAsync), which happens to be steps[0] by
+    // sort_order in the fresh seed — so tests asserting a first complete returns "created"
+    // must avoid it, or they see "updated"/"noop" when run in isolation.
+    private async Task<int> NonAutoCompletedStepIdAsync()
+    {
+        var steps = await (await _fx.Admin().GetAsync("/api/admin/steps?term_id=1"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(steps.GetArrayLength() >= 1);
+        foreach (var s in steps.EnumerateArray())
+        {
+            var key = s.TryGetProperty("step_key", out var k) && k.ValueKind == JsonValueKind.String
+                ? k.GetString()
+                : null;
+            if (key != "accepted")
+                return s.GetProperty("id").GetInt32();
+        }
+        // Every step was the accepted step (impossible with the seed) — fall back to the first.
+        return steps[0].GetProperty("id").GetInt32();
+    }
+
     // Create a fresh student (via dev-login) and return its id, so writes never touch
     // rows other tests rely on. dev-login returns the new student's id in student.id.
     private async Task<string> NewStudentIdAsync()
@@ -238,7 +260,8 @@ public class AdminStudentsTests
     public async Task Complete_creates_then_repeat_is_noop()
     {
         var studentId = await NewStudentIdAsync();
-        var stepId = await FirstStepIdAsync();
+        // Not the auto-completed 'accepted' step, so the first complete is genuinely a "created".
+        var stepId = await NonAutoCompletedStepIdAsync();
 
         var res1 = await _fx.Admin().PostAsJsonAsync(
             $"/api/admin/students/{studentId}/steps/{stepId}/complete", new { });
@@ -265,7 +288,8 @@ public class AdminStudentsTests
     public async Task Complete_with_waived_status_records_waived()
     {
         var studentId = await NewStudentIdAsync();
-        var stepId = await FirstStepIdAsync();
+        // Not the auto-completed 'accepted' step, so waiving it is genuinely a "created".
+        var stepId = await NonAutoCompletedStepIdAsync();
 
         var res = await _fx.Admin().PostAsJsonAsync(
             $"/api/admin/students/{studentId}/steps/{stepId}/complete",

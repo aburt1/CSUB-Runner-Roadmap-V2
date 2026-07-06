@@ -17,11 +17,34 @@ namespace Api.IntegrationTests;
 // here is the 401 path. Shared-DB rules: no exact global counts, only presence
 // / >= bounds / documented-shape assertions on the deterministic seed.
 [Collection("api")]
-public class AdminAnalyticsTests
+public class AdminAnalyticsTests : IAsyncLifetime
 {
     private readonly WebAppFixture _fx;
 
     public AdminAnalyticsTests(WebAppFixture fx) => _fx = fx;
+
+    // The fresh seed gives term 1 exactly 17 active, non-optional steps (22 total, 5 optional).
+    // Several tests below assert a term-1 active-step count of >= 22 (totalActiveSteps, the
+    // step-completion array, per-student total_steps). They historically passed only because
+    // sibling test classes had inserted extra active steps into term 1 first, so `dotnet test
+    // --filter AdminAnalyticsTests` failed in isolation. Seed our own extra active non-optional
+    // steps so this class is self-contained. Idempotent (guarded by step_key) and safe to run
+    // before every test; high sort_order keeps them after the seed so steps[0] is unchanged.
+    private const int ExtraActiveSteps = 6;
+
+    public async Task InitializeAsync()
+    {
+        for (var i = 0; i < ExtraActiveSteps; i++)
+        {
+            var key = $"analytics-fixture-step-{i}";
+            await _fx.ExecSqlAsync(
+                $@"IF NOT EXISTS (SELECT 1 FROM steps WHERE step_key = '{key}' AND term_id = 1)
+                   INSERT INTO steps (title, sort_order, term_id, step_key, is_active, is_optional)
+                   VALUES ('Analytics Fixture Step {i}', {900 + i}, 1, '{key}', 1, 0);");
+        }
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
 
     // ─── Stats ───────────────────────────────────────────────
 
