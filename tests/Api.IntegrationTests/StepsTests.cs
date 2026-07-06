@@ -47,6 +47,58 @@ public class StepsTests
     }
 
     [Fact]
+    public async Task Get_steps_anonymous_blanks_non_public_step_bodies_but_still_lists_them()
+    {
+        // SEC-01: is_public was enforced only client-side, so anonymous GET /api/steps
+        // shipped full guide_content/links/contact_info for non-public steps. The listing
+        // must still include those steps (so the UI can show a locked placeholder) but
+        // carry no body content for them.
+        var body = await (await _fx.Anonymous().GetAsync("/api/steps")).Content.ReadFromJsonAsync<JsonElement>();
+
+        // "attend-future-runner-day" is a seeded is_public=0 step with non-null guide_content.
+        var nonPublic = body.EnumerateArray()
+            .Single(s => s.GetProperty("step_key").GetString() == "attend-future-runner-day");
+
+        // The step is still listed with its title + locked state intact.
+        Assert.Equal(0, nonPublic.GetProperty("is_public").GetInt32());
+        Assert.Equal("Attend Future Runner Day", nonPublic.GetProperty("title").GetString());
+
+        // But its body fields carry no content for an anonymous caller. Same JSON keys,
+        // values emptied (present but null/empty).
+        static void AssertBlank(JsonElement s, string key)
+        {
+            var v = s.GetProperty(key);
+            var isBlank = v.ValueKind == JsonValueKind.Null
+                || (v.ValueKind == JsonValueKind.String && v.GetString()!.Length == 0);
+            Assert.True(isBlank, $"anonymous non-public step still exposes '{key}': {v}");
+        }
+
+        AssertBlank(nonPublic, "guide_content");
+        AssertBlank(nonPublic, "links");
+        AssertBlank(nonPublic, "contact_info");
+
+        // A public step keeps its body (the blanking is scoped to is_public=0 only).
+        var accepted = body.EnumerateArray().Single(s => s.GetProperty("step_key").GetString() == "accepted");
+        Assert.Equal(1, accepted.GetProperty("is_public").GetInt32());
+        Assert.False(string.IsNullOrEmpty(accepted.GetProperty("guide_content").GetString()));
+    }
+
+    [Fact]
+    public async Task Get_steps_authed_student_still_sees_non_public_step_bodies()
+    {
+        // The blanking is anonymous-only: an authed student sees full guide_content
+        // for their term's non-public steps.
+        var (client, _) = await _fx.StudentAsync("Body Access", $"u{Guid.NewGuid():N}@t.edu");
+
+        var body = await (await client.GetAsync("/api/steps")).Content.ReadFromJsonAsync<JsonElement>();
+        var nonPublic = body.EnumerateArray()
+            .Single(s => s.GetProperty("step_key").GetString() == "attend-future-runner-day");
+
+        Assert.Equal(0, nonPublic.GetProperty("is_public").GetInt32());
+        Assert.Equal("Check-in email sent to student's registered", nonPublic.GetProperty("guide_content").GetString());
+    }
+
+    [Fact]
     public async Task Get_steps_anonymous_is_sorted_by_sort_order()
     {
         var body = await (await _fx.Anonymous().GetAsync("/api/steps")).Content.ReadFromJsonAsync<JsonElement>();

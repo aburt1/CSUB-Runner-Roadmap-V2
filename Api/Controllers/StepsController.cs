@@ -91,6 +91,24 @@ public sealed class StepsController : ControllerBase
             : await _db.QueryAllAsync<Step>(
                 $"SELECT * FROM steps WHERE {QueryHelpers.StudentVisibleStepFilter} ORDER BY sort_order");
 
+        // is_public gates who may read a step's BODY. An anonymous caller may still see
+        // that a non-public step exists (title/order/locked state) but must not receive
+        // its guide_content/links/contact_info — the UI only hides these client-side, so
+        // without this the bodies ship over the wire. Blank the fields in place (same JSON
+        // keys, values emptied). Authed students keep full access to their term's steps.
+        if (studentId is null)
+        {
+            foreach (var step in steps)
+            {
+                if (step.is_public != 1)
+                {
+                    step.guide_content = null;
+                    step.links = null;
+                    step.contact_info = null;
+                }
+            }
+        }
+
         return Ok(steps);
     }
 
