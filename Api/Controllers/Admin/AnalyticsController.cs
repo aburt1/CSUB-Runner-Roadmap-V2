@@ -809,44 +809,40 @@ public sealed class AnalyticsController : ControllerBase
     private async Task<FilterQuerySet> BuildStepCompletedFilter(int termId, int stepId, int perPage, int offset)
     {
         var title = await _db.QueryOneAsync<string>("SELECT title FROM steps WHERE id = @stepId", new { stepId });
+        const string body = @"
+                FROM students st
+                JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @stepId AND sp.status IN ('completed', 'waived')
+                WHERE st.term_id = @termId";
         return new FilterQuerySet
         {
             Title = $"Students who completed {(string.IsNullOrEmpty(title) ? "this step" : title)}",
             Params = new { stepId, termId, perPage, offset },
             CountParams = new { stepId, termId },
-            StudentQuery = @"
-                SELECT st.id, st.display_name, st.email, st.emplid
-                FROM students st
-                JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @stepId AND sp.status IN ('completed', 'waived')
-                WHERE st.term_id = @termId
+            StudentQuery = $@"
+                SELECT st.id, st.display_name, st.email, st.emplid{body}
                 ORDER BY st.display_name
                 OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
-            CountQuery = @"
-                SELECT COUNT(*) as count FROM students st
-                JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @stepId AND sp.status IN ('completed', 'waived')
-                WHERE st.term_id = @termId",
+            CountQuery = $"SELECT COUNT(*) as count{body}",
         };
     }
 
     private async Task<FilterQuerySet> BuildStepNotCompletedFilter(int termId, int stepId, int perPage, int offset)
     {
         var title = await _db.QueryOneAsync<string>("SELECT title FROM steps WHERE id = @stepId", new { stepId });
+        const string body = @"
+                FROM students st
+                LEFT JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @stepId AND sp.status IN ('completed', 'waived')
+                WHERE st.term_id = @termId AND sp.student_id IS NULL";
         return new FilterQuerySet
         {
             Title = $"Students who haven't completed {(string.IsNullOrEmpty(title) ? "this step" : title)}",
             Params = new { stepId, termId, perPage, offset },
             CountParams = new { stepId, termId },
-            StudentQuery = @"
-                SELECT st.id, st.display_name, st.email, st.emplid
-                FROM students st
-                LEFT JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @stepId AND sp.status IN ('completed', 'waived')
-                WHERE st.term_id = @termId AND sp.student_id IS NULL
+            StudentQuery = $@"
+                SELECT st.id, st.display_name, st.email, st.emplid{body}
                 ORDER BY st.display_name
                 OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
-            CountQuery = @"
-                SELECT COUNT(*) as count FROM students st
-                LEFT JOIN student_progress sp ON sp.student_id = st.id AND sp.step_id = @stepId AND sp.status IN ('completed', 'waived')
-                WHERE st.term_id = @termId AND sp.student_id IS NULL",
+            CountQuery = $"SELECT COUNT(*) as count{body}",
         };
     }
 
@@ -857,31 +853,26 @@ public sealed class AnalyticsController : ControllerBase
         if (filterValue == "0%")
         {
             const string bucketCondition = "HAVING COALESCE(SUM(CASE WHEN sp.status IN ('completed', 'waived') THEN 1 ELSE 0 END), 0) = 0";
+            // Grouping on the display columns as well as st.id yields the same groups as
+            // GROUP BY st.id alone (they are functionally dependent on the PK), so the shared
+            // body drives both the page rows and the count of matching students.
+            var body = $@"
+                    FROM students st
+                    LEFT JOIN student_progress sp ON sp.student_id = st.id
+                      AND sp.step_id IN (SELECT id FROM steps WHERE {QueryHelpers.ActiveStepFilter} AND term_id = @termId)
+                    WHERE st.term_id = @termId
+                    GROUP BY st.id, st.display_name, st.email, st.emplid
+                    {bucketCondition}";
             return new FilterQuerySet
             {
                 Title = $"Students at {filterValue} completion",
                 Params = new { termId, perPage, offset },
                 CountParams = new { termId },
                 StudentQuery = $@"
-                    SELECT st.id, st.display_name, st.email, st.emplid
-                    FROM students st
-                    LEFT JOIN student_progress sp ON sp.student_id = st.id
-                      AND sp.step_id IN (SELECT id FROM steps WHERE {QueryHelpers.ActiveStepFilter} AND term_id = @termId)
-                    WHERE st.term_id = @termId
-                    GROUP BY st.id, st.display_name, st.email, st.emplid
-                    {bucketCondition}
+                    SELECT st.id, st.display_name, st.email, st.emplid{body}
                     ORDER BY st.display_name
                     OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
-                CountQuery = $@"
-                    SELECT COUNT(*) as count FROM (
-                      SELECT st.id
-                      FROM students st
-                      LEFT JOIN student_progress sp ON sp.student_id = st.id
-                        AND sp.step_id IN (SELECT id FROM steps WHERE {QueryHelpers.ActiveStepFilter} AND term_id = @termId)
-                      WHERE st.term_id = @termId
-                      GROUP BY st.id
-                      {bucketCondition}
-                    ) sub",
+                CountQuery = $"SELECT COUNT(*) as count FROM (SELECT st.id{body}) sub",
             };
         }
 
@@ -902,31 +893,25 @@ public sealed class AnalyticsController : ControllerBase
         var divisor = totalActiveSteps > 0 ? totalActiveSteps : 1;
         var rangeCondition = @"HAVING (CAST(SUM(CASE WHEN sp.status IN ('completed', 'waived') THEN 1 ELSE 0 END) AS float) / @divisor) > @lo
                  AND (CAST(SUM(CASE WHEN sp.status IN ('completed', 'waived') THEN 1 ELSE 0 END) AS float) / @divisor) <= @hi";
+        // Grouping on the display columns as well as st.id yields the same groups as
+        // GROUP BY st.id alone (functionally dependent on the PK), so one body drives both.
+        var rangeBody = $@"
+                FROM students st
+                LEFT JOIN student_progress sp ON sp.student_id = st.id
+                  AND sp.step_id IN (SELECT id FROM steps WHERE {QueryHelpers.ActiveStepFilter} AND term_id = @termId)
+                WHERE st.term_id = @termId
+                GROUP BY st.id, st.display_name, st.email, st.emplid
+                {rangeCondition}";
         return new FilterQuerySet
         {
             Title = $"Students at {filterValue} completion",
             Params = new { termId, lo, hi, divisor, perPage, offset },
             CountParams = new { termId, lo, hi, divisor },
             StudentQuery = $@"
-                SELECT st.id, st.display_name, st.email, st.emplid
-                FROM students st
-                LEFT JOIN student_progress sp ON sp.student_id = st.id
-                  AND sp.step_id IN (SELECT id FROM steps WHERE {QueryHelpers.ActiveStepFilter} AND term_id = @termId)
-                WHERE st.term_id = @termId
-                GROUP BY st.id, st.display_name, st.email, st.emplid
-                {rangeCondition}
+                SELECT st.id, st.display_name, st.email, st.emplid{rangeBody}
                 ORDER BY st.display_name
                 OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
-            CountQuery = $@"
-                SELECT COUNT(*) as count FROM (
-                  SELECT st.id
-                  FROM students st
-                  LEFT JOIN student_progress sp ON sp.student_id = st.id
-                    AND sp.step_id IN (SELECT id FROM steps WHERE {QueryHelpers.ActiveStepFilter} AND term_id = @termId)
-                  WHERE st.term_id = @termId
-                  GROUP BY st.id
-                  {rangeCondition}
-                ) sub",
+            CountQuery = $"SELECT COUNT(*) as count FROM (SELECT st.id{rangeBody}) sub",
         };
     }
 
@@ -937,20 +922,19 @@ public sealed class AnalyticsController : ControllerBase
         var title = fv.Length > 0
             ? $"{char.ToUpperInvariant(fv[0])}{fv[1..]} students"
             : " students";
+        const string body = @"
+                FROM students st
+                WHERE st.term_id = @termId AND st.tags LIKE @tagPattern";
         return new FilterQuerySet
         {
             Title = title,
             Params = new { termId, tagPattern, perPage, offset },
             CountParams = new { termId, tagPattern },
-            StudentQuery = @"
-                SELECT st.id, st.display_name, st.email, st.emplid
-                FROM students st
-                WHERE st.term_id = @termId AND st.tags LIKE @tagPattern
+            StudentQuery = $@"
+                SELECT st.id, st.display_name, st.email, st.emplid{body}
                 ORDER BY st.display_name
                 OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
-            CountQuery = @"
-                SELECT COUNT(*) as count FROM students st
-                WHERE st.term_id = @termId AND st.tags LIKE @tagPattern",
+            CountQuery = $"SELECT COUNT(*) as count{body}",
         };
     }
 
@@ -968,13 +952,10 @@ public sealed class AnalyticsController : ControllerBase
         }
 
         // seconds/86400, not DATEDIFF(day): see CompletionVelocity comment for why.
-        return new FilterQuerySet
-        {
-            Title = $"Students stalled {filterValue}",
-            Params = new { termId, minDays, maxDays, perPage, offset },
-            CountParams = new { termId, minDays, maxDays },
-            StudentQuery = @"
-                SELECT st.id, st.display_name, st.email, st.emplid
+        // Grouping on the display columns as well as st.id/st.created_at yields the same
+        // groups as GROUP BY st.id, st.created_at (functionally dependent on the PK), so
+        // one body drives both the page rows and the count.
+        const string body = @"
                 FROM students st
                 LEFT JOIN student_progress sp ON sp.student_id = st.id
                 WHERE st.term_id = @termId
@@ -987,48 +968,37 @@ public sealed class AnalyticsController : ControllerBase
                   MAX(CASE WHEN sp.status = 'completed' THEN sp.completed_at END) IS NOT NULL
                   AND @minDays <= DATEDIFF(second, MAX(CASE WHEN sp.status = 'completed' THEN sp.completed_at END), SYSUTCDATETIME()) / 86400
                   AND DATEDIFF(second, MAX(CASE WHEN sp.status = 'completed' THEN sp.completed_at END), SYSUTCDATETIME()) / 86400 <= @maxDays
-                )
+                )";
+        return new FilterQuerySet
+        {
+            Title = $"Students stalled {filterValue}",
+            Params = new { termId, minDays, maxDays, perPage, offset },
+            CountParams = new { termId, minDays, maxDays },
+            StudentQuery = $@"
+                SELECT st.id, st.display_name, st.email, st.emplid{body}
                 ORDER BY st.display_name
                 OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
-            CountQuery = @"
-                SELECT COUNT(*) as count FROM (
-                  SELECT st.id
-                  FROM students st
-                  LEFT JOIN student_progress sp ON sp.student_id = st.id
-                  WHERE st.term_id = @termId
-                  GROUP BY st.id, st.created_at
-                  HAVING (
-                    COUNT(CASE WHEN sp.status = 'completed' THEN 1 END) = 0
-                    AND @minDays <= DATEDIFF(second, st.created_at, SYSUTCDATETIME()) / 86400
-                    AND DATEDIFF(second, st.created_at, SYSUTCDATETIME()) / 86400 <= @maxDays
-                  ) OR (
-                    MAX(CASE WHEN sp.status = 'completed' THEN sp.completed_at END) IS NOT NULL
-                    AND @minDays <= DATEDIFF(second, MAX(CASE WHEN sp.status = 'completed' THEN sp.completed_at END), SYSUTCDATETIME()) / 86400
-                    AND DATEDIFF(second, MAX(CASE WHEN sp.status = 'completed' THEN sp.completed_at END), SYSUTCDATETIME()) / 86400 <= @maxDays
-                  )
-                ) sub",
+            CountQuery = $"SELECT COUNT(*) as count FROM (SELECT st.id{body}) sub",
         };
     }
 
     private async Task<FilterQuerySet> BuildDeadlineRiskFilter(int termId, int stepId, int perPage, int offset)
     {
         var title = await _db.QueryOneAsync<string>("SELECT title FROM steps WHERE id = @stepId", new { stepId });
+        const string body = @"
+                FROM students st
+                LEFT JOIN student_progress sp ON sp.step_id = @stepId AND sp.student_id = st.id AND sp.status IN ('completed', 'waived')
+                WHERE st.term_id = @termId AND sp.student_id IS NULL";
         return new FilterQuerySet
         {
             Title = $"At-risk students for {(string.IsNullOrEmpty(title) ? "this step" : title)}",
             Params = new { stepId, termId, perPage, offset },
             CountParams = new { stepId, termId },
-            StudentQuery = @"
-                SELECT st.id, st.display_name, st.email, st.emplid
-                FROM students st
-                LEFT JOIN student_progress sp ON sp.step_id = @stepId AND sp.student_id = st.id AND sp.status IN ('completed', 'waived')
-                WHERE st.term_id = @termId AND sp.student_id IS NULL
+            StudentQuery = $@"
+                SELECT st.id, st.display_name, st.email, st.emplid{body}
                 ORDER BY st.display_name
                 OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
-            CountQuery = @"
-                SELECT COUNT(*) as count FROM students st
-                LEFT JOIN student_progress sp ON sp.step_id = @stepId AND sp.student_id = st.id AND sp.status IN ('completed', 'waived')
-                WHERE st.term_id = @termId AND sp.student_id IS NULL",
+            CountQuery = $"SELECT COUNT(*) as count{body}",
         };
     }
 
@@ -1047,13 +1017,7 @@ public sealed class AnalyticsController : ControllerBase
         }
 
         // seconds/86400, not DATEDIFF(day): see CompletionVelocity comment for why.
-        return new FilterQuerySet
-        {
-            Title = $"Students completing in {filterValue}",
-            Params = new { termId, minD, maxD, perPage, offset },
-            CountParams = new { termId, minD, maxD },
-            StudentQuery = @"
-                SELECT st.id, st.display_name, st.email, st.emplid
+        const string body = @"
                 FROM students st
                 JOIN (
                   SELECT sp.student_id,
@@ -1062,19 +1026,17 @@ public sealed class AnalyticsController : ControllerBase
                   WHERE sp.status = 'completed'
                   GROUP BY sp.student_id
                 ) vel ON vel.student_id = st.id AND vel.days_elapsed >= @minD AND vel.days_elapsed <= @maxD
-                WHERE st.term_id = @termId
+                WHERE st.term_id = @termId";
+        return new FilterQuerySet
+        {
+            Title = $"Students completing in {filterValue}",
+            Params = new { termId, minD, maxD, perPage, offset },
+            CountParams = new { termId, minD, maxD },
+            StudentQuery = $@"
+                SELECT st.id, st.display_name, st.email, st.emplid{body}
                 ORDER BY st.display_name
                 OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
-            CountQuery = @"
-                SELECT COUNT(*) as count FROM students st
-                JOIN (
-                  SELECT sp.student_id,
-                    DATEDIFF(second, MIN(sp.completed_at), MAX(sp.completed_at)) / 86400 as days_elapsed
-                  FROM student_progress sp
-                  WHERE sp.status = 'completed'
-                  GROUP BY sp.student_id
-                ) vel ON vel.student_id = st.id AND vel.days_elapsed >= @minD AND vel.days_elapsed <= @maxD
-                WHERE st.term_id = @termId",
+            CountQuery = $"SELECT COUNT(*) as count{body}",
         };
     }
 
@@ -1086,25 +1048,21 @@ public sealed class AnalyticsController : ControllerBase
         if (DateTime.TryParse(filterValue, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
             dateStr = parsed.ToString("MMM d, yyyy", CultureInfo.InvariantCulture);
 
+        const string body = @"
+                FROM students st
+                JOIN student_progress sp ON sp.student_id = st.id AND CAST(sp.completed_at AS date) = CAST(@filterValue AS date) AND sp.status IN ('completed', 'waived')
+                JOIN steps s ON s.id = sp.step_id AND COALESCE(s.is_optional, 0) = 0
+                WHERE st.term_id = @termId";
         return new FilterQuerySet
         {
             Title = $"Completions on {dateStr}",
             Params = new { filterValue, termId, perPage, offset },
             CountParams = new { filterValue, termId },
-            StudentQuery = @"
-                SELECT DISTINCT st.id, st.display_name, st.email, st.emplid
-                FROM students st
-                JOIN student_progress sp ON sp.student_id = st.id AND CAST(sp.completed_at AS date) = CAST(@filterValue AS date) AND sp.status IN ('completed', 'waived')
-                JOIN steps s ON s.id = sp.step_id AND COALESCE(s.is_optional, 0) = 0
-                WHERE st.term_id = @termId
+            StudentQuery = $@"
+                SELECT DISTINCT st.id, st.display_name, st.email, st.emplid{body}
                 ORDER BY st.display_name
                 OFFSET @offset ROWS FETCH NEXT @perPage ROWS ONLY",
-            CountQuery = @"
-                SELECT COUNT(DISTINCT st.id) as count
-                FROM students st
-                JOIN student_progress sp ON sp.student_id = st.id AND CAST(sp.completed_at AS date) = CAST(@filterValue AS date) AND sp.status IN ('completed', 'waived')
-                JOIN steps s ON s.id = sp.step_id AND COALESCE(s.is_optional, 0) = 0
-                WHERE st.term_id = @termId",
+            CountQuery = $"SELECT COUNT(DISTINCT st.id) as count{body}",
         };
     }
 
