@@ -382,6 +382,9 @@ public sealed class AnalyticsController : ControllerBase
         var termFilter = termId.HasValue ? "AND s.term_id = @termId" : "";
 
         // deadline_date stores 'YYYY-MM-DD' text; TRY_CAST tolerates legacy free-text values.
+        // "Today" is the campus-local (Pacific) calendar date, not the UTC one: students see
+        // browser-local dates, so from ~17:00 Pacific a UTC date would already read as tomorrow.
+        // The 'Pacific Standard Time' zone id includes DST.
         var steps = await _db.QueryAllAsync<DeadlineRiskStep>(
             $@"SELECT s.id, s.title, s.deadline_date,
                 COUNT(DISTINCT st.id) as total_students,
@@ -390,8 +393,8 @@ public sealed class AnalyticsController : ControllerBase
                JOIN students st ON st.term_id = s.term_id
                LEFT JOIN student_progress sp ON sp.step_id = s.id AND sp.student_id = st.id
                WHERE s.is_active = 1 AND s.deadline_date IS NOT NULL
-                 AND TRY_CAST(s.deadline_date AS date) <= CAST(DATEADD(day, @days, SYSUTCDATETIME()) AS date)
-                 AND TRY_CAST(s.deadline_date AS date) > CAST(SYSUTCDATETIME() AS date) {termFilter}
+                 AND TRY_CAST(s.deadline_date AS date) <= CAST(DATEADD(day, @days, SYSUTCDATETIME() AT TIME ZONE 'Pacific Standard Time') AS date)
+                 AND TRY_CAST(s.deadline_date AS date) > CAST(SYSUTCDATETIME() AT TIME ZONE 'Pacific Standard Time' AS date) {termFilter}
                GROUP BY s.id, s.title, s.deadline_date
                ORDER BY s.deadline_date ASC",
             new { termId, days });
