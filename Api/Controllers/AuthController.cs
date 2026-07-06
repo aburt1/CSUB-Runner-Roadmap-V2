@@ -1,6 +1,7 @@
 using Api.Auth;
 using Api.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.SqlClient;
 
 namespace Api.Controllers;
 
@@ -136,11 +137,44 @@ public sealed class AuthController : ControllerBase
                 // (keyed on it) links to this row instead of creating a duplicate.
                 var studentId = Guid.NewGuid().ToString();
                 var termId = await _db.QueryOneAsync<int?>("SELECT TOP 1 id FROM terms WHERE is_active = 1 ORDER BY id DESC");
-                await _db.ExecuteAsync(
-                    "INSERT INTO students (id, display_name, email, azure_id, emplid, term_id) VALUES (@studentId, @name, @email, @oid, @emplid, @termId)",
-                    new { studentId, name, email, oid, emplid = string.IsNullOrWhiteSpace(emplid) ? null : emplid.Trim(), termId });
-                await AutoCompleteAcceptedStepAsync(studentId, termId);
-                student = new StudentLite { id = studentId, display_name = name, email = email };
+                var normalizedEmplid = string.IsNullOrWhiteSpace(emplid) ? null : emplid.Trim();
+                try
+                {
+                    await _db.ExecuteAsync(
+                        "INSERT INTO students (id, display_name, email, azure_id, emplid, term_id) VALUES (@studentId, @name, @email, @oid, @emplid, @termId)",
+                        new { studentId, name, email, oid, emplid = normalizedEmplid, termId });
+                    await AutoCompleteAcceptedStepAsync(studentId, termId);
+                    student = new StudentLite { id = studentId, display_name = name, email = email };
+                }
+                catch (SqlException ex) when (ex.Number is 2627 or 2601)
+                {
+                    // A concurrent first login won the filtered unique index. Re-resolve to the
+                    // winner's row and proceed instead of 500ing — the idiom used by
+                    // IntegrationsController's upsert race guard. Match by azure_id first (the
+                    // concurrent SAME-identity login stamped this oid). Fall back to emplid_norm
+                    // ONLY for a row that is still unclaimed (azure_id IS NULL), mirroring the
+                    // pre-staged branch above — so an emplid already owned by a different oid
+                    // surfaces the collision (rethrow) rather than being silently stolen.
+                    var winner = await _db.QueryOneAsync<StudentLite>(
+                        "SELECT id, display_name, email FROM students WHERE azure_id = @oid", new { oid });
+                    if (winner is null && normalizedEmplid is not null)
+                    {
+                        var emplidNorm = normalizedEmplid.ToLowerInvariant();
+                        winner = await _db.QueryOneAsync<StudentLite>(
+                            "SELECT id, display_name, email FROM students WHERE emplid_norm = @emplidNorm AND azure_id IS NULL", new { emplidNorm });
+                        if (winner is not null)
+                        {
+                            // Unclaimed pre-staged row raced our INSERT — stamp our oid onto it.
+                            await _db.ExecuteAsync(
+                                "UPDATE students SET azure_id = @oid, display_name = @name, email = @email WHERE id = @id",
+                                new { oid, name, email, id = winner.id });
+                            winner.display_name = name;
+                            winner.email = email;
+                        }
+                    }
+                    if (winner is null) throw;
+                    student = winner;
+                }
             }
         }
 

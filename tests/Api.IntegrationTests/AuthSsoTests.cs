@@ -139,6 +139,62 @@ public class AuthSsoTests
             $"SELECT azure_id FROM students WHERE id = '{preStagedId}'"));
     }
 
+    // ---- (e) concurrent first login for one new identity: no 500 -----------
+
+    [Fact]
+    public async Task Sso_concurrent_first_logins_for_one_identity_create_one_row_and_no_500()
+    {
+        // Two concurrent first sign-ins for the SAME brand-new identity: both miss the
+        // azure_id + emplid SELECTs and race to the INSERT. Before the fix, the loser 500s
+        // on the filtered unique azure_id/emplid_norm index. After the fix, the loser catches
+        // the duplicate-key error, re-resolves, and proceeds with the found row.
+        //
+        // Both requests carry identical claims, so staging a single tuple on the (sequential,
+        // shared) FakeAzure is race-free — the fake returns the same tuple to both callers.
+        var oid = FreshOid();
+        var emplid = FreshEmplid();
+        var email = $"{emplid}@csub.edu";
+
+        _fx.FakeAzure.Configured = true;
+        _fx.FakeAzure.NextClaims = (oid, email, "Concurrent First Login", emplid);
+        try
+        {
+            var clientA = _fx.Anonymous();
+            var clientB = _fx.Anonymous();
+            using var barrier = new Barrier(2);
+            async Task<HttpResponseMessage> Fire(HttpClient c) => await Task.Run(async () =>
+            {
+                barrier.SignalAndWait();
+                return await c.PostAsJsonAsync("/api/auth/sso", new { idToken = "fake-token" });
+            });
+
+            var responses = await Task.WhenAll(Fire(clientA), Fire(clientB));
+
+            // Both first logins succeed (the loser recovers instead of 500ing).
+            Assert.All(responses, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
+
+            // Both resolved to the SAME student id.
+            var idA = (await responses[0].Content.ReadFromJsonAsync<JsonElement>())
+                .GetProperty("student").GetProperty("id").GetString();
+            var idB = (await responses[1].Content.ReadFromJsonAsync<JsonElement>())
+                .GetProperty("student").GetProperty("id").GetString();
+            Assert.Equal(idA, idB);
+
+            // Exactly one student row for the identity — no duplicate.
+            var oidRows = Convert.ToInt32(await _fx.ScalarAsync(
+                $"SELECT COUNT(*) FROM students WHERE azure_id = '{oid}'"));
+            Assert.Equal(1, oidRows);
+            var emplidRows = Convert.ToInt32(await _fx.ScalarAsync(
+                $"SELECT COUNT(*) FROM students WHERE emplid_norm = '{emplid.ToLowerInvariant()}'"));
+            Assert.Equal(1, emplidRows);
+        }
+        finally
+        {
+            _fx.FakeAzure.Configured = false;
+            _fx.FakeAzure.NextClaims = null;
+        }
+    }
+
     // ---- (c) already-claimed emplid is NOT re-linked to a different oid -----
 
     [Fact]
