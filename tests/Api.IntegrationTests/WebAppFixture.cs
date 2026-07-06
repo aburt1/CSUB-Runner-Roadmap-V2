@@ -1,11 +1,42 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Api.Auth;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.IntegrationTests;
+
+// Test double for AzureAdTokenValidator: returns whatever claims the current test staged
+// via NextClaims, so AuthController.Sso can be driven end-to-end without a live Entra
+// tenant. Registered once (singleton), and tests in the "api" collection run
+// sequentially, so a single staged tuple is race-free.
+//
+// Configured defaults to FALSE so the existing "SSO not configured -> 501" tests keep
+// passing; the account-linking tests flip it to true and stage NextClaims.
+public sealed class FakeAzureAdTokenValidator : AzureAdTokenValidator
+{
+    public FakeAzureAdTokenValidator(IConfiguration config) : base(config) { }
+
+    // Whether IsConfigured reports true. Default false = the real "not configured" gate.
+    public bool Configured { get; set; }
+
+    // The claims the NEXT ValidateAsync returns. Tests set this before calling /sso.
+    public (string oid, string? email, string? name, string? emplid)? NextClaims { get; set; }
+
+    public override bool IsConfigured => Configured;
+
+    public override Task<(string oid, string? email, string? name, string? emplid)> ValidateAsync(string idToken)
+    {
+        if (NextClaims is null)
+            throw new InvalidOperationException("FakeAzureAdTokenValidator.NextClaims was not set for this test.");
+        return Task.FromResult(NextClaims.Value);
+    }
+}
 
 // Hosts the real API in-process (WebApplicationFactory) against a dedicated test
 // database on the local SQL Server container. The DB is dropped before the run so
@@ -19,6 +50,11 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
     private static string TestConn => $"Server=localhost,1433;Database=csub_admissions_test;User Id=sa;Password={Password};TrustServerCertificate=True;Encrypt=False";
 
     public string AdminToken { get; private set; } = "";
+
+    // The SSO test double, replacing the real AzureAdTokenValidator singleton. Tests stage
+    // FakeAzure.NextClaims before hitting /api/auth/sso.
+    public FakeAzureAdTokenValidator FakeAzure { get; } =
+        new(new ConfigurationBuilder().Build());
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -37,6 +73,14 @@ public sealed class WebAppFixture : WebApplicationFactory<Program>, IAsyncLifeti
         // ApiCheckRunner blocks private/localhost targets unless this flag is set.
         // Tests and mock APIs run on localhost, so allow private targets explicitly.
         builder.UseSetting("ApiCheck:AllowPrivateTargets", "true");
+
+        // Swap in the SSO test double so the account-linking branches can be driven with
+        // canned Entra claims. ConfigureTestServices runs after the app's own registration,
+        // so this replaces the real singleton.
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<AzureAdTokenValidator>(FakeAzure);
+        });
     }
 
     public async Task InitializeAsync()

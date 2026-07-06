@@ -8,7 +8,12 @@ namespace Api.Auth;
 // Validates an Azure AD ID token.
 // Signing keys come from the tenant's OpenID Connect metadata; ConfigurationManager
 // caches them and refreshes automatically (handling key rotation).
-public sealed class AzureAdTokenValidator
+//
+// Not sealed, and ValidateAsync/IsConfigured are virtual, purely as a test seam: the
+// integration tests register a subclass that returns canned Entra claims so the SSO
+// account-linking branches can be exercised without a live tenant. Production still uses
+// this concrete implementation unchanged.
+public class AzureAdTokenValidator
 {
     // Cap the OpenID metadata/JWKS fetch so an unreachable Microsoft endpoint fails fast
     // instead of blocking an admin login for the framework default (100s). Matches the 5s
@@ -21,11 +26,11 @@ public sealed class AzureAdTokenValidator
 
     public AzureAdTokenValidator(IConfiguration config) => _config = config;
 
-    public bool IsConfigured =>
+    public virtual bool IsConfigured =>
         !string.IsNullOrWhiteSpace(_config["AzureAd:ClientId"]) &&
         !string.IsNullOrWhiteSpace(_config["AzureAd:TenantId"]);
 
-    public async Task<(string oid, string? email, string? name, string? emplid)> ValidateAsync(string idToken)
+    public virtual async Task<(string oid, string? email, string? name, string? emplid)> ValidateAsync(string idToken)
     {
         var tenantId = _config["AzureAd:TenantId"];
         var clientId = _config["AzureAd:ClientId"];
