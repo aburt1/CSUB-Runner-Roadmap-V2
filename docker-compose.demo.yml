@@ -1,0 +1,77 @@
+# ============================================================================
+# DEMO stack — SQL Server + API + Web, all in containers, ONE command, zero setup.
+#
+#     docker compose -f docker-compose.demo.yml up --build
+#     -> open http://localhost:3000
+#        sign in with ANY name + email (dev-login), or go to /admin
+#        and use  admin@csub.edu / admin123
+#
+# What it does: spins up a throwaway SQL Server (Developer edition), the API in
+# DEVELOPMENT mode (so it auto-creates the database, applies the schema, and seeds
+# a demo term + onboarding checklist + ~50 sample students), and the web app with
+# the dev-login form enabled. No .env, no secrets to fill in.
+#
+# !!! TESTING / DEMO ONLY !!!  This uses throwaway, publicly-known dev credentials
+# and Developer-edition SQL Server (not licensed for production). For a real
+# deployment use docker-compose.prod.yml (external SQL Server + real secrets).
+#
+# Reset to a clean database:   docker compose -f docker-compose.demo.yml down -v
+# ============================================================================
+name: csub-roadmap-demo
+
+services:
+  # ---- Database: throwaway SQL Server 2022 (Developer edition) ----
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64 # Apple Silicon runs the amd64 image under emulation
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Csub_Local_Dev_2026!" # throwaway demo password
+      MSSQL_PID: "Developer"
+    restart: unless-stopped
+    volumes:
+      - csub_demo_sqldata:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -C -Q \"SELECT 1\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # ---- API: ASP.NET Core, DEVELOPMENT mode (auto-creates DB + schema + seeds demo data) ----
+  api:
+    build:
+      context: ./Api
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      # Development mode: auto-create + seed, dev-login enabled, no production
+      # secret fail-fast. The values below are throwaway demo credentials.
+      ASPNETCORE_ENVIRONMENT: Development
+      Database__AutoCreate: "true"
+      Database__Seed: "true"
+      ConnectionStrings__Default: "Server=sqlserver,1433;Database=csub_admissions;User Id=sa;Password=Csub_Local_Dev_2026!;TrustServerCertificate=True;Encrypt=False"
+      Jwt__Secret: "dev-only-jwt-secret-change-me-0123456789-abcdefghijklmnopqrstuvwxyz"
+      ApiCheck__EncryptionKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+      Admin__DefaultEmail: "admin@csub.edu"
+      Admin__DefaultPassword: "admin123"
+    restart: unless-stopped
+
+  # ---- Web: Vue SPA served by nginx, proxying /api to the api container ----
+  web:
+    build:
+      context: ./client
+      args:
+        VITE_ALLOW_DEV_LOGIN: "true" # show the name/email dev-login form
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      API_URL: "http://api:8080"
+    ports:
+      - "3000:8080"
+    restart: unless-stopped
+
+volumes:
+  csub_demo_sqldata:
