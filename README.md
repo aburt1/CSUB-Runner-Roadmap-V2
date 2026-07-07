@@ -51,16 +51,35 @@ Throughout, the code favors explicit, low-abstraction style over cleverness, and
 
 ## Quick Start
 
-See the whole app running in one command — the three-container Docker stack:
+### Fastest: the demo stack (one command, zero setup)
+
+Runs the whole app — **database + API + web** — in three containers, pre-seeded with
+sample data. No `.env`, no secrets to fill in.
+
+```bash
+docker compose -f docker-compose.demo.yml up --build   # → http://localhost:3000
+```
+
+Then open **http://localhost:3000** and sign in with **any name + email** (student
+view), or go to **`/admin`** and use **`admin@csub.edu` / `admin123`**. It auto-creates
+the database, applies the schema, and seeds a Fall 2026 term + onboarding checklist +
+~50 sample students. Reset anytime with `docker compose -f docker-compose.demo.yml down -v`.
+Full walkthrough in **[DEMO.md](DEMO.md)**.
+
+> **Demo/testing only** — throwaway dev credentials, Developer-edition SQL, Development
+> mode (that's what makes it zero-config with seed data + dev-login). Not for real data.
+
+### Production-style stack (real secrets, no dev-login)
 
 ```bash
 cp .env.example .env        # set the 4 secrets it lists (see Configuration)
 docker compose up --build   # → http://localhost:3000
 ```
 
-Sign in as `admin@csub.edu` with the `ADMIN_DEFAULT_PASSWORD` from your `.env`.
+Sign in as `admin@csub.edu` with the `ADMIN_DEFAULT_PASSWORD` from your `.env`. This runs
+the API in **Production**, so it requires real secrets and rejects weak ones.
 
-> The Docker stack runs the API in **Production**, so it requires real secrets and rejects weak ones. For the day-to-day local dev loop (`dotnet run` + `npm run dev`, no secrets needed) see **[SETUP](docs/SETUP.md)**; for the full dev-vs-prod picture see **[DEPLOYMENT](docs/DEPLOYMENT.md)**.
+> For the day-to-day local dev loop (`dotnet run` + `npm run dev`, no secrets needed) see **[SETUP](docs/SETUP.md)**; for the full dev-vs-prod picture (incl. the external-SQL production topology) see **[DEPLOYMENT](docs/DEPLOYMENT.md)**.
 
 ---
 
@@ -72,6 +91,7 @@ Sign in as `admin@csub.edu` with the `ADMIN_DEFAULT_PASSWORD` from your `.env`.
 
 | Document | For |
 |----------|-----|
+| [Demo](DEMO.md) | Run the whole app (DB + API + web) in one command, pre-seeded — for a quick demo or test |
 | [Development Setup](docs/SETUP.md) | Running locally (dev loop, full Docker, or frontend-only), env vars, the test/lint/format workflow, troubleshooting |
 | [Architecture](docs/ARCHITECTURE.md) | How the app works and *why* — business logic, request/data flow, design decisions, topology |
 | [Deployment](docs/DEPLOYMENT.md) | Production runbook: the three run modes, DBA provisioning, secrets, TLS, health probes, go-live checklist |
